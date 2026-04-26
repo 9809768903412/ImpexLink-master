@@ -1,0 +1,1 @@
+ALTER TYPE "MaterialRequestStatus" ADD VALUE IF NOT EXISTS 'PM_APPROVED';
