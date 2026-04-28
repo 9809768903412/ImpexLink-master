@@ -37,6 +37,7 @@ import PaginationNav from '@/components/PaginationNav';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
 import { buildMockPastOrders } from '@/mocks/pastOrders';
 import { ProductImage } from '@/components/ProductImage';
+import { formatPesoAmount } from '@/lib/currency';
 
 export default function MyOrdersPage() {
   const { user } = useAuth();
@@ -320,23 +321,23 @@ export default function MyOrdersPage() {
       .map(
         (item) => {
           const line = calcLineAmounts(item.quantity, item.unitPrice);
-          return `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${item.unitPrice.toFixed(2)}</td><td>₱${line.net.toFixed(2)}</td></tr>`;
+          return `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${formatPesoAmount(item.unitPrice)}</td><td>₱${formatPesoAmount(line.net)}</td></tr>`;
         }
       )
       .join('');
     printHtml(
       `Invoice ${order.orderNumber}`,
       `<h1>Client Invoice</h1>
-      <div class=\"meta meta-inline\"><span class=\"doc-label\">Invoice #:</span><span class=\"doc-code\">${order.orderNumber}</span></div>
-      <div class=\"meta\">Client: ${order.clientName}</div>
-      <div class=\"meta\">Status: ${order.status}</div>
+      <div class="meta meta-inline"><span class="doc-label">Invoice #:</span><span class="doc-code">${order.orderNumber}</span></div>
+      <div class="meta">Client: ${order.clientName}</div>
+      <div class="meta">Status: ${order.status}</div>
       <table>
         <thead><tr><th>Item</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
-      <div class=\"total\">VATable Sales: ₱${totals.net.toFixed(2)}</div>
-      <div class=\"total\">VAT (${vatLabel}%): ₱${totals.vat.toFixed(2)}</div>
-      <div class=\"total\">Total Amount Due: ₱${totals.total.toFixed(2)}</div>`
+      <div class="total">VATable Sales: ₱${formatPesoAmount(totals.net)}</div>
+      <div class="total">VAT (${vatLabel}%): ₱${formatPesoAmount(totals.vat)}</div>
+      <div class="total">Total Amount Due: ₱${formatPesoAmount(totals.total)}</div>`
     );
   };
 
@@ -350,8 +351,8 @@ export default function MyOrdersPage() {
     printHtml(
       `Delivery Receipt ${order.orderNumber}`,
       `<h1>Delivery Receipt</h1>
-      <div class=\"meta meta-inline\"><span class=\"doc-label\">DR #:</span><span class=\"doc-code\">${order.orderNumber}</span></div>
-      <div class=\"meta\">Client: ${order.clientName}</div>
+      <div class="meta meta-inline"><span class="doc-label">DR #:</span><span class="doc-code">${order.orderNumber}</span></div>
+      <div class="meta">Client: ${order.clientName}</div>
       <table>
         <thead><tr><th>Item</th><th>Unit</th><th>Qty</th></tr></thead>
         <tbody>${itemsHtml}</tbody>

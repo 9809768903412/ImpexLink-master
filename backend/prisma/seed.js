@@ -54,7 +54,15 @@ async function ensureUser({ fullName, email, roleName, passwordHash }) {
   if (!role) throw new Error(`Role not found: ${roleName}`);
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.fullName !== fullName || existing.roleId !== role.roleId) {
+      return prisma.user.update({
+        where: { email },
+        data: { fullName, roleId: role.roleId },
+      });
+    }
+    return existing;
+  }
 
   return prisma.user.create({
     data: {
@@ -91,10 +99,39 @@ async function ensureProduct(item) {
   });
   if (!category) throw new Error(`Category not found: ${item.categoryName}`);
 
+  const names = [item.itemName, ...(item.aliases || [])].filter(Boolean);
   const existing = await prisma.product.findFirst({
-    where: { itemName: item.itemName },
+    where: { itemName: { in: names } },
+    orderBy: { productId: 'asc' },
   });
-  if (existing) return existing;
+  if (existing) {
+    const updated = await prisma.product.update({
+      where: { productId: existing.productId },
+      data: {
+        itemName: item.itemName,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        categoryId: category.categoryId,
+        lowStockThreshold: item.lowStockThreshold,
+        shelfLifeDays: item.shelfLifeDays,
+        status: toStatus(existing.qtyOnHand, item.lowStockThreshold),
+        deletedAt: null,
+      },
+    });
+
+    if (item.aliases?.length) {
+      await prisma.product.updateMany({
+        where: {
+          productId: { not: updated.productId },
+          itemName: { in: item.aliases },
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+    }
+
+    return updated;
+  }
 
   return prisma.product.create({
     data: {
@@ -299,7 +336,7 @@ async function main() {
     { fullName: 'Kat Cacabilos', email: 'kat.cacabilos@impex.com', roleName: 'PAINT_CHEMIST' },
     { fullName: 'Danilo Benosa', email: 'danilo.benosa@impex.com', roleName: 'WAREHOUSE_STAFF' },
     { fullName: 'Robel Tabora', email: 'robel.tabora@impex.com', roleName: 'WAREHOUSE_STAFF' },
-    { fullName: 'Carlos Martinez', email: 'carlos.martinez@impex.com', roleName: 'DELIVERY_GUY' },
+    { fullName: 'Manny Dela Cruz', email: 'carlos.martinez@impex.com', roleName: 'DELIVERY_GUY' },
     { fullName: 'Ateneo CTC Procurement', email: 'procurement@ateneoctc.com', roleName: 'CLIENT' },
     { fullName: 'Robinsons Land Procurement', email: 'procurement@robinsonsland.com', roleName: 'CLIENT' },
     { fullName: 'Ayala Land Procurement', email: 'procurement@ayalaland.com', roleName: 'CLIENT' },
@@ -398,54 +435,56 @@ async function main() {
   // === Inventory (add missing only) ===
   const inventory = [
     // Paint & Consumables
-    { itemName: 'Paint brush', unit: 'pcs', unitPrice: 120, categoryName: 'Paint & Consumables', qtyOnHand: 150, lowStockThreshold: 30, shelfLifeDays: 365 },
-    { itemName: 'Paint brush 1"', unit: 'pcs', unitPrice: 130, categoryName: 'Paint & Consumables', qtyOnHand: 200, lowStockThreshold: 30, shelfLifeDays: 365 },
-    { itemName: 'Paint brush 1-1/2"', unit: 'pcs', unitPrice: 150, categoryName: 'Paint & Consumables', qtyOnHand: 180, lowStockThreshold: 30, shelfLifeDays: 365 },
-    { itemName: 'Paint brush 2"', unit: 'pcs', unitPrice: 170, categoryName: 'Paint & Consumables', qtyOnHand: 140, lowStockThreshold: 30, shelfLifeDays: 365 },
-    { itemName: 'Paint brush 3"', unit: 'pcs', unitPrice: 190, categoryName: 'Paint & Consumables', qtyOnHand: 90, lowStockThreshold: 30, shelfLifeDays: 365 },
-    { itemName: 'Paint roller 7" w/ handle', unit: 'pcs', unitPrice: 220, categoryName: 'Paint & Consumables', qtyOnHand: 120, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Paint roller 7" w/ handle (yellow)', unit: 'pcs', unitPrice: 230, categoryName: 'Paint & Consumables', qtyOnHand: 80, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Baby roller cotton (yellow)', unit: 'pcs', unitPrice: 140, categoryName: 'Paint & Consumables', qtyOnHand: 200, lowStockThreshold: 40, shelfLifeDays: 365 },
-    { itemName: 'Baby roller cotton 4" w/ handle (white)', unit: 'pcs', unitPrice: 150, categoryName: 'Paint & Consumables', qtyOnHand: 150, lowStockThreshold: 40, shelfLifeDays: 365 },
-    { itemName: 'Acrylon Paint roller 4" filler (white)', unit: 'pcs', unitPrice: 160, categoryName: 'Paint & Consumables', qtyOnHand: 100, lowStockThreshold: 30, shelfLifeDays: 365 },
-    { itemName: 'Acrylon Paint roller 7" w/ handle (White)', unit: 'pcs', unitPrice: 210, categoryName: 'Paint & Consumables', qtyOnHand: 90, lowStockThreshold: 30, shelfLifeDays: 365 },
-    { itemName: 'Sand paper #100', unit: 'sheets', unitPrice: 8, categoryName: 'Paint & Consumables', qtyOnHand: 500, lowStockThreshold: 100, shelfLifeDays: 365 },
-    { itemName: 'Sand Paper #120', unit: 'sheets', unitPrice: 9, categoryName: 'Paint & Consumables', qtyOnHand: 450, lowStockThreshold: 100, shelfLifeDays: 365 },
-    { itemName: 'Sand Paper #150', unit: 'sheets', unitPrice: 10, categoryName: 'Paint & Consumables', qtyOnHand: 400, lowStockThreshold: 100, shelfLifeDays: 365 },
-    { itemName: 'Sand paper #180', unit: 'sheets', unitPrice: 10, categoryName: 'Paint & Consumables', qtyOnHand: 350, lowStockThreshold: 100, shelfLifeDays: 365 },
-    { itemName: 'Paint thinner', unit: 'liters', unitPrice: 120, categoryName: 'Paint & Consumables', qtyOnHand: 300, lowStockThreshold: 40, shelfLifeDays: 365 },
-    { itemName: 'Lacquer Thinner', unit: 'liters', unitPrice: 130, categoryName: 'Paint & Consumables', qtyOnHand: 250, lowStockThreshold: 40, shelfLifeDays: 365 },
-    { itemName: 'Paint Thinner', unit: 'liters', unitPrice: 125, categoryName: 'Paint & Consumables', qtyOnHand: 280, lowStockThreshold: 40, shelfLifeDays: 365 },
-    { itemName: 'Spatula 2"', unit: 'pcs', unitPrice: 90, categoryName: 'Paint & Consumables', qtyOnHand: 120, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Spatula 4"', unit: 'pcs', unitPrice: 110, categoryName: 'Paint & Consumables', qtyOnHand: 100, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Spatula 6"', unit: 'pcs', unitPrice: 130, categoryName: 'Paint & Consumables', qtyOnHand: 80, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Palette (pair) 4"', unit: 'pairs', unitPrice: 160, categoryName: 'Paint & Consumables', qtyOnHand: 60, lowStockThreshold: 20, shelfLifeDays: 365 },
-    { itemName: 'Palette (pair) 6"', unit: 'pairs', unitPrice: 180, categoryName: 'Paint & Consumables', qtyOnHand: 50, lowStockThreshold: 20, shelfLifeDays: 365 },
-    { itemName: 'Steel brush', unit: 'pcs', unitPrice: 95, categoryName: 'Paint & Consumables', qtyOnHand: 200, lowStockThreshold: 40, shelfLifeDays: 365 },
-    { itemName: 'Cotton rags', unit: 'kg', unitPrice: 70, categoryName: 'Paint & Consumables', qtyOnHand: 500, lowStockThreshold: 80, shelfLifeDays: 365 },
-    { itemName: 'Empty sacks', unit: 'pcs', unitPrice: 15, categoryName: 'Paint & Consumables', qtyOnHand: 1000, lowStockThreshold: 150, shelfLifeDays: 365 },
+    { itemName: 'Paint brush 1"', unit: 'pcs', unitPrice: 25, categoryName: 'Paint & Consumables', qtyOnHand: 200, lowStockThreshold: 30, shelfLifeDays: 365, aliases: ['Paint brush'] },
+    { itemName: 'Paint brush 1-1/2"', unit: 'pcs', unitPrice: 40, categoryName: 'Paint & Consumables', qtyOnHand: 180, lowStockThreshold: 30, shelfLifeDays: 365 },
+    { itemName: 'Paint brush 2"', unit: 'pcs', unitPrice: 45, categoryName: 'Paint & Consumables', qtyOnHand: 140, lowStockThreshold: 30, shelfLifeDays: 365 },
+    { itemName: 'Paint brush 3"', unit: 'pcs', unitPrice: 65, categoryName: 'Paint & Consumables', qtyOnHand: 90, lowStockThreshold: 30, shelfLifeDays: 365 },
+    { itemName: 'Paint roller 7" w/ handle', unit: 'pcs', unitPrice: 100, categoryName: 'Paint & Consumables', qtyOnHand: 120, lowStockThreshold: 25, shelfLifeDays: 365 },
+    { itemName: 'Paint roller 7" w/ handle yellow', unit: 'pcs', unitPrice: 65, categoryName: 'Paint & Consumables', qtyOnHand: 80, lowStockThreshold: 25, shelfLifeDays: 365, aliases: ['Paint roller 7" w/ handle (yellow)'] },
+    { itemName: 'Baby roller cotton (white)', unit: 'pcs', unitPrice: 35, categoryName: 'Paint & Consumables', qtyOnHand: 200, lowStockThreshold: 40, shelfLifeDays: 365, aliases: ['Baby roller cotton (yellow)', 'Acrylon Paint roller 4" filler (white)'] },
+    { itemName: 'Baby roller cotton 4" w/ handle white', unit: 'pcs', unitPrice: 45, categoryName: 'Paint & Consumables', qtyOnHand: 150, lowStockThreshold: 40, shelfLifeDays: 365, aliases: ['Baby roller cotton 4" w/ handle (white)'] },
+    { itemName: 'Acrylon Paint roller 7" w/ handle (White)', unit: 'pcs', unitPrice: 100, categoryName: 'Paint & Consumables', qtyOnHand: 90, lowStockThreshold: 30, shelfLifeDays: 365 },
+    { itemName: 'Sand paper #100', unit: 'sheet', unitPrice: 20, categoryName: 'Paint & Consumables', qtyOnHand: 500, lowStockThreshold: 100, shelfLifeDays: 365 },
+    { itemName: 'Sand paper #120', unit: 'sheet', unitPrice: 20, categoryName: 'Paint & Consumables', qtyOnHand: 450, lowStockThreshold: 100, shelfLifeDays: 365, aliases: ['Sand Paper #120'] },
+    { itemName: 'Sand paper #150', unit: 'sheet', unitPrice: 20, categoryName: 'Paint & Consumables', qtyOnHand: 400, lowStockThreshold: 100, shelfLifeDays: 365, aliases: ['Sand Paper #150'] },
+    { itemName: 'Sand paper #180', unit: 'sheet', unitPrice: 20, categoryName: 'Paint & Consumables', qtyOnHand: 350, lowStockThreshold: 100, shelfLifeDays: 365 },
+    { itemName: 'Paint thinner', unit: 'gallon', unitPrice: 320, categoryName: 'Paint & Consumables', qtyOnHand: 300, lowStockThreshold: 40, shelfLifeDays: 365, aliases: ['Paint Thinner'] },
+    { itemName: 'Lacquer thinner', unit: 'gallon', unitPrice: 290, categoryName: 'Paint & Consumables', qtyOnHand: 250, lowStockThreshold: 40, shelfLifeDays: 365, aliases: ['Lacquer Thinner'] },
+    { itemName: 'Spatula 2"', unit: 'pcs', unitPrice: 25, categoryName: 'Paint & Consumables', qtyOnHand: 120, lowStockThreshold: 25, shelfLifeDays: 365 },
+    { itemName: 'Spatula 4"', unit: 'pcs', unitPrice: 35, categoryName: 'Paint & Consumables', qtyOnHand: 100, lowStockThreshold: 25, shelfLifeDays: 365 },
+    { itemName: 'Spatula 6"', unit: 'pcs', unitPrice: 45, categoryName: 'Paint & Consumables', qtyOnHand: 80, lowStockThreshold: 25, shelfLifeDays: 365 },
+    { itemName: 'Palette pair 4"', unit: 'pair', unitPrice: 50, categoryName: 'Paint & Consumables', qtyOnHand: 60, lowStockThreshold: 20, shelfLifeDays: 365, aliases: ['Palette (pair) 4"'] },
+    { itemName: 'Palette pair 6"', unit: 'pair', unitPrice: 60, categoryName: 'Paint & Consumables', qtyOnHand: 50, lowStockThreshold: 20, shelfLifeDays: 365, aliases: ['Palette (pair) 6"'] },
+    { itemName: 'Steel brush', unit: 'pcs', unitPrice: 50, categoryName: 'Paint & Consumables', qtyOnHand: 200, lowStockThreshold: 40, shelfLifeDays: 365 },
+    { itemName: 'Cotton rags', unit: 'bundle', unitPrice: 60, categoryName: 'Paint & Consumables', qtyOnHand: 500, lowStockThreshold: 80, shelfLifeDays: 365 },
+    { itemName: 'Empty sacks', unit: 'pcs', unitPrice: 5, categoryName: 'Paint & Consumables', qtyOnHand: 1000, lowStockThreshold: 150, shelfLifeDays: 365 },
 
     // Construction Chemicals
-    { itemName: 'Metal-tech EG (2 kgs)', unit: 'packs', unitPrice: 320, categoryName: 'Construction Chemicals', qtyOnHand: 150, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Cerami-tech EG (1 kg)', unit: 'packs', unitPrice: 260, categoryName: 'Construction Chemicals', qtyOnHand: 200, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Cerami-tech FG (1 kg)', unit: 'packs', unitPrice: 270, categoryName: 'Construction Chemicals', qtyOnHand: 180, lowStockThreshold: 25, shelfLifeDays: 365 },
-    { itemName: 'Seal-tech AW (5 ltrs)', unit: 'cans', unitPrice: 450, categoryName: 'Construction Chemicals', qtyOnHand: 120, lowStockThreshold: 20, shelfLifeDays: 365 },
-    { itemName: 'Seal-tech AW (20 ltrs)', unit: 'drums', unitPrice: 1400, categoryName: 'Construction Chemicals', qtyOnHand: 80, lowStockThreshold: 10, shelfLifeDays: 365 },
-    { itemName: 'Poly-tech CSM', unit: 'rolls', unitPrice: 520, categoryName: 'Construction Chemicals', qtyOnHand: 100, lowStockThreshold: 15, shelfLifeDays: 365 },
-    { itemName: 'Epoxy Injection', unit: 'kits', unitPrice: 950, categoryName: 'Construction Chemicals', qtyOnHand: 90, lowStockThreshold: 15, shelfLifeDays: 365 },
-    { itemName: 'Chopped Strand Matt 230', unit: 'rolls', unitPrice: 680, categoryName: 'Construction Chemicals', qtyOnHand: 70, lowStockThreshold: 10, shelfLifeDays: 365 },
+    { itemName: 'Metal Tech EG', unit: 'kit', unitPrice: 16500, categoryName: 'Construction Chemicals', qtyOnHand: 150, lowStockThreshold: 25, shelfLifeDays: 365, aliases: ['Metal-tech EG (2 kgs)'] },
+    { itemName: 'Ceramic Tech EG', unit: 'kg', unitPrice: 16500, categoryName: 'Construction Chemicals', qtyOnHand: 200, lowStockThreshold: 25, shelfLifeDays: 365, aliases: ['Cerami-tech EG (1 kg)'] },
+    { itemName: 'Ceramic Tech FG', unit: 'kg', unitPrice: 16500, categoryName: 'Construction Chemicals', qtyOnHand: 180, lowStockThreshold: 25, shelfLifeDays: 365, aliases: ['Cerami-tech FG (1 kg)'] },
+    { itemName: 'Seal Tech AW 5 ltrs', unit: 'pail', unitPrice: 13550, categoryName: 'Construction Chemicals', qtyOnHand: 120, lowStockThreshold: 20, shelfLifeDays: 365, aliases: ['Seal-tech AW (5 ltrs)'] },
+    { itemName: 'Seal Tech AW 20 ltrs', unit: 'pail', unitPrice: 48500, categoryName: 'Construction Chemicals', qtyOnHand: 80, lowStockThreshold: 10, shelfLifeDays: 365, aliases: ['Seal-tech AW (20 ltrs)'] },
+    { itemName: 'Poly Tech CSM', unit: 'roll', unitPrice: 42800, categoryName: 'Construction Chemicals', qtyOnHand: 100, lowStockThreshold: 15, shelfLifeDays: 365, aliases: ['Poly-tech CSM'] },
+    { itemName: 'Epoxy injection', unit: 'kit', unitPrice: 10000, categoryName: 'Construction Chemicals', qtyOnHand: 90, lowStockThreshold: 15, shelfLifeDays: 365, aliases: ['Epoxy Injection'] },
+    { itemName: 'Chopped strand matt 230', unit: 'roll', unitPrice: 6500, categoryName: 'Construction Chemicals', qtyOnHand: 70, lowStockThreshold: 10, shelfLifeDays: 365, aliases: ['Chopped Strand Matt 230'] },
 
     // Machinery
-    { itemName: 'Portable Grinder', unit: 'units', unitPrice: 3800, categoryName: 'Machinery', qtyOnHand: 15, lowStockThreshold: 5, shelfLifeDays: 730 },
-    { itemName: 'Hand drill', unit: 'units', unitPrice: 3200, categoryName: 'Machinery', qtyOnHand: 20, lowStockThreshold: 5, shelfLifeDays: 730 },
-    { itemName: 'Injection machine', unit: 'units', unitPrice: 25000, categoryName: 'Machinery', qtyOnHand: 8, lowStockThreshold: 2, shelfLifeDays: 730 },
-    { itemName: 'Chipping gun', unit: 'units', unitPrice: 5600, categoryName: 'Machinery', qtyOnHand: 12, lowStockThreshold: 3, shelfLifeDays: 730 },
-    { itemName: 'Welding machine', unit: 'units', unitPrice: 18000, categoryName: 'Machinery', qtyOnHand: 10, lowStockThreshold: 2, shelfLifeDays: 730 },
+    { itemName: 'Portable grinder', unit: 'unit', unitPrice: 4500, categoryName: 'Machinery', qtyOnHand: 15, lowStockThreshold: 5, shelfLifeDays: 730, aliases: ['Portable Grinder'] },
+    { itemName: 'Hand drill', unit: 'unit', unitPrice: 6500, categoryName: 'Machinery', qtyOnHand: 20, lowStockThreshold: 5, shelfLifeDays: 730 },
+    { itemName: 'Injection machine', unit: 'unit', unitPrice: 30000, categoryName: 'Machinery', qtyOnHand: 8, lowStockThreshold: 2, shelfLifeDays: 730 },
+    { itemName: 'Chipping gun', unit: 'unit', unitPrice: 7500, categoryName: 'Machinery', qtyOnHand: 12, lowStockThreshold: 3, shelfLifeDays: 730 },
+    { itemName: 'Welding machine', unit: 'unit', unitPrice: 65000, categoryName: 'Machinery', qtyOnHand: 10, lowStockThreshold: 2, shelfLifeDays: 730 },
   ];
 
   for (const item of inventory) {
     await ensureProduct(item);
   }
+
+  await prisma.product.updateMany({
+    where: { itemName: 'Acrylon Paint roller 4" filler (white)', deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
 
   // === Demo clients, projects, and past orders (safe, backend-friendly preview data) ===
   const princess = createdUsers.find((u) => u.email === 'princess.espino@impex.com');
@@ -454,7 +493,7 @@ async function main() {
   const myra = createdUsers.find((u) => u.email === 'myra.flores@impex.com');
   const charlene = createdUsers.find((u) => u.email === 'charlene.biza@impex.com');
   const enar = createdUsers.find((u) => u.email === 'enar.valencia@impex.com');
-  const carlos = createdUsers.find((u) => u.email === 'carlos.martinez@impex.com');
+  const driver = createdUsers.find((u) => u.email === 'carlos.martinez@impex.com');
   const ateneoClientUser = createdUsers.find((u) => u.email === 'procurement@ateneoctc.com');
   const robinsonsClientUser = createdUsers.find((u) => u.email === 'procurement@robinsonsland.com');
   const ayalaClientUser = createdUsers.find((u) => u.email === 'procurement@ayalaland.com');
@@ -523,7 +562,7 @@ async function main() {
       client: ateneoClient,
       project: ateneoProject,
       createdBy: myra?.userId || null,
-      assignedDriverId: carlos?.userId || null,
+      assignedDriverId: driver?.userId || null,
       createdAt: new Date('2026-03-28T09:15:00.000Z'),
       updatedAt: new Date('2026-04-01T14:00:00.000Z'),
       eta: new Date('2026-04-01'),
@@ -544,7 +583,7 @@ async function main() {
       client: robinsonsClient,
       project: robinsonsProject,
       createdBy: charlene?.userId || null,
-      assignedDriverId: carlos?.userId || null,
+      assignedDriverId: driver?.userId || null,
       createdAt: new Date('2026-03-14T07:45:00.000Z'),
       updatedAt: new Date('2026-03-18T16:30:00.000Z'),
       eta: new Date('2026-03-18'),
@@ -554,7 +593,7 @@ async function main() {
       notes: 'Seeded delivered order for Robinsons reorder preview.',
       specialInstructions: 'Waterproofing and patching materials for mall expansion turnover.',
       itemSpecs: [
-        { itemName: 'Seal-tech AW (5 ltrs)', quantity: 6 },
+        { itemName: 'Seal Tech AW 5 ltrs', quantity: 6 },
         { itemName: 'Spatula 2"', quantity: 20 },
       ],
     },
@@ -564,7 +603,7 @@ async function main() {
       client: ayalaClient,
       project: ayalaProject,
       createdBy: enar?.userId || null,
-      assignedDriverId: carlos?.userId || null,
+      assignedDriverId: driver?.userId || null,
       createdAt: new Date('2026-02-25T11:20:00.000Z'),
       updatedAt: new Date('2026-02-27T13:10:00.000Z'),
       eta: new Date('2026-02-27'),
@@ -574,9 +613,9 @@ async function main() {
       notes: 'Seeded delivered order for Ayala reorder preview.',
       specialInstructions: 'Starter finishing kit for fit-out paint works.',
       itemSpecs: [
-        { itemName: 'Paint brush', quantity: 40 },
+        { itemName: 'Paint brush 1"', quantity: 40 },
         { itemName: 'Paint roller 7" w/ handle', quantity: 18 },
-        { itemName: 'Palette (pair) 4"', quantity: 10 },
+        { itemName: 'Palette pair 4"', quantity: 10 },
       ],
     },
   ];
@@ -637,12 +676,12 @@ async function main() {
       updatedAt: new Date('2026-04-07T10:15:00.000Z'),
       specialInstructions: 'Second batch for renovation touch-ups.',
       itemSpecs: [
-        { itemName: 'Acrylon Paint roller 4" filler (white)', quantity: 12 },
-        { itemName: 'Baby roller cotton 4" w/ handle (white)', quantity: 12 },
+        { itemName: 'Baby roller cotton (white)', quantity: 12 },
+        { itemName: 'Baby roller cotton 4" w/ handle white', quantity: 12 },
       ],
       delivery: {
         drNumber: 'DR-2026-1102',
-        assignedDriverId: carlos?.userId || null,
+        assignedDriverId: driver?.userId || null,
         status: 'PENDING',
         eta: new Date('2026-04-10'),
         createdAt: new Date('2026-04-07T11:00:00.000Z'),
@@ -660,13 +699,13 @@ async function main() {
       updatedAt: new Date('2026-04-08T06:55:00.000Z'),
       specialInstructions: 'Deliver to mall expansion service entrance.',
       itemSpecs: [
-        { itemName: 'Seal-tech AW (5 ltrs)', quantity: 10 },
+        { itemName: 'Seal Tech AW 5 ltrs', quantity: 10 },
         { itemName: 'Spatula 4"', quantity: 18 },
         { itemName: 'Sand paper #100', quantity: 30 },
       ],
       delivery: {
         drNumber: 'DR-2026-1103',
-        assignedDriverId: carlos?.userId || null,
+        assignedDriverId: driver?.userId || null,
         status: 'IN_TRANSIT',
         eta: new Date('2026-04-10'),
         createdAt: new Date('2026-04-08T07:00:00.000Z'),
@@ -685,7 +724,7 @@ async function main() {
       specialInstructions: 'Cancelled due to revised fit-out scope.',
       itemSpecs: [
         { itemName: 'Paint brush 3"', quantity: 14 },
-        { itemName: 'Palette (pair) 4"', quantity: 10 },
+        { itemName: 'Palette pair 4"', quantity: 10 },
       ],
     },
   ];

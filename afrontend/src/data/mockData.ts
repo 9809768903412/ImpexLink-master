@@ -127,10 +127,10 @@ export const mockUsers: User[] = [
   },
   {
     id: 'user-16',
-    name: 'Carlos Martinez',
+    name: 'Manny Dela Cruz',
     email: 'carlos.martinez@impex.com',
     role: 'delivery_guy',
-    avatar: 'CM',
+    avatar: 'MD',
   },
 ];
 

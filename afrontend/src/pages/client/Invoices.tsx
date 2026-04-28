@@ -17,6 +17,7 @@ import { apiClient } from '@/api/client';
 import type { Order } from '@/types';
 import { printHtml } from '@/utils/print';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
+import { formatPesoAmount } from '@/lib/currency';
 
 export default function ClientInvoicesPage() {
   const { user } = useAuth();
@@ -51,7 +52,7 @@ export default function ClientInvoicesPage() {
     const itemsHtml = order.items
       .map(
         (item) =>
-          `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${item.unitPrice.toFixed(2)}</td><td>₱${item.amount.toFixed(2)}</td></tr>`
+          `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${formatPesoAmount(item.unitPrice)}</td><td>₱${formatPesoAmount(item.amount)}</td></tr>`
       )
       .join('');
     printHtml(
@@ -64,9 +65,9 @@ export default function ClientInvoicesPage() {
         <thead><tr><th>Item</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
-      <div class=\"total\">VATable Sales: ₱${totalsByOrder.get(order.id)?.net.toFixed(2)}</div>
-      <div class=\"total\">VAT (${vatLabel}%): ₱${totalsByOrder.get(order.id)?.vat.toFixed(2)}</div>
-      <div class=\"total\">Total Amount Due: ₱${totalsByOrder.get(order.id)?.total.toFixed(2)}</div>`
+      <div class="total">VATable Sales: ₱${formatPesoAmount(totalsByOrder.get(order.id)?.net)}</div>
+      <div class="total">VAT (${vatLabel}%): ₱${formatPesoAmount(totalsByOrder.get(order.id)?.vat)}</div>
+      <div class="total">Total Amount Due: ₱${formatPesoAmount(totalsByOrder.get(order.id)?.total)}</div>`
     );
   };
 

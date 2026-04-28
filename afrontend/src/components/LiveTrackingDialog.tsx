@@ -115,7 +115,7 @@ export default function LiveTrackingDialog({
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-muted-foreground">Driver</span>
-                      <span className="font-medium">{delivery.deliveryGuyName || 'Carlos Martinez'}</span>
+                      <span className="font-medium">{delivery.deliveryGuyName || 'Manny Dela Cruz'}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-muted-foreground">ETA</span>
@@ -136,7 +136,7 @@ export default function LiveTrackingDialog({
                     <div className="flex items-start gap-2">
                       <UserRound className="mt-0.5 h-4 w-4 text-muted-foreground" />
                       <div>
-                        <p className="font-medium">{delivery.deliveryGuyName || 'Carlos Martinez'}</p>
+                        <p className="font-medium">{delivery.deliveryGuyName || 'Manny Dela Cruz'}</p>
                         <p className="text-muted-foreground">Assigned delivery operator</p>
                       </div>
                     </div>

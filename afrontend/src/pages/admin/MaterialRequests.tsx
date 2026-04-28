@@ -39,6 +39,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canApproveMaterialRequests, canCreateMaterialRequests, hasRole } from '@/lib/roles';
+import { formatPesoAmount } from '@/lib/currency';
 
 export default function MaterialRequestsPage() {
   const { user } = useAuth();
@@ -341,26 +342,26 @@ export default function MaterialRequestsPage() {
     const itemsHtml = request.items
       .map(
         (item) =>
-          `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${item.unitPrice.toFixed(2)}</td><td>₱${item.amount.toFixed(2)}</td></tr>`
+          `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${formatPesoAmount(item.unitPrice)}</td><td>₱${formatPesoAmount(item.amount)}</td></tr>`
       )
       .join('');
     printHtml(
       `Material Request ${request.requestNumber}`,
       `<h1>Material Request</h1>
-      <div class=\"meta meta-inline\"><span class=\"doc-label\">Request #:</span><span class=\"doc-code\">${request.requestNumber}</span></div>
-      <div class=\"meta-grid\">
-        <div class=\"meta\">Date: ${new Date(request.date).toLocaleDateString('en-PH')}</div>
-        <div class=\"meta\">Project: ${request.projectName}</div>
-        <div class=\"meta\">Requested By: ${request.requestedBy}</div>
-        <div class=\"meta\">Status: ${request.status}</div>
-        <div class=\"meta\">Urgency: ${request.urgency}</div>
+      <div class="meta meta-inline"><span class="doc-label">Request #:</span><span class="doc-code">${request.requestNumber}</span></div>
+      <div class="meta-grid">
+        <div class="meta">Date: ${new Date(request.date).toLocaleDateString('en-PH')}</div>
+        <div class="meta">Project: ${request.projectName}</div>
+        <div class="meta">Requested By: ${request.requestedBy}</div>
+        <div class="meta">Status: ${request.status}</div>
+        <div class="meta">Urgency: ${request.urgency}</div>
       </div>
       <table>
         <thead><tr><th>Item</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
-      <div class=\"total\">Estimated Total: ₱${Number(request.estimatedCost || 0).toFixed(2)}</div>
-      <div class=\"meta meta-full\">Purpose: ${request.purpose}</div>`
+      <div class="total">Estimated Total: ₱${formatPesoAmount(request.estimatedCost)}</div>
+      <div class="meta meta-full">Purpose: ${request.purpose}</div>`
     );
   };
 
@@ -773,7 +774,7 @@ export default function MaterialRequestsPage() {
                                 }));
                               }}
                             >
-                              ×
+                              Ã—
                             </Button>
                           )}
                         </TableCell>

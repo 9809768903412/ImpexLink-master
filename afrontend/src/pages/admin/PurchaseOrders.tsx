@@ -38,6 +38,7 @@ import { apiClient } from '@/api/client';
 import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
 import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
+import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -361,26 +362,26 @@ export default function PurchaseOrdersPage() {
       .map(
         (item) => {
           const line = calcLineAmounts(item.quantity, item.unitPrice);
-          return `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${item.unitPrice.toFixed(2)}</td><td>₱${line.net.toFixed(2)}</td></tr>`;
+          return `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${formatPesoAmount(item.unitPrice)}</td><td>₱${formatPesoAmount(line.net)}</td></tr>`;
         }
       )
       .join('');
     printHtml(
       `Purchase Order ${po.poNumber}`,
       `<h1>Purchase Order</h1>
-      <div class=\"meta meta-inline\"><span class=\"doc-label\">PO #:</span><span class=\"doc-code\">${po.poNumber}</span></div>
-      <div class=\"meta\">Supplier: ${po.supplierName}</div>
-      <div class=\"meta\">Date: ${format(new Date(po.date), 'yyyy-MM-dd')}</div>
-      <div class=\"meta\">Status: ${po.status}</div>
-      <div class=\"meta\">Terms: ${po.terms}</div>
+      <div class="meta meta-inline"><span class="doc-label">PO #:</span><span class="doc-code">${po.poNumber}</span></div>
+      <div class="meta">Supplier: ${po.supplierName}</div>
+      <div class="meta">Date: ${format(new Date(po.date), 'yyyy-MM-dd')}</div>
+      <div class="meta">Status: ${po.status}</div>
+      <div class="meta">Terms: ${po.terms}</div>
       <table>
         <thead><tr><th>Item</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
-      <div class=\"total\">VATable Sales: ₱${totals.net.toFixed(2)}</div>
-      <div class=\"total\">VAT (${vatLabel}%): ₱${totals.vat.toFixed(2)}</div>
-      <div class=\"total\">Total Amount Due: ₱${totals.total.toFixed(2)}</div>
-      ${po.remarks ? `<div class=\"meta\">Remarks: ${po.remarks}</div>` : ''}`
+      <div class="total">VATable Sales: ₱${formatPesoAmount(totals.net)}</div>
+      <div class="total">VAT (${vatLabel}%): ₱${formatPesoAmount(totals.vat)}</div>
+      <div class="total">Total Amount Due: ₱${formatPesoAmount(totals.total)}</div>
+      ${po.remarks ? `<div class="meta">Remarks: ${po.remarks}</div>` : ''}`
     );
   };
 
@@ -711,9 +712,9 @@ export default function PurchaseOrdersPage() {
                                 <p className="text-xs text-destructive mt-1">{poErrors[`qty-${idx}`]}</p>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">₱{item.unitPrice.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">₱{formatPesoAmount(item.unitPrice)}</TableCell>
                             <TableCell className="text-right font-medium">
-                              ₱{line.net.toFixed(2)}
+                              ₱{formatPesoAmount(line.net)}
                             </TableCell>
                             <TableCell>
                               <Button
@@ -736,13 +737,13 @@ export default function PurchaseOrdersPage() {
 
             <div className="text-right space-y-1 pt-2 border-t">
               <p className="text-sm">
-                VATable Sales: <span className="font-medium">₱{subtotal.toFixed(2)}</span>
+                VATable Sales: <span className="font-medium">₱{formatPesoAmount(subtotal)}</span>
               </p>
               <p className="text-sm">
-                VAT ({vatLabel}%): <span className="font-medium">₱{vat.toFixed(2)}</span>
+                VAT ({vatLabel}%): <span className="font-medium">₱{formatPesoAmount(vat)}</span>
               </p>
               <p className="text-lg font-bold">
-                Total Amount Due: <span className="text-primary">₱{total.toFixed(2)}</span>
+                Total Amount Due: <span className="text-primary">₱{formatPesoAmount(total)}</span>
               </p>
             </div>
 
@@ -849,17 +850,17 @@ export default function PurchaseOrdersPage() {
                           <TableCell className="text-center">{item.quantity}</TableCell>
                           <TableCell>{item.unit}</TableCell>
                           <TableCell>{item.itemName}</TableCell>
-                          <TableCell className="text-right">₱{item.unitPrice.toFixed(2)}</TableCell>
-                          <TableCell className="text-right">₱{line.net.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">₱{formatPesoAmount(item.unitPrice)}</TableCell>
+                          <TableCell className="text-right">₱{formatPesoAmount(line.net)}</TableCell>
                         </TableRow>
                       );
                     })}
                   </TableBody>
                 </Table>
                 <div className="text-right mt-4 space-y-1">
-                  <p>VATable Sales: ₱{selectedTotals?.net.toFixed(2)}</p>
-                  <p>VAT ({vatLabel}%): ₱{selectedTotals?.vat.toFixed(2)}</p>
-                  <p className="font-bold text-lg">Total Amount Due: ₱{selectedTotals?.total.toFixed(2)}</p>
+                  <p>VATable Sales: ₱{formatPesoAmount(selectedTotals?.net)}</p>
+                  <p>VAT ({vatLabel}%): ₱{formatPesoAmount(selectedTotals?.vat)}</p>
+                  <p className="font-bold text-lg">Total Amount Due: ₱{formatPesoAmount(selectedTotals?.total)}</p>
                 </div>
                 {selectedPO.approvedBy && (
                   <div className="mt-6 pt-4 border-t">

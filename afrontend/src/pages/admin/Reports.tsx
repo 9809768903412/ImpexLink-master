@@ -25,6 +25,7 @@ import { apiClient } from '@/api/client';
 import type { InventoryItem, Order, Delivery, Project } from '@/types';
 import { printHtml } from '@/utils/print';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
+import { formatPesoAmount } from '@/lib/currency';
 
 // TODO: Replace with real data from Lovable Cloud database
 export default function ReportsPage() {
@@ -220,7 +221,7 @@ export default function ReportsPage() {
   const handleExport = (type: string) => {
     if (type === 'inventory') {
       const rows = filteredInventoryByCategory
-        .map((cat) => `<tr><td>${cat.name}</td><td>${cat.count}</td><td>₱${cat.value.toFixed(2)}</td></tr>`)
+        .map((cat) => `<tr><td>${cat.name}</td><td>${cat.count}</td><td>₱${formatPesoAmount(cat.value)}</td></tr>`)
         .join('');
       printHtml(
         'Inventory Report',
@@ -232,7 +233,7 @@ export default function ReportsPage() {
     }
     if (type === 'projects') {
       const rows = projectConsumption
-        .map((proj) => `<tr><td>${proj.name}</td><td>${proj.orders}</td><td>₱${proj.value.toFixed(2)}</td></tr>`)
+        .map((proj) => `<tr><td>${proj.name}</td><td>${proj.orders}</td><td>₱${formatPesoAmount(proj.value)}</td></tr>`)
         .join('');
       printHtml(
         'Project Report',
@@ -258,7 +259,7 @@ export default function ReportsPage() {
       const rows = filteredOrdersForVat
         .map((o) => {
           const totals = getOrderTotals(o);
-          return `<tr><td>${o.orderNumber}</td><td>${o.clientName}</td><td>₱${totals.net.toFixed(2)}</td><td>₱${totals.vat.toFixed(2)}</td><td>₱${totals.total.toFixed(2)}</td></tr>`;
+          return `<tr><td>${o.orderNumber}</td><td>${o.clientName}</td><td>₱${formatPesoAmount(totals.net)}</td><td>₱${formatPesoAmount(totals.vat)}</td><td>₱${formatPesoAmount(totals.total)}</td></tr>`;
         })
         .join('');
       printHtml(
@@ -266,7 +267,7 @@ export default function ReportsPage() {
         `<h1>Financial Report</h1>
         <div class="meta">Date: ${format(new Date(), 'yyyy-MM-dd')}</div>
         <table><thead><tr><th>Order #</th><th>Client</th><th>VATable Sales</th><th>VAT</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
-        <div class="total">Total Revenue: ₱${filteredOrdersForVat.reduce((sum, o) => sum + getOrderTotals(o).total, 0).toFixed(2)}</div>`
+        <div class="total">Total Revenue: ₱${formatPesoAmount(filteredOrdersForVat.reduce((sum, o) => sum + getOrderTotals(o).total, 0))}</div>`
       );
       return;
     }

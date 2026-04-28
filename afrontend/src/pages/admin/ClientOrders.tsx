@@ -47,6 +47,7 @@ import { downloadCsv } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { canManageClientOrders } from '@/lib/roles';
 import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
+import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
 
 const statusColors: Record<OrderStatus, string> = {
@@ -310,26 +311,26 @@ export default function ClientOrdersPage() {
       .map(
         (item) => {
           const line = calcLineAmounts(item.quantity, item.unitPrice);
-          return `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${item.unitPrice.toFixed(2)}</td><td>₱${line.net.toFixed(2)}</td></tr>`;
+          return `<tr><td>${item.itemName}</td><td>${item.unit}</td><td>${item.quantity}</td><td>₱${formatPesoAmount(item.unitPrice)}</td><td>₱${formatPesoAmount(line.net)}</td></tr>`;
         }
       )
       .join('');
     printHtml(
       `Order ${order.orderNumber}`,
       `<h1>Client Order</h1>
-      <div class=\"meta meta-inline\"><span class=\"doc-label\">Order #:</span><span class=\"doc-code\">${order.orderNumber}</span></div>
-      <div class=\"meta\">Date: ${format(new Date(order.createdAt), 'yyyy-MM-dd')}</div>
-      <div class=\"meta\">Client: ${order.clientName}</div>
-      <div class=\"meta\">Project: ${order.projectName || 'N/A'}</div>
-      <div class=\"meta\">Status: ${order.status}</div>
-      <div class=\"meta\">Payment: ${order.paymentStatus}</div>
+      <div class="meta meta-inline"><span class="doc-label">Order #:</span><span class="doc-code">${order.orderNumber}</span></div>
+      <div class="meta">Date: ${format(new Date(order.createdAt), 'yyyy-MM-dd')}</div>
+      <div class="meta">Client: ${order.clientName}</div>
+      <div class="meta">Project: ${order.projectName || 'N/A'}</div>
+      <div class="meta">Status: ${order.status}</div>
+      <div class="meta">Payment: ${order.paymentStatus}</div>
       <table>
         <thead><tr><th>Item</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
         <tbody>${itemsHtml}</tbody>
       </table>
-      <div class=\"total\">VATable Sales: ₱${totals.net.toFixed(2)}</div>
-      <div class=\"total\">VAT (${vatLabel}%): ₱${totals.vat.toFixed(2)}</div>
-      <div class=\"total\">Total Amount Due: ₱${totals.total.toFixed(2)}</div>`
+      <div class="total">VATable Sales: ₱${formatPesoAmount(totals.net)}</div>
+      <div class="total">VAT (${vatLabel}%): ₱${formatPesoAmount(totals.vat)}</div>
+      <div class="total">Total Amount Due: ₱${formatPesoAmount(totals.total)}</div>`
     );
   };
 
@@ -707,8 +708,8 @@ export default function ClientOrdersPage() {
                           <TableCell className="text-center">
                             {item.quantity} {item.unit}
                           </TableCell>
-                          <TableCell className="text-right">₱{item.unitPrice.toFixed(2)}</TableCell>
-                          <TableCell className="text-right">₱{line.net.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">₱{formatPesoAmount(item.unitPrice)}</TableCell>
+                          <TableCell className="text-right">₱{formatPesoAmount(line.net)}</TableCell>
                         </TableRow>
                       );
                     })}
@@ -717,13 +718,13 @@ export default function ClientOrdersPage() {
               </div>
               <div className="text-right space-y-1">
                 <p className="text-sm">
-                  VATable Sales: <span className="font-medium">₱{selectedTotals?.net.toFixed(2)}</span>
+                  VATable Sales: <span className="font-medium">₱{formatPesoAmount(selectedTotals?.net)}</span>
                 </p>
                 <p className="text-sm">
-                  VAT ({vatLabel}%): <span className="font-medium">₱{selectedTotals?.vat.toFixed(2)}</span>
+                  VAT ({vatLabel}%): <span className="font-medium">₱{formatPesoAmount(selectedTotals?.vat)}</span>
                 </p>
                 <p className="text-lg font-bold">
-                  Total Amount Due: <span className="text-primary">₱{selectedTotals?.total.toFixed(2)}</span>
+                  Total Amount Due: <span className="text-primary">₱{formatPesoAmount(selectedTotals?.total)}</span>
                 </p>
               </div>
               {isAdmin && (
