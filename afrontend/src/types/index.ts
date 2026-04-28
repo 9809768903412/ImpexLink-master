@@ -328,3 +328,19 @@ export interface FraudAlert {
   chequeImage?: string;
   poDocumentUrl?: string;
 }
+
+export interface AiRecommendation {
+  title: string;
+  message: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  action: string;
+}
+
+export interface AiSummary {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  generatedAt: string;
+  summary: string;
+  recommendations: AiRecommendation[];
+}

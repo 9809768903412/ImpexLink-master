@@ -43,7 +43,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
-import type { WarehouseRisk, ReorderSuggestion, FraudAlert, StockTransaction, InventoryItem } from '@/types';
+import type { AiSummary, WarehouseRisk, ReorderSuggestion, FraudAlert, StockTransaction, InventoryItem } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
 
 const riskColors = {
@@ -53,7 +53,6 @@ const riskColors = {
   critical: 'bg-red-100 text-red-800',
 };
 
-// TODO: Replace with real AI analysis from Lovable AI
 export default function AIInsightsPage() {
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -66,6 +65,7 @@ export default function AIInsightsPage() {
   const { data: warehouseRisks } = useResource<WarehouseRisk[]>('/ai/warehouse-risks', []);
   const { data: reorderSuggestions } = useResource<ReorderSuggestion[]>('/ai/reorder-suggestions', []);
   const { data: fraudAlerts } = useResource<FraudAlert[]>('/ai/fraud-alerts', []);
+  const { data: aiSummary, setData: setAiSummary } = useResource<AiSummary | null>('/ai/summary', null, [], 10 * 60 * 1000);
   const { data: transactions } = useResource<StockTransaction[]>('/transactions', []);
   const { data: inventory } = useResource<InventoryItem[]>('/inventory', []);
 
@@ -174,11 +174,14 @@ export default function AIInsightsPage() {
   const handleRefresh = () => {
     setIsRefreshing(true);
     apiClient
-      .post('/ai/refresh')
-      .then(() => {
+      .post<AiSummary>('/ai/refresh')
+      .then((response) => {
+        setAiSummary(response.data);
         toast({
           title: 'AI Analysis Complete',
-          description: 'Insights have been updated with latest data',
+          description: response.data.enabled
+            ? `Grok refreshed using ${response.data.model}.`
+            : response.data.summary,
         });
       })
       .catch(() => {
@@ -221,6 +224,39 @@ export default function AIInsightsPage() {
           Refresh Analysis
         </Button>
       </div>
+
+      {aiSummary && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain size={20} className="text-primary" />
+              Grok Operations Analysis
+            </CardTitle>
+            <CardDescription>
+              {aiSummary.enabled
+                ? `Powered by ${aiSummary.provider} / ${aiSummary.model}`
+                : `Fallback analysis / ${aiSummary.model}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">{aiSummary.summary}</p>
+            {aiSummary.recommendations.length > 0 && (
+              <div className="grid gap-3 md:grid-cols-3">
+                {aiSummary.recommendations.map((item) => (
+                  <div key={item.title} className="rounded-lg border bg-muted/30 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="font-medium">{item.title}</p>
+                      <Badge className={riskColors[item.priority]}>{item.priority}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{item.message}</p>
+                    <p className="mt-2 text-sm font-medium">{item.action}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pattern Trending */}

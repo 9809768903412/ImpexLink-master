@@ -4,6 +4,9 @@ Impex Engineering deployment notes:
 - Backend root: `backend`
 - Frontend env: `VITE_API_URL=https://api.<domain>/api`
 - Backend env: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `PORT=4000`
+- Backend AI env:
+  - `XAI_API_KEY`
+  - `XAI_MODEL=grok-4-fast-non-reasoning`
 
 Demo read-only mode:
 
