@@ -108,10 +108,13 @@ export default function Login() {
           variant: 'destructive',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        title: 'Login failed',
+        description:
+          error?.response?.data?.error ||
+          error?.message ||
+          'Something went wrong. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -200,12 +203,12 @@ export default function Login() {
           {/* Main content */}
           <div className="relative z-10 text-center">
             <div className="flex justify-center mb-8">
-              <div className="flex items-center gap-4">
-                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl bg-black ring-1 ring-white/15">
+              <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-sm">
+                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-black p-2 ring-1 ring-white/15">
                   <img src="/brand/impex-engineering-logo.jpeg" alt="Impex Engineering" className="h-full w-full object-contain" />
                 </div>
-                <div className="flex h-20 w-48 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-white px-3">
-                  <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain" />
+                <div className="flex h-16 w-32 items-center justify-center overflow-hidden rounded-2xl bg-white px-4 py-2 shadow-sm ring-1 ring-black/10">
+                  <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain object-center" />
                 </div>
               </div>
             </div>

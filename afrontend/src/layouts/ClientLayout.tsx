@@ -94,8 +94,8 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
           {/* Logo */}
           <div className="flex items-center gap-3">
             <Logo size="md" />
-            <div className="hidden h-9 w-28 items-center justify-center overflow-hidden rounded-md border bg-white px-2 md:flex">
-              <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain" />
+            <div className="hidden h-10 w-24 items-center justify-center overflow-hidden rounded-xl bg-white px-3 py-1.5 shadow-sm ring-1 ring-black/10 md:flex">
+              <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain object-center" />
             </div>
           </div>
 

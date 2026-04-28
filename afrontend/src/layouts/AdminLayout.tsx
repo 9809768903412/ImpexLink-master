@@ -143,8 +143,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <div className={cn('min-w-0', sidebarCollapsed && 'lg:hidden')}>
               <div className="flex items-center gap-3">
                 <Logo size="md" className="text-white [&_span]:text-white" />
-                <div className="hidden h-8 w-24 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-white px-2 xl:flex">
-                  <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain" />
+                <div className="hidden h-10 w-24 items-center justify-center overflow-hidden rounded-xl bg-white px-3 py-1.5 shadow-sm ring-1 ring-black/10 xl:flex">
+                  <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain object-center" />
                 </div>
               </div>
             </div>

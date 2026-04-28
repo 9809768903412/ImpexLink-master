@@ -1,3 +1,10 @@
+function inferBaseName(name) {
+  return String(name || '')
+    .replace(/\b(procurement|purchasing|buyer|account)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function inferCompanyNameFromUser(user) {
   const rawName = String(user?.fullName || '').trim();
   if (!rawName) return null;
@@ -123,6 +130,7 @@ function canAccessClientOwnedRecord(access, record) {
 }
 
 module.exports = {
+  inferBaseName,
   inferCompanyNameFromUser,
   resolveLinkedClient,
   resolveClientAccess,
