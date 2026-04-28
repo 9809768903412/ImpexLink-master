@@ -48,9 +48,9 @@ export function printHtml(title: string, bodyHtml: string) {
           .page { padding: 0; }
           .header { display: grid; grid-template-columns: 1fr 1.25fr; gap: 16px; align-items: flex-start; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 16px; }
           .brand-logos { display: flex; align-items: center; gap: 12px; }
-          .brand-logo { display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; }
-          .brand-logo.impex { width: 86px; height: 64px; background: #000; padding: 8px; }
-          .brand-logo.thortex { width: 138px; height: 64px; padding: 10px 14px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
+          .brand-logo { display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 6px; background: #fff; }
+          .brand-logo.impex { width: 86px; height: 64px; padding: 8px; }
+          .brand-logo.thortex { width: 138px; height: 64px; padding: 10px 14px; }
           .brand-logo img { width: 100%; height: 100%; object-fit: contain; }
           .company { font-size: 12px; color: #111; line-height: 1.35; text-align: right; }
           .company-name { font-weight: bold; font-size: 13px; letter-spacing: 0.2px; }

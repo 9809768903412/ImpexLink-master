@@ -203,11 +203,11 @@ export default function Login() {
           {/* Main content */}
           <div className="relative z-10 text-center">
             <div className="flex justify-center mb-8">
-              <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-sm">
-                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-black p-2 ring-1 ring-white/15">
+              <div className="flex items-center gap-3 rounded-2xl bg-white/5 px-4 py-3 backdrop-blur-sm">
+                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white p-2">
                   <img src="/brand/impex-engineering-logo.jpeg" alt="Impex Engineering" className="h-full w-full object-contain" />
                 </div>
-                <div className="flex h-16 w-32 items-center justify-center overflow-hidden rounded-2xl bg-white px-4 py-2 shadow-sm ring-1 ring-black/10">
+                <div className="flex h-16 w-32 items-center justify-center overflow-hidden rounded-2xl bg-white px-4 py-2">
                   <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain object-center" />
                 </div>
               </div>
