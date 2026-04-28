@@ -344,3 +344,24 @@ export interface AiSummary {
   summary: string;
   recommendations: AiRecommendation[];
 }
+
+export interface AiLogisticsDispatch {
+  route: string;
+  status: string;
+  note: string;
+}
+
+export interface AiLogisticsSnapshot {
+  activeRoutes: number;
+  stopsToday: number;
+  onTimeRate: number;
+  recommendation: string;
+  dispatches: AiLogisticsDispatch[];
+}
+
+export interface AiAnalysis extends AiSummary {
+  warehouseRisks: WarehouseRisk[];
+  reorderSuggestions: ReorderSuggestion[];
+  fraudAlerts: FraudAlert[];
+  logisticsSnapshot: AiLogisticsSnapshot;
+}

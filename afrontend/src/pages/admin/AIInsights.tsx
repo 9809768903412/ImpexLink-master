@@ -43,7 +43,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
-import type { AiSummary, WarehouseRisk, ReorderSuggestion, FraudAlert, StockTransaction, InventoryItem } from '@/types';
+import type { AiAnalysis, AiLogisticsSnapshot, AiSummary, ReorderSuggestion, StockTransaction, InventoryItem, WarehouseRisk } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
 
 const riskColors = {
@@ -51,6 +51,14 @@ const riskColors = {
   medium: 'bg-yellow-100 text-yellow-800',
   high: 'bg-orange-100 text-orange-800',
   critical: 'bg-red-100 text-red-800',
+};
+
+const fallbackLogistics: AiLogisticsSnapshot = {
+  activeRoutes: 0,
+  stopsToday: 0,
+  onTimeRate: 100,
+  recommendation: 'AI logistics analysis will appear after the backend data loads.',
+  dispatches: [],
 };
 
 export default function AIInsightsPage() {
@@ -62,10 +70,21 @@ export default function AIInsightsPage() {
   const [riskFilter, setRiskFilter] = useState<'alerts' | 'include-low' | 'all'>('alerts');
   const [riskPage, setRiskPage] = useState(1);
   const riskPageSize = 5;
-  const { data: warehouseRisks } = useResource<WarehouseRisk[]>('/ai/warehouse-risks', []);
-  const { data: reorderSuggestions } = useResource<ReorderSuggestion[]>('/ai/reorder-suggestions', []);
-  const { data: fraudAlerts } = useResource<FraudAlert[]>('/ai/fraud-alerts', []);
-  const { data: aiSummary, setData: setAiSummary } = useResource<AiSummary | null>('/ai/summary', null, [], 10 * 60 * 1000);
+  const { data: aiAnalysis, setData: setAiAnalysis } = useResource<AiAnalysis | null>('/ai/analysis', null, [], 10 * 60 * 1000);
+  const aiSummary: AiSummary | null = aiAnalysis
+    ? {
+        enabled: aiAnalysis.enabled,
+        provider: aiAnalysis.provider,
+        model: aiAnalysis.model,
+        generatedAt: aiAnalysis.generatedAt,
+        summary: aiAnalysis.summary,
+        recommendations: aiAnalysis.recommendations,
+      }
+    : null;
+  const warehouseRisks = aiAnalysis?.warehouseRisks || [];
+  const reorderSuggestions = aiAnalysis?.reorderSuggestions || [];
+  const fraudAlerts = aiAnalysis?.fraudAlerts || [];
+  const logisticsSnapshot = aiAnalysis?.logisticsSnapshot || fallbackLogistics;
   const { data: transactions } = useResource<StockTransaction[]>('/transactions', []);
   const { data: inventory } = useResource<InventoryItem[]>('/inventory', []);
 
@@ -174,13 +193,13 @@ export default function AIInsightsPage() {
   const handleRefresh = () => {
     setIsRefreshing(true);
     apiClient
-      .post<AiSummary>('/ai/refresh')
+      .post<AiAnalysis>('/ai/refresh')
       .then((response) => {
-        setAiSummary(response.data);
+        setAiAnalysis(response.data);
         toast({
           title: 'AI Analysis Complete',
           description: response.data.enabled
-            ? `Grok refreshed using ${response.data.model}.`
+            ? `Grok refreshed every AI Insights widget using ${response.data.model}.`
             : response.data.summary,
         });
       })
@@ -266,7 +285,7 @@ export default function AIInsightsPage() {
               <TrendingUp size={20} />
               Usage Pattern Trends
             </CardTitle>
-            <CardDescription>Weekly consumption patterns for top items</CardDescription>
+            <CardDescription>AI-selected consumption patterns for top moving items</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -292,7 +311,7 @@ export default function AIInsightsPage() {
               </LineChart>
             </ResponsiveContainer>
             <p className="text-sm text-muted-foreground text-center mt-4">
-              * AI-powered pattern analysis helps predict future demand
+              * Grok uses these movement signals in the full-page AI analysis
             </p>
           </CardContent>
         </Card>
@@ -304,7 +323,7 @@ export default function AIInsightsPage() {
               <AlertTriangle size={20} className="text-yellow-600" />
               Expiring / Risky Stock Alerts
             </CardTitle>
-            <CardDescription>Items requiring immediate attention</CardDescription>
+            <CardDescription>Grok-ranked items requiring immediate attention</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
@@ -383,7 +402,7 @@ export default function AIInsightsPage() {
               <ShoppingCart size={20} className="text-green-600" />
               Smart Reorder Suggestions
             </CardTitle>
-            <CardDescription>AI-recommended restocking quantities</CardDescription>
+            <CardDescription>Grok-recommended restocking quantities</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -435,13 +454,13 @@ export default function AIInsightsPage() {
               <Shield size={20} className="text-blue-600" />
               Purchase Order Match Monitor
             </CardTitle>
-            <CardDescription>Purchase order matching alerts and verification history</CardDescription>
+            <CardDescription>Grok-reviewed purchase order and payment signals</CardDescription>
           </CardHeader>
           <CardContent>
             {fraudAlerts.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Shield size={48} className="mx-auto mb-2 opacity-50" />
-                <p>No fraud alerts</p>
+                <p>No AI purchase order alerts</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -481,7 +500,7 @@ export default function AIInsightsPage() {
               </div>
             )}
             <p className="text-sm text-muted-foreground text-center mt-4">
-              * Mocked PO-code matching against order numbers for now
+              * Grok reviews order, payment, and purchase-document signals when data is available
             </p>
           </CardContent>
         </Card>
@@ -493,44 +512,47 @@ export default function AIInsightsPage() {
               <MapPin size={20} className="text-primary" />
               Logistics Snapshot
             </CardTitle>
-            <CardDescription>Operational view for dispatch and routing</CardDescription>
+            <CardDescription>Grok-generated dispatch and routing signals</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="rounded-lg border p-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                 <div className="p-3 rounded-md border">
                   <p className="text-muted-foreground">Active Routes</p>
-                  <p className="text-xl font-semibold">3</p>
+                  <p className="text-xl font-semibold">{logisticsSnapshot.activeRoutes}</p>
                 </div>
                 <div className="p-3 rounded-md border">
                   <p className="text-muted-foreground">Stops Today</p>
-                  <p className="text-xl font-semibold">12</p>
+                  <p className="text-xl font-semibold">{logisticsSnapshot.stopsToday}</p>
                 </div>
                 <div className="p-3 rounded-md border">
                   <p className="text-muted-foreground">On-Time Rate</p>
-                  <p className="text-xl font-semibold">94%</p>
+                  <p className="text-xl font-semibold">{logisticsSnapshot.onTimeRate}%</p>
                 </div>
               </div>
               <div className="rounded-md border p-3">
-                <p className="text-sm font-medium mb-2">Active Dispatches</p>
+                <p className="text-sm font-medium mb-2">AI Dispatch Watchlist</p>
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span>Route A • Makati → Taguig</span>
-                    <Badge className="bg-green-600">On Time</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Route B • Pasig → QC</span>
-                    <Badge className="bg-yellow-600">Watch</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Route C • Manila → Ortigas</span>
-                    <Badge className="bg-green-600">On Time</Badge>
-                  </div>
+                  {logisticsSnapshot.dispatches.length > 0 ? (
+                    logisticsSnapshot.dispatches.map((dispatch) => (
+                      <div key={`${dispatch.route}-${dispatch.status}`} className="rounded-md border bg-background p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{dispatch.route}</span>
+                          <Badge className={/watch|delay|risk/i.test(dispatch.status) ? 'bg-yellow-600' : 'bg-green-600'}>
+                            {dispatch.status}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{dispatch.note}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No active dispatch watchlist items.</p>
+                  )}
                 </div>
-              </div>
               <div className="text-xs text-muted-foreground">
-                This snapshot replaces map visuals with operational signals for review.
+                {logisticsSnapshot.recommendation}
               </div>
+            </div>
             </div>
           </CardContent>
         </Card>
