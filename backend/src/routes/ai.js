@@ -379,18 +379,27 @@ function buildLocalAnalysis(snapshot) {
 }
 
 async function buildSnapshot() {
+  const safeRead = async (label, task, fallback = []) => {
+    try {
+      return await task;
+    } catch (err) {
+      console.error(`AI snapshot ${label} read failed:`, err.message || err);
+      return fallback;
+    }
+  };
+
   const [products, purchases, clientOrders, deliveries] = await Promise.all([
-    prisma.product.findMany({
+    safeRead('products', prisma.product.findMany({
       where: { deletedAt: null },
       orderBy: [{ status: 'asc' }, { qtyOnHand: 'asc' }, { itemName: 'asc' }],
       take: 100,
-    }),
-    prisma.stockTransaction.groupBy({
+    })),
+    safeRead('purchases', prisma.stockTransaction.groupBy({
       by: ['productId'],
       where: { type: 'PURCHASE' },
       _max: { date: true },
-    }),
-    prisma.clientOrder.findMany({
+    })),
+    safeRead('client orders', prisma.clientOrder.findMany({
       where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 40,
@@ -399,22 +408,27 @@ async function buildSnapshot() {
         project: true,
         items: { include: { product: true } },
       },
-    }),
-    prisma.delivery.findMany({
+    })),
+    safeRead('deliveries', prisma.delivery.findMany({
       where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 40,
-      include: {
-        assignedDeliveryGuy: true,
+      select: {
+        deliveryId: true,
+        drNumber: true,
+        status: true,
+        eta: true,
+        receivedAt: true,
+        itemsCount: true,
+        assignedDeliveryGuy: { select: { fullName: true } },
         clientOrder: {
-          include: {
-            client: true,
-            project: true,
-            items: { include: { product: true } },
+          select: {
+            client: { select: { clientName: true } },
+            project: { select: { projectName: true } },
           },
         },
       },
-    }),
+    })),
   ]);
 
   return { products, purchases, clientOrders, deliveries };
