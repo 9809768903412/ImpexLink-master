@@ -212,7 +212,10 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
       return res.status(400).json({ error: 'Unit price must be 0 or greater' });
     }
     const existing = await prisma.product.findUnique({ where: { productId: Number(req.params.id) } });
-    const status = resolveStatus(qtyOnHand ?? 0, lowStockThreshold ?? 20);
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    const nextQty = qtyOnHand ?? existing.qtyOnHand;
+    const nextLowStockThreshold = lowStockThreshold ?? existing.lowStockThreshold;
+    const status = resolveStatus(nextQty, nextLowStockThreshold);
     let resolvedCategoryId = req.body.categoryId ? Number(req.body.categoryId) : undefined;
 
     if (!resolvedCategoryId && categoryName) {
@@ -261,7 +264,10 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
         userId: req.user.userId,
         action: 'UPDATE',
         target: 'Product',
-        details: `Updated product ${product.itemName}`,
+        details:
+          existing.unitPrice.toString() !== product.unitPrice.toString()
+            ? `Updated product ${product.itemName}; supplier price changed from ${Number(existing.unitPrice).toLocaleString('en-PH')} to ${Number(product.unitPrice).toLocaleString('en-PH')}. Note: ${req.body.priceUpdateNote || req.body.notes || 'Manual supplier price update without memo'}`
+            : `Updated product ${product.itemName}`,
       },
     });
 

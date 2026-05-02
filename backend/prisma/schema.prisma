@@ -463,6 +463,12 @@ model Delivery {
   receivedBy    String?        @map("received_by")
   proofOfDeliveryUrl String?   @db.Text @map("proof_of_delivery_url")
   notes         String?        @db.Text
+  deliveryMethod String        @default("TRUCK") @map("delivery_method") @db.VarChar(30)
+  batchNumber   Int           @default(1) @map("batch_number")
+  batchCount    Int           @default(1) @map("batch_count")
+  loadKg        Decimal?      @db.Decimal(10, 2) @map("load_kg")
+  thirdPartyProvider String?  @db.VarChar(80) @map("third_party_provider")
+  thirdPartyReference String? @db.VarChar(120) @map("third_party_reference")
   returnRejectionReason String? @db.Text @map("return_rejection_reason")
   deletedAt     DateTime?      @map("deleted_at")
 

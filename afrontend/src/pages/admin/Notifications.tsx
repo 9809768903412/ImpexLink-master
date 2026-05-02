@@ -12,6 +12,7 @@ import {
   CreditCard,
   AlertTriangle,
   Brain,
+  FolderKanban,
   Check,
   CheckCheck,
   Trash2,
@@ -21,6 +22,7 @@ import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
+import { useNavigate } from 'react-router-dom';
 
 const typeIcons: Record<NotificationType, React.ReactNode> = {
   'low-stock': <Package className="text-yellow-600" size={20} />,
@@ -29,6 +31,7 @@ const typeIcons: Record<NotificationType, React.ReactNode> = {
   'payment-verified': <CreditCard className="text-green-600" size={20} />,
   'request-approval': <AlertTriangle className="text-orange-600" size={20} />,
   'quote-response': <ShoppingCart className="text-purple-600" size={20} />,
+  'project-update': <FolderKanban className="text-emerald-600" size={20} />,
   'ai-alert': <Brain className="text-primary" size={20} />,
 };
 
@@ -39,11 +42,13 @@ const typeLabels: Record<NotificationType, string> = {
   'payment-verified': 'Payment',
   'request-approval': 'Request',
   'quote-response': 'Quote',
+  'project-update': 'Project',
   'ai-alert': 'AI Alert',
 };
 
 // TODO: Replace with real data
 export default function NotificationsPage() {
+  const navigate = useNavigate();
   const { data: notifications, setData: setNotifications, loading } = useResource<Notification[]>(
     '/notifications',
     []
@@ -85,6 +90,15 @@ export default function NotificationsPage() {
       title: 'Notification Deleted',
       description: 'The notification has been removed',
     });
+  };
+
+  const handleOpenNotification = (notification: Notification) => {
+    if (!notification.read) {
+      handleMarkAsRead(notification.id);
+    }
+    if (notification.link) {
+      navigate(notification.link);
+    }
   };
 
   const handleClearAll = () => {
@@ -164,7 +178,16 @@ export default function NotificationsPage() {
               {filteredNotifications.map((notification) => (
                 <Card
                   key={notification.id}
-                  className={`transition-colors ${
+                  role={notification.link ? 'button' : undefined}
+                  tabIndex={notification.link ? 0 : undefined}
+                  onClick={() => handleOpenNotification(notification)}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && notification.link) {
+                      e.preventDefault();
+                      handleOpenNotification(notification);
+                    }
+                  }}
+                  className={`transition-colors ${notification.link ? 'cursor-pointer hover:border-primary/40' : ''} ${
                     !notification.read ? 'bg-primary/5 border-primary/20' : ''
                   }`}
                 >
@@ -197,7 +220,10 @@ export default function NotificationsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleMarkAsRead(notification.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsRead(notification.id);
+                                }}
                                 title="Mark as read"
                               >
                                 <Check size={16} />
@@ -207,7 +233,10 @@ export default function NotificationsPage() {
                               variant="ghost"
                               size="icon"
                               className="text-destructive"
-                              onClick={() => handleDelete(notification.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(notification.id);
+                              }}
                               title="Delete"
                             >
                               <Trash2 size={16} />

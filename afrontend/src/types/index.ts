@@ -213,6 +213,12 @@ export interface Delivery {
   returnRejectionReason?: string | null;
   assignedDeliveryGuyId?: string | null;
   deliveryGuyName?: string | null;
+  deliveryMethod?: 'TRUCK' | 'MOTORCYCLE' | 'LALAMOVE' | 'THIRD_PARTY' | string;
+  batchNumber?: number;
+  batchCount?: number;
+  loadKg?: number | null;
+  thirdPartyProvider?: string | null;
+  thirdPartyReference?: string | null;
 }
 
 // Quote Request Types

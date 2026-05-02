@@ -15,7 +15,7 @@ export function ProductImage({ name, className, imageClassName, iconSize = 24 }:
   const url = !failed ? getProductImageUrl(name) : null;
 
   return (
-    <div className={cn('flex items-center justify-center overflow-hidden rounded-md border bg-white', className)}>
+    <div className={cn('flex items-center justify-center overflow-hidden rounded-md bg-white', className)}>
       {url ? (
         <img
           src={url}

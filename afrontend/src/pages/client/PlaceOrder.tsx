@@ -186,9 +186,18 @@ export default function PlaceOrderPage() {
 
     setCart((prev) => {
       const existing = prev.find((ci) => ci.item.id === item.id);
+      const nextQty = (existing?.quantity || 0) + 1;
+      if (nextQty > item.qtyOnHand) {
+        toast({
+          title: 'Stock limit reached',
+          description: `Only ${item.qtyOnHand} ${item.unit} of ${item.name} are available.`,
+          variant: 'destructive',
+        });
+        return prev;
+      }
       const next = existing
         ? prev.map((ci) =>
-          ci.item.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci
+          ci.item.id === item.id ? { ...ci, quantity: nextQty } : ci
         )
         : [...prev, { item, quantity: 1 }];
       persistCart(next);
@@ -203,6 +212,18 @@ export default function PlaceOrderPage() {
 
   const updateCartQuantity = (itemId: string, quantity: number) => {
     setCart((prev) => {
+      const current = prev.find((ci) => ci.item.id === itemId);
+      if (current && quantity > current.item.qtyOnHand) {
+        toast({
+          title: 'Not enough stock',
+          description: `Only ${current.item.qtyOnHand} ${current.item.unit} of ${current.item.name} are available.`,
+          variant: 'destructive',
+        });
+        setCartQtyValue(itemId, String(current.item.qtyOnHand));
+        const next = prev.map((ci) => (ci.item.id === itemId ? { ...ci, quantity: ci.item.qtyOnHand } : ci));
+        persistCart(next);
+        return next;
+      }
       const next =
         quantity <= 0
           ? prev.filter((ci) => ci.item.id !== itemId)
@@ -238,7 +259,7 @@ export default function PlaceOrderPage() {
     setPage(1);
   }, [searchQuery, categoryFilter]);
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     const errors: Record<string, string> = {};
     if (cart.length === 0) {
       toast({
@@ -252,6 +273,15 @@ export default function PlaceOrderPage() {
       toast({
         title: 'Invalid quantity',
         description: 'Quantities must be greater than 0.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const overStock = cart.find((ci) => ci.quantity > ci.item.qtyOnHand);
+    if (overStock) {
+      toast({
+        title: 'Not enough stock',
+        description: `Only ${overStock.item.qtyOnHand} ${overStock.item.unit} of ${overStock.item.name} are available.`,
         variant: 'destructive',
       });
       return;
@@ -280,20 +310,27 @@ export default function PlaceOrderPage() {
       unitPrice: cartItem.item.unitPrice,
       amount: cartItem.item.unitPrice * cartItem.quantity,
     }));
-    apiClient.post<Order>('/orders', {
-      orderNumber: newOrderNumber,
-      clientId: user?.clientId,
-      projectId: selectedProjectId || undefined,
-      items: orderItems,
-      subtotal,
-      vat,
-      total,
-      status: 'pending',
-      paymentStatus: 'pending',
-      specialInstructions,
-    }).catch(() => {
-      // keep optimistic UI
-    });
+    try {
+      await apiClient.post<Order>('/orders', {
+        orderNumber: newOrderNumber,
+        clientId: user?.clientId,
+        projectId: selectedProjectId || undefined,
+        items: orderItems,
+        subtotal,
+        vat,
+        total,
+        status: 'pending',
+        paymentStatus: 'pending',
+        specialInstructions,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Order failed',
+        description: err?.response?.data?.error || 'Unable to place order. Please review stock and try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setCart([]);
     persistCart([]);
     setCartQtyInput({});

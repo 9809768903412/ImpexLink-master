@@ -28,8 +28,8 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Eye, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation } from 'lucide-react';
-import type { Delivery, DeliveryStatus } from '@/types';
+import { Search, Eye, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation, Send } from 'lucide-react';
+import type { Delivery, DeliveryStatus, Order } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
 import { printHtml } from '@/utils/print';
@@ -89,11 +89,20 @@ export default function LogisticsPage() {
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [isRejectReturnOpen, setIsRejectReturnOpen] = useState(false);
   const [returnRejectReason, setReturnRejectReason] = useState('');
+  const [isLalamoveOpen, setIsLalamoveOpen] = useState(false);
+  const [lalamoveForm, setLalamoveForm] = useState({
+    clientOrderId: '',
+    provider: 'Lalamove',
+    reference: '',
+    loadKg: '',
+    notes: '',
+  });
   const [deliveryLogs, setDeliveryLogs] = useState<{ id: string; timestamp: string; action: string; details: string }[]>([]);
+  const { data: orders } = useResource<Order[]>('/orders', []);
   const { data: company } = useResource('/company', {
     name: 'Impex Engineering and Industrial Supply',
     address: '6959 Washington St., Pio Del Pilar, Makati City',
-    tin: '100-191-563-00000',
+    tin: '100-191-563-000',
     phone: '+63 2 8123 4567',
     email: 'sales@impex.ph',
     website: 'www.impex.ph',
@@ -288,6 +297,36 @@ export default function LogisticsPage() {
     );
   };
 
+  const handleCreateLalamove = async () => {
+    if (!lalamoveForm.clientOrderId) {
+      toast({ title: 'Missing order', description: 'Select a client order for this Lalamove request.', variant: 'destructive' });
+      return;
+    }
+    const order = orders.find((item) => item.id === lalamoveForm.clientOrderId);
+    try {
+      const response = await apiClient.post<Delivery>('/deliveries', {
+        drNumber: `DR-LALA-${Date.now().toString().slice(-6)}`,
+        clientOrderId: lalamoveForm.clientOrderId,
+        deliveryMethod: 'LALAMOVE',
+        thirdPartyProvider: lalamoveForm.provider || 'Lalamove',
+        thirdPartyReference: lalamoveForm.reference || null,
+        loadKg: lalamoveForm.loadKg ? Number(lalamoveForm.loadKg) : null,
+        itemsCount: order?.items?.length || 0,
+        notes: lalamoveForm.notes || 'Third-party delivery request',
+      });
+      setDeliveries((current) => [response.data, ...current]);
+      setIsLalamoveOpen(false);
+      setLalamoveForm({ clientOrderId: '', provider: 'Lalamove', reference: '', loadKg: '', notes: '' });
+      toast({ title: 'Lalamove request created', description: `${response.data.drNumber} is now in delivery tracking.` });
+    } catch (err: any) {
+      toast({
+        title: 'Unable to create request',
+        description: err?.response?.data?.error || 'Please check the delivery details and try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const isDelayed = (delivery: Delivery) => {
     if (!delivery.eta) return false;
     const eta = new Date(delivery.eta);
@@ -329,6 +368,14 @@ export default function LogisticsPage() {
           <p className="text-muted-foreground">Only deliveries assigned to you are shown here.</p>
         )}
       </div>
+      {canManage && (
+        <div className="flex justify-end">
+          <Button onClick={() => setIsLalamoveOpen(true)} className="gap-2">
+            <Send size={16} />
+            Lalamove Request
+          </Button>
+        </div>
+      )}
 
       <div className="space-y-4">
           <Card>
@@ -419,6 +466,14 @@ export default function LogisticsPage() {
                         <div className="min-w-[140px]">
                           <p className="font-medium text-foreground">{delivery.drNumber}</p>
                           <p className="text-sm text-muted-foreground">{delivery.orderNumber}</p>
+                          {(delivery.deliveryMethod === 'LALAMOVE' || delivery.thirdPartyProvider) && (
+                            <Badge className="mt-1 bg-violet-100 text-violet-800">Lalamove</Badge>
+                          )}
+                          {delivery.batchCount && delivery.batchCount > 1 && (
+                            <Badge variant="outline" className="mt-1 ml-1">
+                              Batch {delivery.batchNumber}/{delivery.batchCount}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="py-4">
@@ -432,6 +487,7 @@ export default function LogisticsPage() {
                       <TableCell className="py-4">
                         <div className="min-w-[130px] text-sm text-muted-foreground">
                           {delivery.items.length} items • {format(new Date(delivery.eta), 'MMM dd')}
+                          {delivery.loadKg ? ` • ${delivery.loadKg}kg` : ''}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -513,6 +569,10 @@ export default function LogisticsPage() {
                   <div className="text-right">
                     <p><span className="font-medium">Date:</span> {format(new Date(selectedDelivery.issuedAt), 'MMM dd, yyyy')}</p>
                     <p><span className="font-medium">ETA:</span> {format(new Date(selectedDelivery.eta), 'MMM dd, yyyy')}</p>
+                    <p><span className="font-medium">Method:</span> {selectedDelivery.deliveryMethod || 'TRUCK'}</p>
+                    {selectedDelivery.thirdPartyProvider && (
+                      <p><span className="font-medium">Third-party:</span> {selectedDelivery.thirdPartyProvider} {selectedDelivery.thirdPartyReference || ''}</p>
+                    )}
                   </div>
                 </div>
                 <Table>
@@ -577,10 +637,25 @@ export default function LogisticsPage() {
                     onChange={(e) => setDeliveryNotes(e.target.value)}
                   />
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" asChild>
+                      <label htmlFor="detail-pod-upload" className="cursor-pointer">
                       <Upload size={14} className="mr-1" />
                       Upload Proof
+                      </label>
                     </Button>
+                    <Input
+                      id="detail-pod-upload"
+                      type="file"
+                      accept="image/png,image/jpeg,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && selectedDelivery) {
+                          handleUploadProof(selectedDelivery.id, file);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
                     <span className="text-sm text-muted-foreground">Photo proof of delivery</span>
                   </div>
                 </div>
@@ -644,6 +719,54 @@ export default function LogisticsPage() {
         onStatusUpdate={canManage ? handleUpdateStatus : undefined}
         onUploadProof={canManage ? handleUploadProof : undefined}
       />
+
+      <Dialog open={isLalamoveOpen} onOpenChange={setIsLalamoveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Lalamove / Third-party Delivery</DialogTitle>
+            <DialogDescription>Create a tracked third-party delivery for oversized or heavy loads.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Client Order</Label>
+              <Select value={lalamoveForm.clientOrderId} onValueChange={(value) => setLalamoveForm((prev) => ({ ...prev, clientOrderId: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select order" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orders.map((order) => (
+                    <SelectItem key={order.id} value={order.id}>
+                      {order.orderNumber} - {order.clientName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Provider</Label>
+                <Input value={lalamoveForm.provider} onChange={(e) => setLalamoveForm((prev) => ({ ...prev, provider: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Booking / Reference</Label>
+                <Input value={lalamoveForm.reference} onChange={(e) => setLalamoveForm((prev) => ({ ...prev, reference: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Estimated Load (kg)</Label>
+              <Input value={lalamoveForm.loadKg} inputMode="decimal" onChange={(e) => setLalamoveForm((prev) => ({ ...prev, loadKg: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Pickup / Delivery Notes</Label>
+              <Textarea value={lalamoveForm.notes} onChange={(e) => setLalamoveForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Pickup instructions, oversized item notes, rider/driver details..." />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsLalamoveOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreateLalamove}>Create Request</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isReturnOpen} onOpenChange={setIsReturnOpen}>
         <DialogContent>

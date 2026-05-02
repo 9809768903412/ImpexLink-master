@@ -124,6 +124,12 @@ function mapDelivery(d) {
     proofOfDelivery: d.proofOfDeliveryUrl || null,
     assignedDeliveryGuyId: d.assignedDeliveryGuyId?.toString() || null,
     deliveryGuyName: d.assignedDeliveryGuy?.fullName || null,
+    deliveryMethod: d.deliveryMethod || 'TRUCK',
+    batchNumber: d.batchNumber || 1,
+    batchCount: d.batchCount || 1,
+    loadKg: d.loadKg === null || d.loadKg === undefined ? null : Number(d.loadKg),
+    thirdPartyProvider: d.thirdPartyProvider || null,
+    thirdPartyReference: d.thirdPartyReference || null,
   };
 }
 
@@ -192,7 +198,7 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
-    const { drNumber, clientOrderId, status, eta, itemsCount } = req.body;
+    const { drNumber, clientOrderId, status, eta, itemsCount, deliveryMethod, loadKg, thirdPartyProvider, thirdPartyReference, notes } = req.body;
     if (!isNonEmptyString(drNumber)) return res.status(400).json({ error: 'DR number is required' });
     if (!clientOrderId || !isPositiveInt(clientOrderId)) return res.status(400).json({ error: 'Client order is required' });
     if (eta && !isValidDateString(eta)) {
@@ -217,6 +223,11 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
         status: status ? status.toUpperCase().replace('-', '_') : 'PENDING',
         eta: eta ? new Date(eta) : defaultEta,
         itemsCount,
+        deliveryMethod: deliveryMethod ? String(deliveryMethod).toUpperCase() : thirdPartyProvider ? 'LALAMOVE' : 'TRUCK',
+        loadKg: loadKg === undefined || loadKg === '' ? null : Number(loadKg),
+        thirdPartyProvider: thirdPartyProvider || null,
+        thirdPartyReference: thirdPartyReference || null,
+        notes: notes || null,
       },
       include: { assignedDeliveryGuy: true, clientOrder: { include: { client: true, project: true, items: { include: { product: true } } } } },
     });
@@ -302,6 +313,10 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), as
         notes: req.body.notes,
         proofOfDeliveryUrl: req.body.proofOfDelivery || undefined,
         returnRejectionReason: req.body.returnRejectionReason,
+        deliveryMethod: req.body.deliveryMethod ? String(req.body.deliveryMethod).toUpperCase() : undefined,
+        loadKg: req.body.loadKg === undefined || req.body.loadKg === '' ? undefined : Number(req.body.loadKg),
+        thirdPartyProvider: req.body.thirdPartyProvider,
+        thirdPartyReference: req.body.thirdPartyReference,
       },
       include: {
         assignedDeliveryGuy: true,

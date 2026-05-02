@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 import type { InventoryItem, StockTransaction } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -104,8 +105,9 @@ export default function InventoryPage() {
     category: '',
     unit: '',
     unitPrice: 0,
-    qtyOnHand: 0,
     minStock: 20,
+    originalUnitPrice: 0,
+    priceUpdateNote: '',
   });
   const [editItemErrors, setEditItemErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
@@ -197,6 +199,9 @@ export default function InventoryPage() {
     if (!item.name.trim()) errors.name = 'Item name is required.';
     if (!item.category) errors.category = 'Category is required.';
     if (item.unitPrice < 0) errors.unitPrice = 'Unit price must be 0 or greater.';
+    if (item.unitPrice !== item.originalUnitPrice && !item.priceUpdateNote.trim()) {
+      errors.priceUpdateNote = 'Add a note for supplier price changes.';
+    }
     if (item.minStock < 0) errors.minStock = 'Low stock threshold must be 0 or greater.';
     return errors;
   };
@@ -283,6 +288,8 @@ export default function InventoryPage() {
       unit: item.unit,
       unitPrice: item.unitPrice,
       minStock: item.minStock,
+      originalUnitPrice: item.unitPrice,
+      priceUpdateNote: '',
     });
     setEditItemErrors({});
     setIsEditOpen(true);
@@ -302,6 +309,7 @@ export default function InventoryPage() {
         unit: editItem.unit,
         unitPrice: editItem.unitPrice,
         lowStockThreshold: editItem.minStock,
+        priceUpdateNote: editItem.priceUpdateNote.trim() || undefined,
       });
       await reloadInventory();
       await reloadTransactions();
@@ -938,6 +946,25 @@ export default function InventoryPage() {
                 }}
               />
               {editItemErrors.minStock && <p className="text-xs text-destructive mt-1">{editItemErrors.minStock}</p>}
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Supplier Price Update Note</p>
+              <Textarea
+                value={editItem.priceUpdateNote}
+                onChange={(e) => {
+                  const next = { ...editItem, priceUpdateNote: e.target.value };
+                  setEditItem(next);
+                  setEditItemErrors(validateEditItem(next));
+                }}
+                placeholder="Example: Supplier increased price without memo; approved for manual update."
+                rows={3}
+              />
+              {editItem.unitPrice !== editItem.originalUnitPrice && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Required when the unit price changes so the update is logged clearly.
+                </p>
+              )}
+              {editItemErrors.priceUpdateNote && <p className="text-xs text-destructive mt-1">{editItemErrors.priceUpdateNote}</p>}
             </div>
             <div className="border-t pt-4 space-y-3">
               <p className="text-sm font-semibold">Stock Adjustment (Admin only)</p>

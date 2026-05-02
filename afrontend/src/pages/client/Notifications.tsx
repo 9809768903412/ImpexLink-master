@@ -22,6 +22,7 @@ import { useResource } from '@/hooks/use-resource';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const typeIcons: Record<NotificationType, React.ReactNode> = {
   'low-stock': <Package className="text-yellow-600" size={20} />,
@@ -47,6 +48,7 @@ const clientNotificationTypes: NotificationType[] = [
 // TODO: Replace with real data
 export default function ClientNotificationsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   // Filter notifications relevant to clients
   const { data: allNotificationsRaw, setData: setAllNotifications, loading } = useResource<any>(
     '/notifications',
@@ -94,6 +96,15 @@ export default function ClientNotificationsPage() {
     apiClient.delete(`/notifications/${id}`).catch(() => {
       // keep optimistic update
     });
+  };
+
+  const handleOpenNotification = (notification: Notification) => {
+    if (!notification.read) {
+      handleMarkAsRead(notification.id);
+    }
+    if (notification.link) {
+      navigate(notification.link);
+    }
   };
 
   const getNotificationMessage = (notification: Notification) => {
@@ -170,7 +181,16 @@ export default function ClientNotificationsPage() {
               {filteredNotifications.map((notification) => (
                 <Card
                   key={notification.id}
-                  className={`transition-colors ${
+                  role={notification.link ? 'button' : undefined}
+                  tabIndex={notification.link ? 0 : undefined}
+                  onClick={() => handleOpenNotification(notification)}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && notification.link) {
+                      e.preventDefault();
+                      handleOpenNotification(notification);
+                    }
+                  }}
+                  className={`transition-colors ${notification.link ? 'cursor-pointer hover:border-primary/40' : ''} ${
                     !notification.read ? 'bg-primary/5 border-primary/20' : ''
                   }`}
                 >
@@ -200,7 +220,10 @@ export default function ClientNotificationsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleMarkAsRead(notification.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsRead(notification.id);
+                                }}
                                 title="Mark as read"
                               >
                                 <Check size={16} />
@@ -210,7 +233,10 @@ export default function ClientNotificationsPage() {
                               variant="ghost"
                               size="icon"
                               className="text-destructive"
-                              onClick={() => handleDelete(notification.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(notification.id);
+                              }}
                               title="Delete"
                             >
                               <Trash2 size={16} />

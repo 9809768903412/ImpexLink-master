@@ -9,7 +9,7 @@ router.use(requireAuth);
 const defaultCompanyInfo = {
   name: process.env.COMPANY_NAME || 'Impex Engineering and Industrial Supply',
   address: process.env.COMPANY_ADDRESS || '6959 Washington St., Pio Del Pilar, Makati City',
-  tin: process.env.COMPANY_TIN || '100-191-563-00000',
+  tin: process.env.COMPANY_TIN || '100-191-563-000',
   phone: process.env.COMPANY_PHONE || '+63 2 8123 4567',
   email: process.env.COMPANY_EMAIL || 'sales@impex.ph',
   website: process.env.COMPANY_WEBSITE || 'www.impex.ph',

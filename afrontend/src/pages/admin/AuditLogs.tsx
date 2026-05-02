@@ -41,6 +41,14 @@ const actionColors: Record<string, string> = {
   CONFIRM: 'bg-cyan-100 text-cyan-800',
 };
 
+function getActionLabel(log: AuditLog) {
+  const target = `${log.target} ${log.details}`.toLowerCase();
+  if (log.action === 'CREATE' && /(order|clientorder|purchase|po)/i.test(target)) {
+    return 'ORDERED';
+  }
+  return log.action;
+}
+
 // TODO: Replace with real data
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>(() => getCache<AuditLog[]>('audit-logs') || []);
@@ -98,7 +106,7 @@ export default function AuditLogsPage() {
     const rows = filteredLogs
       .map(
         (log) =>
-          `<tr><td>${format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm')}</td><td>${log.userName}</td><td>${log.action}</td><td>${log.target}</td><td>${log.details}</td></tr>`
+          `<tr><td>${format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm')}</td><td>${log.userName}</td><td>${getActionLabel(log)}</td><td>${log.target}</td><td>${log.details}</td></tr>`
       )
       .join('');
     printHtml(
@@ -128,7 +136,7 @@ export default function AuditLogsPage() {
                 ...filteredLogs.map((log) => [
                   format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm'),
                   log.userName,
-                  log.action,
+                  getActionLabel(log),
                   log.target,
                   log.details,
                 ]),
@@ -282,7 +290,7 @@ export default function AuditLogsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge className={actionColors[log.action] || 'bg-gray-100 text-gray-800'}>
-                        {log.action}
+                        {getActionLabel(log)}
                       </Badge>
                     </TableCell>
                     <TableCell>{log.target}</TableCell>

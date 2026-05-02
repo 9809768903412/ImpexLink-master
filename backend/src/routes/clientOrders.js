@@ -11,6 +11,7 @@ const {
   buildClientOrderScope,
   canAccessClientOwnedRecord,
 } = require('../utils/clientVisibility');
+const { calculateDeliveryPlan } = require('../utils/deliveryRules');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -185,6 +186,75 @@ function mapOrder(o) {
   };
 }
 
+async function validateOrderStock(items = []) {
+  const getProductId = (item) => Number(item.productId ?? item.itemId);
+  const productIds = [...new Set(items.map(getProductId).filter(Boolean))];
+  const products = await prisma.product.findMany({
+    where: { productId: { in: productIds }, deletedAt: null },
+  });
+  const productMap = new Map(products.map((product) => [product.productId, product]));
+
+  for (const item of items) {
+    const productId = getProductId(item);
+    const product = productMap.get(productId);
+    if (!product) {
+      return { ok: false, error: `Item ${productId || ''} is no longer available.` };
+    }
+    const quantity = Number(item.quantity || 0);
+    if (quantity > product.qtyOnHand) {
+      return {
+        ok: false,
+        error: `${product.itemName} only has ${product.qtyOnHand} ${product.unit || 'units'} in stock. Please lower the quantity.`,
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+async function createDeliveryBatchesForOrder(order, userId, status = 'PENDING') {
+  const existingDelivery = await prisma.delivery.findFirst({
+    where: { clientOrderId: order.clientOrderId, deletedAt: null },
+  });
+  if (existingDelivery) return;
+
+  const plan = calculateDeliveryPlan(order.items || []);
+  const drSuffix = order.orderNumber?.replace(/^ORD-/, '') || String(Date.now());
+  const defaultEta = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const deliveryStatus = status === 'SHIPPED' ? 'IN_TRANSIT' : 'PENDING';
+
+  for (let batch = 1; batch <= plan.batchCount; batch += 1) {
+    const method = plan.method === 'THIRD_PARTY' ? 'LALAMOVE' : plan.method;
+    const delivery = await prisma.delivery.create({
+      data: {
+        drNumber: plan.batchCount > 1 ? `DR-${drSuffix}-B${batch}` : `DR-${drSuffix}`,
+        clientOrderId: order.clientOrderId,
+        assignedDeliveryGuyId: null,
+        status: deliveryStatus,
+        itemsCount: order.items?.length || 0,
+        eta: defaultEta,
+        deliveryMethod: method,
+        batchNumber: batch,
+        batchCount: plan.batchCount,
+        loadKg: plan.totalKg / plan.batchCount,
+        thirdPartyProvider: method === 'LALAMOVE' ? 'Lalamove' : null,
+        notes: [
+          plan.batchCount > 1 ? `Batch ${batch} of ${plan.batchCount}.` : '',
+          plan.warnings.join(' '),
+        ].filter(Boolean).join(' '),
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'CREATE',
+        target: 'Delivery',
+        details: `Created ${method.toLowerCase()} delivery ${delivery.drNumber} for ${order.orderNumber}`,
+      },
+    });
+  }
+}
+
 router.get('/', async (req, res, next) => {
   try {
     await prisma.clientOrder.updateMany({
@@ -267,6 +337,10 @@ router.post('/', requireRole(['ADMIN', 'SALES_AGENT', 'CLIENT']), async (req, re
     if (items.some((item) => Number(item.unitPrice || 0) < 0)) {
       return res.status(400).json({ error: 'Unit price must be 0 or greater' });
     }
+    const stockCheck = await validateOrderStock(items);
+    if (!stockCheck.ok) {
+      return res.status(400).json({ error: stockCheck.error });
+    }
     if (subtotal !== undefined && !isNonNegativeNumber(subtotal)) {
       return res.status(400).json({ error: 'Subtotal must be 0 or greater' });
     }
@@ -318,7 +392,7 @@ router.post('/', requireRole(['ADMIN', 'SALES_AGENT', 'CLIENT']), async (req, re
             : [],
         },
       },
-      include: { items: true },
+      include: { items: { include: { product: { include: { category: true } } } } },
     });
 
     await prisma.auditLog.create({
@@ -495,7 +569,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
         : req.body.cancelReason;
     const existing = await prisma.clientOrder.findUnique({
       where: { clientOrderId: Number(req.params.id) },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: { include: { category: true } } } } },
     });
     if (!existing) return res.status(404).json({ error: 'Order not found' });
     if (status && !canTransitionOrder(req, existing.status, status)) {
@@ -518,17 +592,21 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
       },
     });
 
-    const nextStatus = (status || order.status).toUpperCase();
+    const nextStatus = (status || existing.status).toUpperCase();
     const shouldDeduct = ['APPROVED', 'PROCESSING'].includes(nextStatus);
     const shouldCreateDelivery = ['SHIPPED', 'DELIVERED'].includes(nextStatus);
     if (shouldDeduct) {
       const existingIssue = await prisma.stockTransaction.findFirst({
         where: {
           type: 'ISSUE',
-          notes: { contains: `Order ${order.orderNumber}` },
+          notes: { contains: `Order ${existing.orderNumber}` },
         },
       });
       if (!existingIssue && existing.items?.length) {
+        const stockCheck = await validateOrderStock(existing.items);
+        if (!stockCheck.ok) {
+          return res.status(400).json({ error: stockCheck.error });
+        }
         for (const item of existing.items) {
           if (!item.productId) continue;
           const product = item.product;
@@ -551,7 +629,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
               qtyChange: -item.quantity,
               newBalance,
               userId: req.user.userId,
-              notes: `Order ${order.orderNumber}`,
+          notes: `Order ${existing.orderNumber}`,
             },
           });
         }
@@ -560,7 +638,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
             userId: req.user.userId,
             action: 'UPDATE',
             target: 'Stock',
-            details: `Issued stock for order ${order.orderNumber}`,
+            details: `Issued stock for order ${existing.orderNumber}`,
           },
         });
       }
@@ -568,31 +646,11 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
 
     if (shouldCreateDelivery) {
       const existingDelivery = await prisma.delivery.findFirst({
-        where: { clientOrderId: order.clientOrderId },
+        where: { clientOrderId: existing.clientOrderId, deletedAt: null },
       });
       if (!existingDelivery) {
-        const drSuffix = order.orderNumber?.replace(/^ORD-/, '') || String(Date.now());
-        const drNumber = `DR-${drSuffix}`;
-        const defaultEta = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        await prisma.delivery.create({
-          data: {
-            drNumber,
-            clientOrderId: order.clientOrderId,
-            assignedDeliveryGuyId: null,
-            status: nextStatus === 'SHIPPED' ? 'IN_TRANSIT' : 'PENDING',
-            itemsCount: existing.items?.length || 0,
-            eta: defaultEta,
-          },
-        });
-        await prisma.auditLog.create({
-          data: {
-            userId: req.user.userId,
-            action: 'CREATE',
-            target: 'Delivery',
-            details: `Created delivery for ${order.orderNumber}`,
-          },
-        });
-      } else if (existingDelivery) {
+        await createDeliveryBatchesForOrder(existing, req.user.userId, nextStatus);
+      } else {
         if ((nextStatus === 'APPROVED' || nextStatus === 'PROCESSING') && existingDelivery.status !== 'PENDING') {
           await prisma.delivery.update({
             where: { deliveryId: existingDelivery.deliveryId },
@@ -615,8 +673,8 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
     }
 
     // Notify client on admin/staff updates
-    if (order.clientId) {
-      const client = await prisma.client.findUnique({ where: { clientId: order.clientId } });
+    if (existing.clientId) {
+      const client = await prisma.client.findUnique({ where: { clientId: existing.clientId } });
       if (client?.email) {
         const clientUser = await prisma.user.findUnique({ where: { email: client.email } });
         if (clientUser) {
@@ -625,7 +683,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
               userId: clientUser.userId,
               type: 'ORDER_APPROVAL',
               title: 'Order update',
-              message: `Order ${order.orderNumber} updated. Status: ${(status || order.status).toLowerCase()}, Payment: ${(req.body.paymentStatus || order.paymentStatus).toLowerCase()}.`,
+              message: `Order ${existing.orderNumber} updated. Status: ${(status || existing.status).toLowerCase()}, Payment: ${(req.body.paymentStatus || existing.paymentStatus).toLowerCase()}.`,
               link: '/client/orders',
             },
           });
@@ -634,7 +692,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
               userId: req.user.userId,
               action: 'NOTIFY',
               target: 'Notification',
-              details: `Sent order update notification for ${order.orderNumber} to client`,
+              details: `Sent order update notification for ${existing.orderNumber} to client`,
             },
           });
         }
@@ -646,7 +704,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
         userId: req.user.userId,
         action: 'UPDATE',
         target: 'ClientOrder',
-        details: `Updated order ${order.orderNumber}`,
+        details: `Updated order ${existing.orderNumber}`,
       },
     });
 

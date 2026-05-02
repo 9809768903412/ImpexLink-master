@@ -71,7 +71,7 @@ export default function PurchaseOrdersPage() {
     {
       name: 'Impex Engineering and Industrial Supply',
       address: '6959 Washington St., Pio Del Pilar, Makati City',
-      tin: '100-191-563-00000',
+      tin: '100-191-563-000',
       phone: '+63 2 8123 4567',
       email: 'sales@impex.ph',
       website: 'www.impex.ph',
