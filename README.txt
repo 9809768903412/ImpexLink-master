@@ -8,6 +8,7 @@ Impex Engineering deployment notes:
   - `AI_PROVIDER=groq`
   - `GROQ_API_KEY`
   - `GROQ_MODEL=openai/gpt-oss-20b`
+  - optional `GROQ_FALLBACK_MODEL=llama-3.1-8b-instant`
   - optional xAI fallback: `XAI_API_KEY`, `XAI_MODEL=grok-4-fast-non-reasoning`
 
 Demo read-only mode:

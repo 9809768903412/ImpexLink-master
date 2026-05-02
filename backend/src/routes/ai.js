@@ -27,6 +27,8 @@ const providerConfig = PROVIDERS[AI_PROVIDER] || PROVIDERS.groq;
 const AI_MODEL = providerConfig.model;
 const AI_BASE_URL = providerConfig.baseUrl;
 const AI_API_KEY = process.env[providerConfig.apiKeyEnv];
+const AI_FALLBACK_MODEL =
+  AI_PROVIDER === 'groq' ? process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant' : null;
 
 let analysisCache = null;
 let analysisPromise = null;
@@ -140,7 +142,7 @@ function mapProviderFailure(error) {
   };
 }
 
-async function callProviderJson(messages) {
+async function callProviderJson(messages, modelOverride = AI_MODEL) {
   if (!AI_API_KEY) return null;
 
   const controller = new AbortController();
@@ -153,7 +155,7 @@ async function callProviderJson(messages) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: AI_MODEL,
+        model: modelOverride,
         messages,
         stream: false,
         temperature: 0.2,
@@ -170,7 +172,11 @@ async function callProviderJson(messages) {
       throw error;
     }
 
-    return normalizeJsonObject(payload?.choices?.[0]?.message?.content);
+    const parsed = normalizeJsonObject(payload?.choices?.[0]?.message?.content);
+    if (parsed && typeof parsed === 'object') {
+      parsed.__providerModel = modelOverride;
+    }
+    return parsed;
   } finally {
     clearTimeout(timeout);
   }
@@ -464,6 +470,7 @@ function compactSnapshot(snapshot, fallback) {
 function sanitizeAnalysis(ai, fallback) {
   const source = ai && typeof ai === 'object' ? ai : {};
   const generatedAt = new Date().toISOString();
+  const resolvedModel = String(source.__providerModel || AI_MODEL);
   const recommendations = Array.isArray(source.recommendations) && source.recommendations.length
     ? source.recommendations.slice(0, 3).map((item, index) => ({
         title: String(item.title || `Recommendation ${index + 1}`),
@@ -532,7 +539,7 @@ function sanitizeAnalysis(ai, fallback) {
   return {
     enabled: Boolean(ai),
     provider: ai ? AI_PROVIDER : fallback.provider,
-    model: AI_MODEL,
+    model: resolvedModel,
     generatedAt,
     availabilityReason: ai ? 'available' : fallback.availabilityReason,
     availabilityMessage: ai ? `${providerConfig.name} analysis is available.` : fallback.availabilityMessage,
@@ -559,7 +566,7 @@ async function generateAiAnalysis(force = false) {
     let failure = null;
 
     try {
-      ai = await callProviderJson([
+      const messages = [
         {
           role: 'system',
           content:
@@ -574,10 +581,44 @@ async function generateAiAnalysis(force = false) {
             snapshot: compactSnapshot(snapshot, fallback),
           }),
         },
-      ]);
+      ];
+
+      ai = await callProviderJson(messages);
     } catch (err) {
-      failure = mapProviderFailure(err);
-      console.error(`${providerConfig.name} analysis failed:`, err.message || err);
+      if (
+        AI_PROVIDER === 'groq' &&
+        AI_FALLBACK_MODEL &&
+        AI_FALLBACK_MODEL !== AI_MODEL &&
+        Number(err?.status || 0) === 429
+      ) {
+        try {
+          ai = await callProviderJson(
+            [
+              {
+                role: 'system',
+                content:
+                  'You are the AI operations analyst for Impex Engineering. Return only valid JSON. Analyze inventory, reorder, purchase-order/payment risk, and logistics. Keep outputs concise, actionable, and based only on the provided summarized data.',
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  task:
+                    'Generate every widget on the AI Insights page. Use this exact schema: {summary:string,recommendations:[{title:string,message:string,priority:"low"|"medium"|"high"|"critical",action:string}],warehouseRisks:[{itemId:string,itemName:string,riskLevel:"low"|"medium"|"high"|"critical",reason:string,recommendedAction:string,shelfLifeDays:number,daysInStock:number,daysToExpiry:number}],reorderSuggestions:[{itemId:string,itemName:string,currentQty:number,suggestedQty:number,estimatedCost:number}],fraudAlerts:[{id:string,orderId:string,orderNumber:string,severity:"low"|"medium"|"high",message:string,timestamp:string}],logisticsSnapshot:{activeRoutes:number,stopsToday:number,onTimeRate:number,recommendation:string,dispatches:[{route:string,status:string,note:string}]}}',
+                  currency: 'PHP',
+                  snapshot: compactSnapshot(snapshot, fallback),
+                }),
+              },
+            ],
+            AI_FALLBACK_MODEL,
+          );
+        } catch (fallbackErr) {
+          failure = mapProviderFailure(fallbackErr);
+          console.error(`${providerConfig.name} fallback analysis failed:`, fallbackErr.message || fallbackErr);
+        }
+      } else {
+        failure = mapProviderFailure(err);
+        console.error(`${providerConfig.name} analysis failed:`, err.message || err);
+      }
     }
 
     const data = sanitizeAnalysis(ai, fallback);

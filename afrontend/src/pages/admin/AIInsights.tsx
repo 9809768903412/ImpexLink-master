@@ -199,7 +199,7 @@ export default function AIInsightsPage() {
         toast({
           title: 'AI Analysis Complete',
           description: response.data.enabled
-            ? `Grok refreshed every AI Insights widget using ${response.data.model}.`
+            ? `${response.data.provider} refreshed every AI Insights widget using ${response.data.model}.`
             : response.data.summary,
         });
       })
@@ -249,7 +249,7 @@ export default function AIInsightsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Brain size={20} className="text-primary" />
-              Grok Operations Analysis
+              AI Operations Analysis
             </CardTitle>
             <CardDescription>
               {aiSummary.enabled
