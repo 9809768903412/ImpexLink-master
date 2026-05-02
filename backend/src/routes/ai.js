@@ -563,6 +563,18 @@ function sanitizeAnalysis(ai, fallback) {
       : fallback.logisticsSnapshot.dispatches,
   };
 
+  const derivedSummary = recommendations.length
+    ? recommendations.map((item) => item.message).filter(Boolean).join(' ')
+    : '';
+
+  const summary = ai
+    ? String(
+        source.summary ||
+          derivedSummary ||
+          'AI analysis completed successfully with structured operational recommendations.',
+      )
+    : String(fallback.summary);
+
   return {
     enabled: Boolean(ai),
     provider: ai ? AI_PROVIDER : fallback.provider,
@@ -570,7 +582,7 @@ function sanitizeAnalysis(ai, fallback) {
     generatedAt,
     availabilityReason: ai ? 'available' : fallback.availabilityReason,
     availabilityMessage: ai ? `${providerConfig.name} analysis is available.` : fallback.availabilityMessage,
-    summary: String(source.summary || fallback.summary),
+    summary,
     recommendations,
     warehouseRisks,
     reorderSuggestions,
