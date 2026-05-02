@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import PaginationNav from '@/components/PaginationNav';
 
 const typeIcons: Record<NotificationType, React.ReactNode> = {
   'low-stock': <Package className="text-yellow-600" size={20} />,
@@ -64,12 +65,20 @@ export default function ClientNotificationsPage() {
       : [];
   const notifications = allNotifications.filter((n) => clientNotificationTypes.includes(n.type));
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const filteredNotifications = notifications.filter((n) =>
     filter === 'all' ? true : !n.read
   );
+  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / pageSize));
+  const pagedNotifications = filteredNotifications.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, notifications.length]);
 
   const handleMarkAsRead = (id: string) => {
     setAllNotifications(
@@ -178,7 +187,7 @@ export default function ClientNotificationsPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {filteredNotifications.map((notification) => (
+              {pagedNotifications.map((notification) => (
                 <Card
                   key={notification.id}
                   role={notification.link ? 'button' : undefined}
@@ -248,6 +257,7 @@ export default function ClientNotificationsPage() {
                   </CardContent>
                 </Card>
               ))}
+              <PaginationNav page={page} totalPages={totalPages} onPageChange={setPage} maxPages={5} />
             </div>
           )}
         </TabsContent>

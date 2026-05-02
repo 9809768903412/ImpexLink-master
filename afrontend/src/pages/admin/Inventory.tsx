@@ -321,24 +321,22 @@ export default function InventoryPage() {
   };
 
   const [editAdjustQty, setEditAdjustQty] = useState('');
-  const [editAdjustDirection, setEditAdjustDirection] = useState<'add' | 'deduct'>('add');
   const [editAdjustNotes, setEditAdjustNotes] = useState('');
 
   const handleAdjustmentFromEdit = async () => {
     if (!canEditItemInfo) return;
     const qtyValue = Number(editAdjustQty);
-    if (!Number.isFinite(qtyValue) || qtyValue <= 0) {
-      toast({ title: 'Invalid quantity', description: 'Quantity must be greater than 0.', variant: 'destructive' });
+    if (!Number.isFinite(qtyValue) || qtyValue < 0) {
+      toast({ title: 'Invalid quantity', description: 'Stock on hand must be 0 or greater.', variant: 'destructive' });
       return;
     }
     if (!editAdjustNotes.trim()) {
       toast({ title: 'Missing reference', description: 'Reason/notes are required.', variant: 'destructive' });
       return;
     }
-    const qtyChange = editAdjustDirection === 'deduct' ? -qtyValue : qtyValue;
     try {
       await apiClient.put(`/inventory/${editItem.id}/stock`, {
-        qtyChange,
+        newBalance: qtyValue,
         type: 'ADJUSTMENT',
         notes: editAdjustNotes.trim(),
       });
@@ -347,7 +345,6 @@ export default function InventoryPage() {
       toast({ title: 'Stock adjusted', description: `${editItem.name} updated.` });
       setEditAdjustQty('');
       setEditAdjustNotes('');
-      setEditAdjustDirection('add');
     } catch (err) {
       toast({ title: 'Adjustment failed', description: 'Please try again.', variant: 'destructive' });
     }
@@ -967,33 +964,20 @@ export default function InventoryPage() {
               {editItemErrors.priceUpdateNote && <p className="text-xs text-destructive mt-1">{editItemErrors.priceUpdateNote}</p>}
             </div>
             <div className="border-t pt-4 space-y-3">
-              <p className="text-sm font-semibold">Stock Adjustment (Admin only)</p>
+              <p className="text-sm font-semibold">Set Stock On Hand (Admin only)</p>
               <div>
-                <p className="text-sm font-medium mb-1">Quantity</p>
+                <p className="text-sm font-medium mb-1">Final Stock Count</p>
                 <Input
                   type="number"
-                  min={1}
+                  min={0}
                   step="1"
                   value={editAdjustQty}
                   onChange={(e) => setEditAdjustQty(e.target.value)}
                   disabled={!canEditItemInfo}
                 />
-              </div>
-              <div>
-                <p className="text-sm font-medium mb-1">Direction</p>
-                <Select
-                  value={editAdjustDirection}
-                  onValueChange={(value) => setEditAdjustDirection(value as 'add' | 'deduct')}
-                  disabled={!canEditItemInfo}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="add">Increase</SelectItem>
-                    <SelectItem value="deduct">Decrease</SelectItem>
-                  </SelectContent>
-                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This replaces the current stock count instead of adding to it.
+                </p>
               </div>
               <div>
                 <p className="text-sm font-medium mb-1">Reason</p>

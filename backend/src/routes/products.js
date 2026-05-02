@@ -279,11 +279,16 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 
 router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
-    const { qtyChange, type, notes } = req.body;
-    if (qtyChange === undefined || Number.isNaN(Number(qtyChange))) {
-      return res.status(400).json({ error: 'Quantity change is required' });
+    const { qtyChange, newBalance: requestedBalance, qtyOnHand, type, notes } = req.body;
+    const hasAbsoluteBalance = requestedBalance !== undefined || qtyOnHand !== undefined;
+    const absoluteBalance = requestedBalance !== undefined ? requestedBalance : qtyOnHand;
+    if (!hasAbsoluteBalance && (qtyChange === undefined || Number.isNaN(Number(qtyChange)))) {
+      return res.status(400).json({ error: 'Quantity change or new stock balance is required' });
     }
-    if (!isNonNegativeNumber(Math.abs(Number(qtyChange)))) {
+    if (hasAbsoluteBalance && (!Number.isFinite(Number(absoluteBalance)) || Number(absoluteBalance) < 0)) {
+      return res.status(400).json({ error: 'New stock balance must be 0 or greater' });
+    }
+    if (!hasAbsoluteBalance && !isNonNegativeNumber(Math.abs(Number(qtyChange)))) {
       return res.status(400).json({ error: 'Invalid quantity change' });
     }
     if (type) {
@@ -298,7 +303,8 @@ router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, 
     });
     if (!product) return res.status(404).json({ error: 'Not found' });
 
-    const newBalance = product.qtyOnHand + Number(qtyChange || 0);
+    const newBalance = hasAbsoluteBalance ? Number(absoluteBalance) : product.qtyOnHand + Number(qtyChange || 0);
+    const resolvedQtyChange = newBalance - product.qtyOnHand;
     if (newBalance < 0) {
       return res.status(400).json({ error: 'Insufficient stock for this adjustment' });
     }
@@ -313,7 +319,7 @@ router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, 
       data: {
         productId: product.productId,
         type: type ? String(type).toUpperCase() : 'ADJUSTMENT',
-        qtyChange: Number(qtyChange || 0),
+        qtyChange: resolvedQtyChange,
         newBalance,
         userId: req.user.userId,
         notes: notes || null,
@@ -325,7 +331,7 @@ router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, 
         userId: req.user.userId,
         action: 'UPDATE',
         target: 'Stock',
-        details: `${type || 'ADJUSTMENT'} ${qtyChange} for ${product.itemName} (new balance ${newBalance})`,
+        details: `${type || 'ADJUSTMENT'} ${resolvedQtyChange} for ${product.itemName} (new balance ${newBalance})`,
       },
     });
 
