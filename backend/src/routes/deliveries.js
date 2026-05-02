@@ -41,6 +41,78 @@ function hasRole(req, role) {
   return getRoleList(req.user).includes(String(role).toUpperCase());
 }
 
+let deliveryColumnSupport = null;
+
+async function getDeliveryColumnSupport() {
+  if (deliveryColumnSupport) return deliveryColumnSupport;
+  const optionalColumns = [
+    'delivery_method',
+    'batch_number',
+    'batch_count',
+    'load_kg',
+    'third_party_provider',
+    'third_party_reference',
+  ];
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'deliveries'
+        AND column_name IN ('delivery_method', 'batch_number', 'batch_count', 'load_kg', 'third_party_provider', 'third_party_reference')
+    `;
+    const found = new Set(rows.map((row) => row.column_name));
+    deliveryColumnSupport = {
+      batches: optionalColumns.every((column) => found.has(column)),
+    };
+  } catch (err) {
+    console.error('Delivery optional column check failed:', err.message || err);
+    deliveryColumnSupport = { batches: false };
+  }
+  return deliveryColumnSupport;
+}
+
+function deliverySelect(includeOptionalColumns = false) {
+  return {
+    deliveryId: true,
+    drNumber: true,
+    clientOrderId: true,
+    assignedDeliveryGuyId: true,
+    status: true,
+    itemsCount: true,
+    eta: true,
+    receivedBy: true,
+    receivedAt: true,
+    notes: true,
+    proofOfDeliveryUrl: true,
+    returnRejectionReason: true,
+    createdAt: true,
+    deletedAt: true,
+    ...(includeOptionalColumns
+      ? {
+          deliveryMethod: true,
+          batchNumber: true,
+          batchCount: true,
+          loadKg: true,
+          thirdPartyProvider: true,
+          thirdPartyReference: true,
+        }
+      : {}),
+    assignedDeliveryGuy: { select: { fullName: true } },
+    clientOrder: {
+      select: {
+        clientOrderId: true,
+        clientId: true,
+        orderNumber: true,
+        status: true,
+        createdBy: true,
+        client: { select: { clientName: true } },
+        project: { select: { projectName: true } },
+        items: { include: { product: true } },
+      },
+    },
+  };
+}
+
 async function validateDeliveryGuyAssignment(assignedDeliveryGuyId) {
   if (!assignedDeliveryGuyId) return null;
   const driver = await prisma.user.findUnique({
@@ -165,18 +237,10 @@ router.get('/', async (req, res, next) => {
     };
     const sort = parseSort(req.query, ['createdAt', 'status', 'eta']);
     const orderBy = sort ? { [sort.sortBy]: sort.sortDir } : { createdAt: 'desc' };
+    const columnSupport = await getDeliveryColumnSupport();
     const [deliveries, total] = await Promise.all([
       prisma.delivery.findMany({
-        include: {
-          assignedDeliveryGuy: true,
-          clientOrder: {
-            include: {
-              client: true,
-              project: true,
-              items: { include: { product: true } },
-            },
-          },
-        },
+        select: deliverySelect(columnSupport.batches),
         where,
         skip: pagination ? (pagination.page - 1) * pagination.pageSize : undefined,
         take: pagination ? pagination.pageSize : undefined,
@@ -198,6 +262,7 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
+    const columnSupport = await getDeliveryColumnSupport();
     const { drNumber, clientOrderId, status, eta, itemsCount, deliveryMethod, loadKg, thirdPartyProvider, thirdPartyReference, notes } = req.body;
     if (!isNonEmptyString(drNumber)) return res.status(400).json({ error: 'DR number is required' });
     if (!clientOrderId || !isPositiveInt(clientOrderId)) return res.status(400).json({ error: 'Client order is required' });
@@ -223,13 +288,17 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
         status: status ? status.toUpperCase().replace('-', '_') : 'PENDING',
         eta: eta ? new Date(eta) : defaultEta,
         itemsCount,
-        deliveryMethod: deliveryMethod ? String(deliveryMethod).toUpperCase() : thirdPartyProvider ? 'LALAMOVE' : 'TRUCK',
-        loadKg: loadKg === undefined || loadKg === '' ? null : Number(loadKg),
-        thirdPartyProvider: thirdPartyProvider || null,
-        thirdPartyReference: thirdPartyReference || null,
+        ...(columnSupport.batches
+          ? {
+              deliveryMethod: deliveryMethod ? String(deliveryMethod).toUpperCase() : thirdPartyProvider ? 'LALAMOVE' : 'TRUCK',
+              loadKg: loadKg === undefined || loadKg === '' ? null : Number(loadKg),
+              thirdPartyProvider: thirdPartyProvider || null,
+              thirdPartyReference: thirdPartyReference || null,
+            }
+          : {}),
         notes: notes || null,
       },
-      include: { assignedDeliveryGuy: true, clientOrder: { include: { client: true, project: true, items: { include: { product: true } } } } },
+      select: deliverySelect(columnSupport.batches),
     });
 
     await prisma.auditLog.create({
@@ -252,6 +321,7 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
 
 router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), async (req, res, next) => {
   try {
+    const columnSupport = await getDeliveryColumnSupport();
     if (req.body.status) {
       const s = req.body.status.toUpperCase().replace(/[-\s]+/g, '_');
       if (!['PENDING', 'IN_TRANSIT', 'DELIVERED', 'RETURN_PENDING', 'RETURN_REJECTED', 'RETURNED', 'DELAYED'].includes(s)) {
@@ -267,10 +337,7 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), as
 
     const existing = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      include: {
-        assignedDeliveryGuy: true,
-        clientOrder: { include: { client: true, items: { include: { product: true } }, project: true } },
-      },
+      select: deliverySelect(columnSupport.batches),
     });
     if (!existing) return res.status(404).json({ error: 'Delivery not found' });
 
@@ -313,15 +380,16 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), as
         notes: req.body.notes,
         proofOfDeliveryUrl: req.body.proofOfDelivery || undefined,
         returnRejectionReason: req.body.returnRejectionReason,
-        deliveryMethod: req.body.deliveryMethod ? String(req.body.deliveryMethod).toUpperCase() : undefined,
-        loadKg: req.body.loadKg === undefined || req.body.loadKg === '' ? undefined : Number(req.body.loadKg),
-        thirdPartyProvider: req.body.thirdPartyProvider,
-        thirdPartyReference: req.body.thirdPartyReference,
+        ...(columnSupport.batches
+          ? {
+              deliveryMethod: req.body.deliveryMethod ? String(req.body.deliveryMethod).toUpperCase() : undefined,
+              loadKg: req.body.loadKg === undefined || req.body.loadKg === '' ? undefined : Number(req.body.loadKg),
+              thirdPartyProvider: req.body.thirdPartyProvider,
+              thirdPartyReference: req.body.thirdPartyReference,
+            }
+          : {}),
       },
-      include: {
-        assignedDeliveryGuy: true,
-        clientOrder: { include: { client: true, project: true, items: { include: { product: true } } } },
-      },
+      select: deliverySelect(columnSupport.batches),
     });
 
     const updatedStatus = requestedStatus;
@@ -417,9 +485,10 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), as
 
 router.post('/:id/confirm', requireRole(['CLIENT']), async (req, res, next) => {
   try {
+    const columnSupport = await getDeliveryColumnSupport();
     const delivery = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      include: { clientOrder: { include: { client: true, items: { include: { product: true } } } } },
+      select: deliverySelect(columnSupport.batches),
     });
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
     if (delivery.status !== 'IN_TRANSIT' && delivery.status !== 'DELAYED') {
@@ -443,6 +512,7 @@ router.post('/:id/confirm', requireRole(['CLIENT']), async (req, res, next) => {
         receivedAt: new Date(),
         notes: req.body.notes || delivery.notes,
       },
+      select: deliverySelect(columnSupport.batches),
     });
 
     await prisma.auditLog.create({
@@ -454,7 +524,7 @@ router.post('/:id/confirm', requireRole(['CLIENT']), async (req, res, next) => {
       },
     });
 
-    res.json(updated);
+    res.json(mapDelivery(updated));
   } catch (err) {
     next(err);
   }
@@ -462,9 +532,10 @@ router.post('/:id/confirm', requireRole(['CLIENT']), async (req, res, next) => {
 
 router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
   try {
+    const columnSupport = await getDeliveryColumnSupport();
     const delivery = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      include: { clientOrder: { include: { client: true, items: { include: { product: true } } } } },
+      select: deliverySelect(columnSupport.batches),
     });
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
     if (delivery.status !== 'DELIVERED') {
@@ -484,6 +555,7 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
         status: 'RETURN_PENDING',
         notes: req.body.reason,
       },
+      select: deliverySelect(columnSupport.batches),
     });
 
     const admins = await prisma.user.findMany({
@@ -510,7 +582,7 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
       },
     });
 
-    res.json(updated);
+    res.json(mapDelivery(updated));
   } catch (err) {
     next(err);
   }
@@ -519,8 +591,10 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
 
 router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), uploadProof.single('proof'), async (req, res, next) => {
   try {
+    const columnSupport = await getDeliveryColumnSupport();
     const existing = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
+      select: { deliveryId: true },
     });
     if (!existing) return res.status(404).json({ error: 'Delivery not found' });
     if (!req.file) {
@@ -531,10 +605,7 @@ router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY
     const delivery = await prisma.delivery.update({
       where: { deliveryId: existing.deliveryId },
       data: { proofOfDeliveryUrl: proofPath },
-      include: {
-        assignedDeliveryGuy: true,
-        clientOrder: { include: { client: true, project: true, items: { include: { product: true } } } },
-      },
+      select: deliverySelect(columnSupport.batches),
     });
 
     await prisma.auditLog.create({
@@ -558,6 +629,7 @@ router.delete('/:id', requireRole(['ADMIN']), async (req, res, next) => {
     await prisma.delivery.update({
       where: { deliveryId },
       data: { deletedAt: new Date() },
+      select: { deliveryId: true },
     });
     await prisma.auditLog.create({
       data: {
@@ -576,9 +648,11 @@ router.delete('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 router.put('/:id/restore', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const deliveryId = Number(req.params.id);
+    const columnSupport = await getDeliveryColumnSupport();
     const delivery = await prisma.delivery.update({
       where: { deliveryId },
       data: { deletedAt: null },
+      select: deliverySelect(columnSupport.batches),
     });
     await prisma.auditLog.create({
       data: {
@@ -588,7 +662,7 @@ router.put('/:id/restore', requireRole(['ADMIN']), async (req, res, next) => {
         details: `Restored delivery ${deliveryId}`,
       },
     });
-    res.json(delivery);
+    res.json(mapDelivery(delivery));
   } catch (err) {
     next(err);
   }

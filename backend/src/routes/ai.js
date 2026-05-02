@@ -378,6 +378,17 @@ function buildLocalAnalysis(snapshot) {
   };
 }
 
+function buildEmergencyAnalysis(err) {
+  console.error('AI analysis emergency fallback:', err.message || err);
+  const fallback = buildLocalAnalysis({ products: [], purchases: [], clientOrders: [], deliveries: [] });
+  return {
+    ...fallback,
+    availabilityReason: 'snapshot_error',
+    availabilityMessage: 'AI analysis is using emergency local fallback because the live snapshot could not be read.',
+    summary: 'AI analysis is using emergency local fallback because the live snapshot could not be read.',
+  };
+}
+
 async function buildSnapshot() {
   const safeRead = async (label, task, fallback = []) => {
     try {
@@ -705,7 +716,7 @@ router.get('/analysis', async (_req, res, next) => {
   try {
     res.json(await generateAiAnalysis(false));
   } catch (err) {
-    next(err);
+    res.json(buildEmergencyAnalysis(err));
   }
 });
 
