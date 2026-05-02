@@ -5,10 +5,16 @@ const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAuth);
 
-const AI_PROVIDER = String(process.env.AI_PROVIDER || 'groq').toLowerCase();
+const AI_PROVIDER = String(process.env.AI_PROVIDER || 'ollama').toLowerCase();
 const AI_CACHE_MS = Number(process.env.AI_CACHE_MS || process.env.XAI_CACHE_MS || 10 * 60 * 1000);
 
 const PROVIDERS = {
+  ollama: {
+    name: 'Ollama',
+    apiKeyEnv: 'OLLAMA_API_KEY',
+    model: process.env.OLLAMA_MODEL || 'gemma3:4b',
+    baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/api',
+  },
   groq: {
     name: 'Groq',
     apiKeyEnv: 'GROQ_API_KEY',
@@ -23,7 +29,7 @@ const PROVIDERS = {
   },
 };
 
-const providerConfig = PROVIDERS[AI_PROVIDER] || PROVIDERS.groq;
+const providerConfig = PROVIDERS[AI_PROVIDER] || PROVIDERS.ollama;
 const AI_MODEL = providerConfig.model;
 const AI_BASE_URL = providerConfig.baseUrl;
 const AI_API_KEY = process.env[providerConfig.apiKeyEnv];
@@ -82,7 +88,7 @@ function mapProviderFailure(error) {
     };
   }
 
-  if (!AI_API_KEY) {
+  if (providerConfig.apiKeyEnv && !AI_API_KEY && AI_PROVIDER !== 'ollama') {
     return {
       reason: 'missing_api_key',
       message: `${providerConfig.apiKeyEnv} is not set on the backend service.`,
@@ -143,36 +149,52 @@ function mapProviderFailure(error) {
 }
 
 async function callProviderJson(messages, modelOverride = AI_MODEL) {
-  if (!AI_API_KEY) return null;
+  if (providerConfig.apiKeyEnv && !AI_API_KEY && AI_PROVIDER !== 'ollama') return null;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   try {
-    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
+    const isOllama = AI_PROVIDER === 'ollama';
+    const response = await fetch(`${AI_BASE_URL}${isOllama ? '/chat' : '/chat/completions'}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${AI_API_KEY}`,
+        ...(AI_API_KEY ? { Authorization: `Bearer ${AI_API_KEY}` } : {}),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: modelOverride,
-        messages,
-        stream: false,
-        temperature: 0.2,
-        max_tokens: 900,
-      }),
+      body: JSON.stringify(
+        isOllama
+          ? {
+              model: modelOverride,
+              messages,
+              stream: false,
+              format: 'json',
+              options: {
+                temperature: 0.2,
+              },
+              keep_alive: '5m',
+            }
+          : {
+              model: modelOverride,
+              messages,
+              stream: false,
+              temperature: 0.2,
+              max_tokens: 900,
+            },
+      ),
       signal: controller.signal,
     });
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = payload?.error?.message || payload?.message || `${providerConfig.name} returned ${response.status}`;
-      const error = new Error(detail);
+      const detail = payload?.error?.message || payload?.error || payload?.message || `${providerConfig.name} returned ${response.status}`;
+      const error = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       error.status = response.status;
       throw error;
     }
 
-    const parsed = normalizeJsonObject(payload?.choices?.[0]?.message?.content);
+    const parsed = normalizeJsonObject(
+      isOllama ? payload?.message?.content || payload?.response : payload?.choices?.[0]?.message?.content,
+    );
     if (parsed && typeof parsed === 'object') {
       parsed.__providerModel = modelOverride;
     }
@@ -317,11 +339,11 @@ function buildLocalAnalysis(snapshot) {
     provider: 'local-rules',
     model: AI_MODEL,
     generatedAt: new Date().toISOString(),
-    availabilityReason: AI_API_KEY ? 'fallback_after_error' : 'missing_api_key',
-    availabilityMessage: AI_API_KEY
+    availabilityReason: AI_PROVIDER === 'ollama' || AI_API_KEY ? 'fallback_after_error' : 'missing_api_key',
+    availabilityMessage: AI_PROVIDER === 'ollama' || AI_API_KEY
       ? `${providerConfig.name} analysis is temporarily unavailable, so local operational rules are being used.`
       : `${providerConfig.apiKeyEnv} is not configured on the backend service.`,
-    summary: AI_API_KEY
+    summary: AI_PROVIDER === 'ollama' || AI_API_KEY
       ? `${providerConfig.name} analysis is temporarily unavailable, so local operational rules are being used.`
       : `${providerConfig.name} is not configured yet. Add ${providerConfig.apiKeyEnv} on Railway to enable AI-written analysis.`,
     recommendations: [

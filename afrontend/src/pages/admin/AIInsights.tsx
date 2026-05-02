@@ -316,7 +316,7 @@ export default function AIInsightsPage() {
               </LineChart>
             </ResponsiveContainer>
             <p className="text-sm text-muted-foreground text-center mt-4">
-              * Grok uses these movement signals in the full-page AI analysis
+              * AI uses these movement signals in the full-page analysis
             </p>
           </CardContent>
         </Card>
@@ -328,7 +328,7 @@ export default function AIInsightsPage() {
               <AlertTriangle size={20} className="text-yellow-600" />
               Expiring / Risky Stock Alerts
             </CardTitle>
-            <CardDescription>Grok-ranked items requiring immediate attention</CardDescription>
+            <CardDescription>AI-ranked items requiring immediate attention</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
@@ -407,7 +407,7 @@ export default function AIInsightsPage() {
               <ShoppingCart size={20} className="text-green-600" />
               Smart Reorder Suggestions
             </CardTitle>
-            <CardDescription>Grok-recommended restocking quantities</CardDescription>
+            <CardDescription>AI-recommended restocking quantities</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -459,7 +459,7 @@ export default function AIInsightsPage() {
               <Shield size={20} className="text-blue-600" />
               Purchase Order Match Monitor
             </CardTitle>
-            <CardDescription>Grok-reviewed purchase order and payment signals</CardDescription>
+            <CardDescription>AI-reviewed purchase order and payment signals</CardDescription>
           </CardHeader>
           <CardContent>
             {fraudAlerts.length === 0 ? (
@@ -505,7 +505,7 @@ export default function AIInsightsPage() {
               </div>
             )}
             <p className="text-sm text-muted-foreground text-center mt-4">
-              * Grok reviews order, payment, and purchase-document signals when data is available
+              * AI reviews order, payment, and purchase-document signals when data is available
             </p>
           </CardContent>
         </Card>
@@ -517,7 +517,7 @@ export default function AIInsightsPage() {
               <MapPin size={20} className="text-primary" />
               Logistics Snapshot
             </CardTitle>
-            <CardDescription>Grok-generated dispatch and routing signals</CardDescription>
+            <CardDescription>AI-generated dispatch and routing signals</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="rounded-lg border p-4 space-y-4">
