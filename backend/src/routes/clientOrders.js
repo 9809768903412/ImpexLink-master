@@ -12,6 +12,7 @@ const {
   canAccessClientOwnedRecord,
 } = require('../utils/clientVisibility');
 const { calculateDeliveryPlan } = require('../utils/deliveryRules');
+const { extractTextFromImage } = require('../utils/ocr');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -746,7 +747,14 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
     const paymentProofUrl = req.file ? `/uploads/payments/${req.file.filename}` : null;
     const normalizedPoCode = normalizePoCode(poCode);
     const expectedCode = normalizePoCode(order.orderNumber);
-    const isMatched = isTest || normalizedPoCode === expectedCode;
+    const ocrResult = req.file
+      ? await extractTextFromImage(req.file.path, req.file.mimetype)
+      : { supported: false, text: '', error: null };
+    const normalizedOcrText = normalizePoCode(ocrResult.text);
+    const ocrMatched = Boolean(expectedCode && normalizedOcrText.includes(expectedCode));
+    const typedMatched = normalizedPoCode === expectedCode;
+    const isMatched = isTest || ocrMatched || typedMatched;
+    const matchSource = isTest ? 'test' : ocrMatched ? 'ocr' : typedMatched ? 'typed-code' : 'none';
     const updated = await prisma.clientOrder.update({
       where: { clientOrderId: Number(req.params.id) },
       data: {
@@ -786,7 +794,7 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
         userId: req.user.userId,
         action: isMatched ? 'VERIFY' : 'UPDATE',
         target: 'PurchaseOrderMatch',
-        details: `${isMatched ? 'Matched' : 'Mismatch detected for'} purchase order ${poCode} against ${updated.orderNumber}`,
+        details: `${isMatched ? 'Matched' : 'Mismatch detected for'} purchase order ${poCode} against ${updated.orderNumber} via ${matchSource}`,
       },
     });
     return res.status(200).json({
@@ -801,7 +809,13 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
         normalizedSubmittedCode: normalizedPoCode,
         expectedCode: order.orderNumber,
         normalizedExpectedCode: expectedCode,
-        readyForDocumentExtraction: true,
+        matchSource,
+        typedMatched,
+        ocrMatched,
+        ocrSupported: ocrResult.supported,
+        ocrError: ocrResult.error,
+        extractedTextPreview: ocrResult.text ? ocrResult.text.replace(/\s+/g, ' ').trim().slice(0, 300) : '',
+        readyForDocumentExtraction: false,
       },
     });
   } catch (err) {

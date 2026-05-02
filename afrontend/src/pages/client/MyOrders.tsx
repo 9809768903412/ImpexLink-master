@@ -282,6 +282,7 @@ export default function MyOrdersPage() {
         poDocumentUrl: res.data?.poDocumentUrl || res.data?.paymentProofUrl || selectedOrder.poDocumentUrl,
       } as Order;
       setVerificationResult(poMatchStatus === 'genuine' ? 'genuine' : 'fraud');
+      const matchSource = res.data?.poMatch?.matchSource;
       setSelectedOrder(updatedOrder);
       setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? updatedOrder : o)));
       setCache(
@@ -294,7 +295,9 @@ export default function MyOrdersPage() {
         title: poMatchStatus === 'genuine' ? 'Purchase Order Matched' : 'Purchase Order Mismatch',
         description:
           poMatchStatus === 'genuine'
-            ? 'Your purchase order matches this order and has been recorded.'
+            ? matchSource === 'ocr'
+              ? 'OCR found this order code in the uploaded purchase order.'
+              : 'Your purchase order matches this order and has been recorded.'
             : 'The uploaded purchase order code does not match this order yet.',
       });
       refreshOrders();
@@ -997,7 +1000,7 @@ export default function MyOrdersPage() {
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Upload the purchase order PDF or image, then we will check whether the PO code matches this order.
+                  Upload a purchase order image for OCR matching. PDFs and unclear images will still use the typed PO code as fallback.
                 </p>
                 <label className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-3">
                   <input
