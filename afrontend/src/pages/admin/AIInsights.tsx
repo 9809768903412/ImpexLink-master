@@ -258,6 +258,11 @@ export default function AIInsightsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!aiSummary.enabled && aiSummary.availabilityMessage && (
+              <div className="rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-900">
+                {aiSummary.availabilityMessage}
+              </div>
+            )}
             <p className="text-sm text-muted-foreground">{aiSummary.summary}</p>
             {aiSummary.recommendations.length > 0 && (
               <div className="grid gap-3 md:grid-cols-3">

@@ -44,6 +44,74 @@ function normalizeJsonObject(text) {
   }
 }
 
+function mapXaiFailure(error) {
+  if (!error) {
+    return {
+      reason: 'unknown',
+      message: 'Grok request did not complete.',
+    };
+  }
+
+  if (!process.env.XAI_API_KEY) {
+    return {
+      reason: 'missing_api_key',
+      message: 'XAI_API_KEY is not set on the backend service.',
+    };
+  }
+
+  if (error.name === 'AbortError') {
+    return {
+      reason: 'timeout',
+      message: 'The Grok request timed out.',
+    };
+  }
+
+  const status = Number(error.status || 0);
+  if (status === 401) {
+    return {
+      reason: 'unauthorized',
+      message: 'The xAI API key was rejected with 401 Unauthorized.',
+    };
+  }
+  if (status === 403) {
+    return {
+      reason: 'forbidden',
+      message: 'The xAI request was forbidden by the provider.',
+    };
+  }
+  if (status === 404) {
+    return {
+      reason: 'not_found',
+      message: 'The xAI endpoint or model could not be found.',
+    };
+  }
+  if (status === 429) {
+    return {
+      reason: 'rate_limited',
+      message: 'The xAI account or key is currently rate limited.',
+    };
+  }
+  if (status >= 500) {
+    return {
+      reason: 'provider_error',
+      message: `xAI returned server error ${status}.`,
+    };
+  }
+
+  const message = String(error.message || '').trim();
+  if (message) {
+    return {
+      reason: 'request_failed',
+      message,
+    };
+  }
+
+  return {
+    reason: 'request_failed',
+    message: 'The Grok request failed for an unknown reason.',
+  };
+}
+
 async function callXaiJson(messages) {
   if (!process.env.XAI_API_KEY) return null;
 
@@ -215,6 +283,10 @@ function buildLocalAnalysis(snapshot) {
     provider: 'local-rules',
     model: XAI_MODEL,
     generatedAt: new Date().toISOString(),
+    availabilityReason: process.env.XAI_API_KEY ? 'fallback_after_error' : 'missing_api_key',
+    availabilityMessage: process.env.XAI_API_KEY
+      ? 'Grok analysis is temporarily unavailable, so local operational rules are being used.'
+      : 'XAI_API_KEY is not configured on the backend service.',
     summary: process.env.XAI_API_KEY
       ? 'Grok analysis is temporarily unavailable, so local operational rules are being used.'
       : 'Grok is not configured yet. Add XAI_API_KEY on Railway to enable AI-written analysis.',
@@ -404,6 +476,8 @@ function sanitizeAnalysis(ai, fallback) {
     provider: ai ? 'xai' : fallback.provider,
     model: XAI_MODEL,
     generatedAt,
+    availabilityReason: ai ? 'available' : fallback.availabilityReason,
+    availabilityMessage: ai ? 'Grok analysis is available.' : fallback.availabilityMessage,
     summary: String(source.summary || fallback.summary),
     recommendations,
     warehouseRisks,
@@ -424,6 +498,7 @@ async function generateAiAnalysis(force = false) {
     const snapshot = await buildSnapshot();
     const fallback = buildLocalAnalysis(snapshot);
     let ai = null;
+    let failure = null;
 
     try {
       ai = await callXaiJson([
@@ -443,10 +518,16 @@ async function generateAiAnalysis(force = false) {
         },
       ]);
     } catch (err) {
+      failure = mapXaiFailure(err);
       console.error('xAI analysis failed:', err.message || err);
     }
 
     const data = sanitizeAnalysis(ai, fallback);
+    if (!ai && failure) {
+      data.availabilityReason = failure.reason;
+      data.availabilityMessage = failure.message;
+      data.summary = `${fallback.summary} Reason: ${failure.message}`;
+    }
     analysisCache = { createdAt: Date.now(), data };
     analysisPromise = null;
     return data;

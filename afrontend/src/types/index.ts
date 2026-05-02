@@ -341,6 +341,8 @@ export interface AiSummary {
   provider: string;
   model: string;
   generatedAt: string;
+  availabilityReason?: string;
+  availabilityMessage?: string;
   summary: string;
   recommendations: AiRecommendation[];
 }
