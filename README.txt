@@ -6,8 +6,10 @@ Impex Engineering deployment notes:
 - Backend env: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `PORT=4000`
 - Backend AI env:
   - `AI_PROVIDER=ollama`
-  - `OLLAMA_BASE_URL=http://127.0.0.1:11434/api`
-  - `OLLAMA_MODEL=gemma3:4b`
+  - `OLLAMA_BASE_URL=http://ollama.railway.internal:11434/api`
+  - `OLLAMA_MODEL=gemma3:270m`
+  - optional `OLLAMA_NUM_CTX=768`
+  - optional `OLLAMA_NUM_PREDICT=320`
   - optional `OLLAMA_API_KEY` if your Ollama endpoint is protected
   - optional `GROQ_API_KEY`, `GROQ_MODEL=openai/gpt-oss-20b`, `GROQ_FALLBACK_MODEL=llama-3.1-8b-instant`
   - optional xAI fallback: `XAI_API_KEY`, `XAI_MODEL=grok-4-fast-non-reasoning`

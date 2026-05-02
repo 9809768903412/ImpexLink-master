@@ -12,7 +12,7 @@ const PROVIDERS = {
   ollama: {
     name: 'Ollama',
     apiKeyEnv: 'OLLAMA_API_KEY',
-    model: process.env.OLLAMA_MODEL || 'gemma3:4b',
+    model: process.env.OLLAMA_MODEL || 'gemma3:270m',
     baseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/api',
   },
   groq: {
@@ -33,6 +33,8 @@ const providerConfig = PROVIDERS[AI_PROVIDER] || PROVIDERS.ollama;
 const AI_MODEL = providerConfig.model;
 const AI_BASE_URL = providerConfig.baseUrl;
 const AI_API_KEY = process.env[providerConfig.apiKeyEnv];
+const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 768);
+const OLLAMA_NUM_PREDICT = Number(process.env.OLLAMA_NUM_PREDICT || 320);
 const AI_FALLBACK_MODEL =
   AI_PROVIDER === 'groq' ? process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant' : null;
 
@@ -170,8 +172,10 @@ async function callProviderJson(messages, modelOverride = AI_MODEL) {
               format: 'json',
               options: {
                 temperature: 0.2,
+                num_ctx: OLLAMA_NUM_CTX,
+                num_predict: OLLAMA_NUM_PREDICT,
               },
-              keep_alive: '5m',
+              keep_alive: '2m',
             }
           : {
               model: modelOverride,
@@ -416,9 +420,10 @@ async function buildSnapshot() {
 }
 
 function compactSnapshot(snapshot, fallback) {
+  const isOllama = AI_PROVIDER === 'ollama';
   const rankedWarehouseRisks = [...fallback.warehouseRisks]
     .sort((a, b) => priorityRank(b.riskLevel) - priorityRank(a.riskLevel))
-    .slice(0, 12)
+    .slice(0, isOllama ? 6 : 12)
     .map((risk) => ({
       itemId: risk.itemId,
       itemName: risk.itemName,
@@ -430,12 +435,12 @@ function compactSnapshot(snapshot, fallback) {
 
   const rankedReorders = [...fallback.reorderSuggestions]
     .sort((a, b) => b.estimatedCost - a.estimatedCost)
-    .slice(0, 10);
+    .slice(0, isOllama ? 6 : 10);
 
   const rankedOrders = snapshot.clientOrders
     .slice()
     .sort((a, b) => toNumber(b.total) - toNumber(a.total))
-    .slice(0, 10)
+    .slice(0, isOllama ? 6 : 10)
     .map((order) => ({
       id: order.clientOrderId,
       orderNumber: order.orderNumber,
@@ -449,7 +454,7 @@ function compactSnapshot(snapshot, fallback) {
 
   const activeDeliveries = snapshot.deliveries
     .filter((delivery) => ['PENDING', 'IN_TRANSIT'].includes(delivery.status))
-    .slice(0, 8)
+    .slice(0, isOllama ? 4 : 8)
     .map((delivery) => ({
       id: delivery.deliveryId,
       drNumber: delivery.drNumber,
@@ -592,13 +597,13 @@ async function generateAiAnalysis(force = false) {
         {
           role: 'system',
           content:
-            'You are the AI operations analyst for Impex Engineering. Return only valid JSON. Analyze inventory, reorder, purchase-order/payment risk, and logistics. Keep outputs concise, actionable, and based only on the provided summarized data.',
+            'You are the AI operations analyst for Impex Engineering. Return only valid JSON. Keep the response short and based only on the summarized data provided.',
         },
         {
           role: 'user',
           content: JSON.stringify({
             task:
-              'Generate every widget on the AI Insights page. Use this exact schema: {summary:string,recommendations:[{title:string,message:string,priority:"low"|"medium"|"high"|"critical",action:string}],warehouseRisks:[{itemId:string,itemName:string,riskLevel:"low"|"medium"|"high"|"critical",reason:string,recommendedAction:string,shelfLifeDays:number,daysInStock:number,daysToExpiry:number}],reorderSuggestions:[{itemId:string,itemName:string,currentQty:number,suggestedQty:number,estimatedCost:number}],fraudAlerts:[{id:string,orderId:string,orderNumber:string,severity:"low"|"medium"|"high",message:string,timestamp:string}],logisticsSnapshot:{activeRoutes:number,stopsToday:number,onTimeRate:number,recommendation:string,dispatches:[{route:string,status:string,note:string}]}}',
+              'Return this JSON schema only: {summary:string,recommendations:[{title:string,message:string,priority:"low"|"medium"|"high"|"critical",action:string}],warehouseRisks:[{itemId:string,itemName:string,riskLevel:"low"|"medium"|"high"|"critical",reason:string,recommendedAction:string,shelfLifeDays:number,daysInStock:number,daysToExpiry:number}],reorderSuggestions:[{itemId:string,itemName:string,currentQty:number,suggestedQty:number,estimatedCost:number}],fraudAlerts:[{id:string,orderId:string,orderNumber:string,severity:"low"|"medium"|"high",message:string,timestamp:string}],logisticsSnapshot:{activeRoutes:number,stopsToday:number,onTimeRate:number,recommendation:string,dispatches:[{route:string,status:string,note:string}]}}. Keep lists short and concise.',
             currency: 'PHP',
             snapshot: compactSnapshot(snapshot, fallback),
           }),
