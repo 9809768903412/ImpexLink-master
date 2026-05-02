@@ -63,6 +63,15 @@ function normalizeJsonObject(text) {
   }
 }
 
+function priorityRank(value) {
+  return {
+    critical: 4,
+    high: 3,
+    medium: 2,
+    low: 1,
+  }[value] || 0;
+}
+
 function mapProviderFailure(error) {
   if (!error) {
     return {
@@ -107,7 +116,7 @@ function mapProviderFailure(error) {
   if (status === 429) {
     return {
       reason: 'rate_limited',
-      message: `The ${providerConfig.name} account or key is currently rate limited.`,
+      message: `The ${providerConfig.name} account or key is currently rate limited. The free-tier project limit may have been reached, or the request may still be too large for the current token budget.`,
     };
   }
   if (status >= 500) {
@@ -148,7 +157,7 @@ async function callProviderJson(messages) {
         messages,
         stream: false,
         temperature: 0.2,
-        max_tokens: 1800,
+        max_tokens: 900,
       }),
       signal: controller.signal,
     });
@@ -379,18 +388,27 @@ async function buildSnapshot() {
 }
 
 function compactSnapshot(snapshot, fallback) {
-  return {
-    inventory: snapshot.products.slice(0, 80).map((p) => ({
-      id: p.productId,
-      name: p.itemName,
-      unit: p.unit,
-      price: toNumber(p.unitPrice),
-      qty: p.qtyOnHand,
-      lowStockThreshold: p.lowStockThreshold,
-      status: p.status,
-      shelfLifeDays: p.shelfLifeDays,
-    })),
-    orders: snapshot.clientOrders.slice(0, 25).map((order) => ({
+  const rankedWarehouseRisks = [...fallback.warehouseRisks]
+    .sort((a, b) => priorityRank(b.riskLevel) - priorityRank(a.riskLevel))
+    .slice(0, 12)
+    .map((risk) => ({
+      itemId: risk.itemId,
+      itemName: risk.itemName,
+      riskLevel: risk.riskLevel,
+      reason: risk.reason,
+      recommendedAction: risk.recommendedAction,
+      daysToExpiry: risk.daysToExpiry,
+    }));
+
+  const rankedReorders = [...fallback.reorderSuggestions]
+    .sort((a, b) => b.estimatedCost - a.estimatedCost)
+    .slice(0, 10);
+
+  const rankedOrders = snapshot.clientOrders
+    .slice()
+    .sort((a, b) => toNumber(b.total) - toNumber(a.total))
+    .slice(0, 10)
+    .map((order) => ({
       id: order.clientOrderId,
       orderNumber: order.orderNumber,
       client: order.client?.clientName,
@@ -398,11 +416,13 @@ function compactSnapshot(snapshot, fallback) {
       status: order.status,
       paymentStatus: order.paymentStatus,
       total: toNumber(order.total),
-      orderDate: order.orderDate,
-      createdAt: order.createdAt,
       itemCount: order.items.length,
-    })),
-    deliveries: snapshot.deliveries.slice(0, 25).map((delivery) => ({
+    }));
+
+  const activeDeliveries = snapshot.deliveries
+    .filter((delivery) => ['PENDING', 'IN_TRANSIT'].includes(delivery.status))
+    .slice(0, 8)
+    .map((delivery) => ({
       id: delivery.deliveryId,
       drNumber: delivery.drNumber,
       client: delivery.clientOrder?.client?.clientName,
@@ -410,14 +430,33 @@ function compactSnapshot(snapshot, fallback) {
       driver: delivery.assignedDeliveryGuy?.fullName,
       status: delivery.status,
       eta: delivery.eta,
-      receivedAt: delivery.receivedAt,
       itemsCount: delivery.itemsCount,
-    })),
+    }));
+
+  const inventorySummary = {
+    totalItems: snapshot.products.length,
+    zeroStock: snapshot.products.filter((p) => p.qtyOnHand === 0).length,
+    lowStock: snapshot.products.filter((p) => p.qtyOnHand <= p.lowStockThreshold).length,
+    totalInventoryValue: Math.round(
+      snapshot.products.reduce((sum, p) => sum + toNumber(p.unitPrice) * toNumber(p.qtyOnHand), 0),
+    ),
+  };
+
+  return {
+    inventorySummary,
+    topWarehouseRisks: rankedWarehouseRisks,
+    topReorderSuggestions: rankedReorders,
+    topOrders: rankedOrders,
+    activeDeliveries,
     localSignals: {
       riskCount: fallback.warehouseRisks.filter((risk) => risk.riskLevel !== 'low').length,
       reorderCount: fallback.reorderSuggestions.length,
       poAlertCount: fallback.fraudAlerts.length,
       activeRoutes: fallback.logisticsSnapshot.activeRoutes,
+      onTimeRate: fallback.logisticsSnapshot.onTimeRate,
+      reorderEstimate: Math.round(
+        fallback.reorderSuggestions.reduce((sum, item) => sum + toNumber(item.estimatedCost), 0),
+      ),
     },
   };
 }
@@ -524,7 +563,7 @@ async function generateAiAnalysis(force = false) {
         {
           role: 'system',
           content:
-            'You are the AI operations analyst for Impex Engineering. Return only valid JSON. Analyze inventory, reorder, purchase-order/payment risk, and logistics. Keep outputs concise and actionable.',
+            'You are the AI operations analyst for Impex Engineering. Return only valid JSON. Analyze inventory, reorder, purchase-order/payment risk, and logistics. Keep outputs concise, actionable, and based only on the provided summarized data.',
         },
         {
           role: 'user',
