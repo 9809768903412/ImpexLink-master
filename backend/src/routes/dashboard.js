@@ -11,15 +11,31 @@ router.get('/stats', async (_req, res, next) => {
     const now = new Date();
     const startCurrent = new Date(now);
     startCurrent.setDate(startCurrent.getDate() - rangeDays);
-    const startPrevious = new Date(startCurrent);
-    startPrevious.setDate(startPrevious.getDate() - rangeDays);
 
-    const products = await prisma.product.findMany();
+    const [products, currentTxns, projects, materialRequests, deliveries] = await Promise.all([
+      prisma.product.findMany({
+        where: { deletedAt: null },
+        select: { productId: true, qtyOnHand: true, lowStockThreshold: true },
+      }),
+      prisma.stockTransaction.findMany({
+        where: { date: { gte: startCurrent, lt: now } },
+        select: { productId: true, qtyChange: true },
+      }),
+      prisma.project.findMany({
+        where: { deletedAt: null },
+        select: { status: true, startDate: true },
+      }),
+      prisma.materialRequest.findMany({
+        where: { deletedAt: null },
+        select: { status: true, createdAt: true },
+      }),
+      prisma.delivery.findMany({
+        where: { deletedAt: null },
+        select: { status: true, createdAt: true },
+      }),
+    ]);
+
     const totalItems = products.reduce((sum, p) => sum + p.qtyOnHand, 0);
-
-    const currentTxns = await prisma.stockTransaction.findMany({
-      where: { date: { gte: startCurrent, lt: now } },
-    });
 
     const qtyChangeByProduct = currentTxns.reduce((acc, txn) => {
       if (!txn.productId) return acc;
@@ -36,29 +52,29 @@ router.get('/stats', async (_req, res, next) => {
 
     const totalItemsDelta = currentTxns.reduce((sum, txn) => sum + txn.qtyChange, 0);
 
-    const activeProjects = await prisma.project.count({
-      where: { status: 'ACTIVE' },
-    });
-    const activeProjectsPrev = await prisma.project.count({
-      where: {
-        status: 'ACTIVE',
-        OR: [{ startDate: null }, { startDate: { lte: startCurrent } }],
-      },
-    });
+    const activeProjects = projects.filter((project) => project.status === 'ACTIVE').length;
+    const activeProjectsPrev = projects.filter(
+      (project) =>
+        project.status === 'ACTIVE' && (!project.startDate || new Date(project.startDate) <= startCurrent)
+    ).length;
 
-    const pendingRequests = await prisma.materialRequest.count({
-      where: { status: { in: ['PENDING', 'PM_APPROVED'] } },
-    });
-    const pendingRequestsPrev = await prisma.materialRequest.count({
-      where: { status: { in: ['PENDING', 'PM_APPROVED'] }, createdAt: { lt: startCurrent } },
-    });
+    const pendingRequestStatuses = new Set(['PENDING', 'PM_APPROVED']);
+    const pendingRequests = materialRequests.filter((request) =>
+      pendingRequestStatuses.has(String(request.status))
+    ).length;
+    const pendingRequestsPrev = materialRequests.filter(
+      (request) =>
+        pendingRequestStatuses.has(String(request.status)) && new Date(request.createdAt) < startCurrent
+    ).length;
 
-    const ongoingDeliveries = await prisma.delivery.count({
-      where: { status: { in: ['PENDING', 'IN_TRANSIT'] } },
-    });
-    const ongoingDeliveriesPrev = await prisma.delivery.count({
-      where: { status: { in: ['PENDING', 'IN_TRANSIT'] }, createdAt: { lt: startCurrent } },
-    });
+    const activeDeliveryStatuses = new Set(['PENDING', 'IN_TRANSIT']);
+    const ongoingDeliveries = deliveries.filter((delivery) =>
+      activeDeliveryStatuses.has(String(delivery.status))
+    ).length;
+    const ongoingDeliveriesPrev = deliveries.filter(
+      (delivery) =>
+        activeDeliveryStatuses.has(String(delivery.status)) && new Date(delivery.createdAt) < startCurrent
+    ).length;
 
     const percentChange = (current, previous) => {
       if (!previous) return current === 0 ? 0 : null;
