@@ -5,9 +5,28 @@ const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAuth);
 
-const XAI_MODEL = process.env.XAI_MODEL || 'grok-4-fast-non-reasoning';
-const XAI_BASE_URL = process.env.XAI_BASE_URL || 'https://api.x.ai/v1';
-const XAI_CACHE_MS = Number(process.env.XAI_CACHE_MS || 10 * 60 * 1000);
+const AI_PROVIDER = String(process.env.AI_PROVIDER || 'groq').toLowerCase();
+const AI_CACHE_MS = Number(process.env.AI_CACHE_MS || process.env.XAI_CACHE_MS || 10 * 60 * 1000);
+
+const PROVIDERS = {
+  groq: {
+    name: 'Groq',
+    apiKeyEnv: 'GROQ_API_KEY',
+    model: process.env.GROQ_MODEL || 'openai/gpt-oss-20b',
+    baseUrl: process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1',
+  },
+  xai: {
+    name: 'xAI',
+    apiKeyEnv: 'XAI_API_KEY',
+    model: process.env.XAI_MODEL || 'grok-4-fast-non-reasoning',
+    baseUrl: process.env.XAI_BASE_URL || 'https://api.x.ai/v1',
+  },
+};
+
+const providerConfig = PROVIDERS[AI_PROVIDER] || PROVIDERS.groq;
+const AI_MODEL = providerConfig.model;
+const AI_BASE_URL = providerConfig.baseUrl;
+const AI_API_KEY = process.env[providerConfig.apiKeyEnv];
 
 let analysisCache = null;
 let analysisPromise = null;
@@ -44,25 +63,25 @@ function normalizeJsonObject(text) {
   }
 }
 
-function mapXaiFailure(error) {
+function mapProviderFailure(error) {
   if (!error) {
     return {
       reason: 'unknown',
-      message: 'Grok request did not complete.',
+      message: `${providerConfig.name} request did not complete.`,
     };
   }
 
-  if (!process.env.XAI_API_KEY) {
+  if (!AI_API_KEY) {
     return {
       reason: 'missing_api_key',
-      message: 'XAI_API_KEY is not set on the backend service.',
+      message: `${providerConfig.apiKeyEnv} is not set on the backend service.`,
     };
   }
 
   if (error.name === 'AbortError') {
     return {
       reason: 'timeout',
-      message: 'The Grok request timed out.',
+      message: `The ${providerConfig.name} request timed out.`,
     };
   }
 
@@ -70,31 +89,31 @@ function mapXaiFailure(error) {
   if (status === 401) {
     return {
       reason: 'unauthorized',
-      message: 'The xAI API key was rejected with 401 Unauthorized.',
+      message: `The ${providerConfig.name} API key was rejected with 401 Unauthorized.`,
     };
   }
   if (status === 403) {
     return {
       reason: 'forbidden',
-      message: 'The xAI request was forbidden by the provider.',
+      message: `The ${providerConfig.name} request was forbidden by the provider.`,
     };
   }
   if (status === 404) {
     return {
       reason: 'not_found',
-      message: 'The xAI endpoint or model could not be found.',
+      message: `The ${providerConfig.name} endpoint or model could not be found.`,
     };
   }
   if (status === 429) {
     return {
       reason: 'rate_limited',
-      message: 'The xAI account or key is currently rate limited.',
+      message: `The ${providerConfig.name} account or key is currently rate limited.`,
     };
   }
   if (status >= 500) {
     return {
       reason: 'provider_error',
-      message: `xAI returned server error ${status}.`,
+      message: `${providerConfig.name} returned server error ${status}.`,
     };
   }
 
@@ -108,24 +127,24 @@ function mapXaiFailure(error) {
 
   return {
     reason: 'request_failed',
-    message: 'The Grok request failed for an unknown reason.',
+    message: `The ${providerConfig.name} request failed for an unknown reason.`,
   };
 }
 
-async function callXaiJson(messages) {
-  if (!process.env.XAI_API_KEY) return null;
+async function callProviderJson(messages) {
+  if (!AI_API_KEY) return null;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   try {
-    const response = await fetch(`${XAI_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: XAI_MODEL,
+        model: AI_MODEL,
         messages,
         stream: false,
         temperature: 0.2,
@@ -136,7 +155,7 @@ async function callXaiJson(messages) {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = payload?.error?.message || payload?.message || `xAI returned ${response.status}`;
+      const detail = payload?.error?.message || payload?.message || `${providerConfig.name} returned ${response.status}`;
       const error = new Error(detail);
       error.status = response.status;
       throw error;
@@ -281,15 +300,15 @@ function buildLocalAnalysis(snapshot) {
   return {
     enabled: false,
     provider: 'local-rules',
-    model: XAI_MODEL,
+    model: AI_MODEL,
     generatedAt: new Date().toISOString(),
-    availabilityReason: process.env.XAI_API_KEY ? 'fallback_after_error' : 'missing_api_key',
-    availabilityMessage: process.env.XAI_API_KEY
-      ? 'Grok analysis is temporarily unavailable, so local operational rules are being used.'
-      : 'XAI_API_KEY is not configured on the backend service.',
-    summary: process.env.XAI_API_KEY
-      ? 'Grok analysis is temporarily unavailable, so local operational rules are being used.'
-      : 'Grok is not configured yet. Add XAI_API_KEY on Railway to enable AI-written analysis.',
+    availabilityReason: AI_API_KEY ? 'fallback_after_error' : 'missing_api_key',
+    availabilityMessage: AI_API_KEY
+      ? `${providerConfig.name} analysis is temporarily unavailable, so local operational rules are being used.`
+      : `${providerConfig.apiKeyEnv} is not configured on the backend service.`,
+    summary: AI_API_KEY
+      ? `${providerConfig.name} analysis is temporarily unavailable, so local operational rules are being used.`
+      : `${providerConfig.name} is not configured yet. Add ${providerConfig.apiKeyEnv} on Railway to enable AI-written analysis.`,
     recommendations: [
       {
         title: critical || high ? 'Prioritize stock risk' : 'Inventory stable',
@@ -473,11 +492,11 @@ function sanitizeAnalysis(ai, fallback) {
 
   return {
     enabled: Boolean(ai),
-    provider: ai ? 'xai' : fallback.provider,
-    model: XAI_MODEL,
+    provider: ai ? AI_PROVIDER : fallback.provider,
+    model: AI_MODEL,
     generatedAt,
     availabilityReason: ai ? 'available' : fallback.availabilityReason,
-    availabilityMessage: ai ? 'Grok analysis is available.' : fallback.availabilityMessage,
+    availabilityMessage: ai ? `${providerConfig.name} analysis is available.` : fallback.availabilityMessage,
     summary: String(source.summary || fallback.summary),
     recommendations,
     warehouseRisks,
@@ -488,7 +507,7 @@ function sanitizeAnalysis(ai, fallback) {
 }
 
 async function generateAiAnalysis(force = false) {
-  if (!force && analysisCache && Date.now() - analysisCache.createdAt < XAI_CACHE_MS) {
+  if (!force && analysisCache && Date.now() - analysisCache.createdAt < AI_CACHE_MS) {
     return analysisCache.data;
   }
 
@@ -501,7 +520,7 @@ async function generateAiAnalysis(force = false) {
     let failure = null;
 
     try {
-      ai = await callXaiJson([
+      ai = await callProviderJson([
         {
           role: 'system',
           content:
@@ -518,8 +537,8 @@ async function generateAiAnalysis(force = false) {
         },
       ]);
     } catch (err) {
-      failure = mapXaiFailure(err);
-      console.error('xAI analysis failed:', err.message || err);
+      failure = mapProviderFailure(err);
+      console.error(`${providerConfig.name} analysis failed:`, err.message || err);
     }
 
     const data = sanitizeAnalysis(ai, fallback);
