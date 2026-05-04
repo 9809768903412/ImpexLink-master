@@ -372,10 +372,41 @@ export default function LogisticsPage() {
         <div className="flex justify-end">
           <Button onClick={() => setIsLalamoveOpen(true)} className="gap-2">
             <Send size={16} />
-            Lalamove Request
+            Third-party Delivery
           </Button>
         </div>
       )}
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Package size={16} />
+            Item Batch Limit
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Max 30 pcs per item per delivery; excess creates another batch.</p>
+        </div>
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Package size={16} />
+            Paint Load
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Paint is estimated at 16kg per can/gallon for delivery planning.</p>
+        </div>
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Truck size={16} />
+            Truck Capacity
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Truck limit is 20 paint cans or 320kg total load.</p>
+        </div>
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Send size={16} />
+            Third-party
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Oversized/heavy loads are tagged for Lalamove or other providers.</p>
+        </div>
+      </div>
 
       <div className="space-y-4">
           <Card>
@@ -467,7 +498,7 @@ export default function LogisticsPage() {
                           <p className="font-medium text-foreground">{delivery.drNumber}</p>
                           <p className="text-sm text-muted-foreground">{delivery.orderNumber}</p>
                           {(delivery.deliveryMethod === 'LALAMOVE' || delivery.thirdPartyProvider) && (
-                            <Badge className="mt-1 bg-violet-100 text-violet-800">Lalamove</Badge>
+                            <Badge className="mt-1 bg-violet-100 text-violet-800">Third-party</Badge>
                           )}
                           {delivery.batchCount && delivery.batchCount > 1 && (
                             <Badge variant="outline" className="mt-1 ml-1">
@@ -723,8 +754,8 @@ export default function LogisticsPage() {
       <Dialog open={isLalamoveOpen} onOpenChange={setIsLalamoveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Lalamove / Third-party Delivery</DialogTitle>
-            <DialogDescription>Create a tracked third-party delivery for oversized or heavy loads.</DialogDescription>
+            <DialogTitle>Third-party Delivery</DialogTitle>
+            <DialogDescription>Create a tracked Lalamove or other third-party delivery for oversized or heavy loads.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">

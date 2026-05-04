@@ -264,6 +264,12 @@ async function ensureDelivery({
   proofOfDeliveryUrl,
   notes,
   itemsCount,
+  deliveryMethod,
+  batchNumber,
+  batchCount,
+  loadKg,
+  thirdPartyProvider,
+  thirdPartyReference,
 }) {
   const existing = await prisma.delivery.findUnique({
     where: { drNumber },
@@ -280,6 +286,12 @@ async function ensureDelivery({
     proofOfDeliveryUrl,
     notes,
     itemsCount,
+    deliveryMethod,
+    batchNumber,
+    batchCount,
+    loadKg,
+    thirdPartyProvider,
+    thirdPartyReference,
   };
 
   if (clientOrderId) {
@@ -713,6 +725,35 @@ async function main() {
       },
     },
     {
+      orderNumber: 'ORD-2026-1105',
+      client: robinsonsClient,
+      project: robinsonsProject,
+      createdBy: robinsonsClientUser?.userId || charlene?.userId || null,
+      status: 'SHIPPED',
+      paymentStatus: 'VERIFIED',
+      createdAt: new Date('2026-04-09T08:30:00.000Z'),
+      updatedAt: new Date('2026-04-09T11:45:00.000Z'),
+      specialInstructions: 'Demo oversized delivery for batching and third-party logistics.',
+      itemSpecs: [
+        { itemName: 'Paint thinner', quantity: 24 },
+        { itemName: 'Acrylon Paint roller 7" w/ handle (White)', quantity: 36 },
+      ],
+      delivery: {
+        drNumber: 'DR-2026-1105-B1',
+        assignedDriverId: driver?.userId || null,
+        status: 'IN_TRANSIT',
+        eta: new Date('2026-04-11'),
+        createdAt: new Date('2026-04-09T12:00:00.000Z'),
+        notes: 'Demo: oversized load split into batches and tagged for third-party delivery.',
+        deliveryMethod: 'LALAMOVE',
+        batchNumber: 1,
+        batchCount: 2,
+        loadKg: 192,
+        thirdPartyProvider: 'Lalamove',
+        thirdPartyReference: 'LALA-DEMO-1105',
+      },
+    },
+    {
       orderNumber: 'ORD-2026-1104',
       client: ayalaClient,
       project: ayalaProject,
@@ -755,6 +796,12 @@ async function main() {
         createdAt: seededOrder.delivery.createdAt,
         notes: seededOrder.delivery.notes,
         itemsCount: seededOrder.itemSpecs.reduce((sum, item) => sum + item.quantity, 0),
+        deliveryMethod: seededOrder.delivery.deliveryMethod,
+        batchNumber: seededOrder.delivery.batchNumber,
+        batchCount: seededOrder.delivery.batchCount,
+        loadKg: seededOrder.delivery.loadKg,
+        thirdPartyProvider: seededOrder.delivery.thirdPartyProvider,
+        thirdPartyReference: seededOrder.delivery.thirdPartyReference,
       });
     }
   }

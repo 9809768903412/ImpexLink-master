@@ -57,7 +57,7 @@ const fallbackLogistics: AiLogisticsSnapshot = {
   activeRoutes: 0,
   stopsToday: 0,
   onTimeRate: 100,
-  recommendation: 'AI logistics analysis will appear after the backend data loads.',
+  recommendation: 'Decision-support logistics signals will appear after the backend data loads.',
   dispatches: [],
 };
 
@@ -197,9 +197,9 @@ export default function AIInsightsPage() {
       .then((response) => {
         setAiAnalysis(response.data);
         toast({
-          title: 'AI Analysis Complete',
+          title: 'Decision Support Refreshed',
           description: response.data.enabled
-            ? `${response.data.provider} refreshed every AI Insights widget using ${response.data.model}.`
+            ? `${response.data.provider} refreshed the advisory signals using ${response.data.model}.`
             : response.data.summary,
         });
       })
@@ -235,12 +235,12 @@ export default function AIInsightsPage() {
             AI Insights
           </h2>
           <p className="text-muted-foreground">
-            Intelligent analysis and recommendations powered by AI
+            AI-assisted decision support for inventory, PO risk, and dispatch planning
           </p>
         </div>
         <Button onClick={handleRefresh} disabled={isRefreshing}>
           <RefreshCw size={16} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh Analysis
+          Refresh Signals
         </Button>
       </div>
 
@@ -249,12 +249,12 @@ export default function AIInsightsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Brain size={20} className="text-primary" />
-              AI Operations Analysis
+              Operations Decision Support
             </CardTitle>
             <CardDescription>
               {aiSummary.enabled
-                ? `Powered by ${aiSummary.provider} / ${aiSummary.model}`
-                : `Fallback analysis / ${aiSummary.model}`}
+                ? `Advisory signals from ${aiSummary.provider} / ${aiSummary.model}`
+                : `Rule-based fallback signals / ${aiSummary.model}`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -290,7 +290,7 @@ export default function AIInsightsPage() {
               <TrendingUp size={20} />
               Usage Pattern Trends
             </CardTitle>
-            <CardDescription>AI-selected consumption patterns for top moving items</CardDescription>
+            <CardDescription>Consumption signals used to support reorder decisions</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -316,7 +316,7 @@ export default function AIInsightsPage() {
               </LineChart>
             </ResponsiveContainer>
             <p className="text-sm text-muted-foreground text-center mt-4">
-              * AI uses these movement signals in the full-page analysis
+              * These movement signals support the full-page advisory summary
             </p>
           </CardContent>
         </Card>
@@ -328,7 +328,7 @@ export default function AIInsightsPage() {
               <AlertTriangle size={20} className="text-yellow-600" />
               Expiring / Risky Stock Alerts
             </CardTitle>
-            <CardDescription>AI-ranked items requiring immediate attention</CardDescription>
+            <CardDescription>Decision-support ranking for items requiring immediate attention</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
@@ -407,7 +407,7 @@ export default function AIInsightsPage() {
               <ShoppingCart size={20} className="text-green-600" />
               Smart Reorder Suggestions
             </CardTitle>
-            <CardDescription>AI-recommended restocking quantities</CardDescription>
+            <CardDescription>Suggested restocking quantities for admin review</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -459,13 +459,13 @@ export default function AIInsightsPage() {
               <Shield size={20} className="text-blue-600" />
               Purchase Order Match Monitor
             </CardTitle>
-            <CardDescription>AI-reviewed purchase order and payment signals</CardDescription>
+            <CardDescription>Advisory review of purchase order and payment signals</CardDescription>
           </CardHeader>
           <CardContent>
             {fraudAlerts.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Shield size={48} className="mx-auto mb-2 opacity-50" />
-                <p>No AI purchase order alerts</p>
+                <p>No purchase order advisory alerts</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -505,7 +505,7 @@ export default function AIInsightsPage() {
               </div>
             )}
             <p className="text-sm text-muted-foreground text-center mt-4">
-              * AI reviews order, payment, and purchase-document signals when data is available
+              * The system reviews order, payment, and purchase-document signals when data is available
             </p>
           </CardContent>
         </Card>
@@ -517,7 +517,7 @@ export default function AIInsightsPage() {
               <MapPin size={20} className="text-primary" />
               Logistics Snapshot
             </CardTitle>
-            <CardDescription>AI-generated dispatch and routing signals</CardDescription>
+            <CardDescription>Dispatch and routing signals for logistics review</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="rounded-lg border p-4 space-y-4">
@@ -536,7 +536,7 @@ export default function AIInsightsPage() {
                 </div>
               </div>
               <div className="rounded-md border p-3">
-                <p className="text-sm font-medium mb-2">AI Dispatch Watchlist</p>
+                <p className="text-sm font-medium mb-2">Dispatch Watchlist</p>
                 <div className="space-y-2 text-sm">
                   {logisticsSnapshot.dispatches.length > 0 ? (
                     logisticsSnapshot.dispatches.map((dispatch) => (
@@ -565,9 +565,9 @@ export default function AIInsightsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>AI Recommendations Summary</CardTitle>
+          <CardTitle>Decision Support Summary</CardTitle>
           <CardDescription>
-            Actionable insights to improve operations
+            Advisory signals to help staff decide the next operational action
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -635,7 +635,7 @@ export default function AIInsightsPage() {
       </Card>
 
       <p className="text-center text-sm text-muted-foreground">
-        * AI insights are generated by the backend and may be cached.
+        * Decision-support signals are advisory, generated by backend rules/AI, and may be cached.
       </p>
     </div>
   );

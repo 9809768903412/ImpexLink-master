@@ -68,6 +68,7 @@ export default function MyOrdersPage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<'genuine' | 'fraud' | null>(null);
+  const [poMatchSource, setPoMatchSource] = useState<'ocr' | 'typed-code' | 'test' | 'none' | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [poCodeInput, setPoCodeInput] = useState('');
   const [useTestVerification, setUseTestVerification] = useState(false);
@@ -140,25 +141,25 @@ export default function MyOrdersPage() {
 
   const buildOrderTimeline = (order: Order, delivery: Delivery | null) => [
     {
-      label: 'Order Placed',
+      label: 'Ordered',
       date: order.createdAt,
       active: true,
       tone: 'bg-green-600',
     },
     {
-      label: 'Order Approved',
+      label: 'Approved',
       date: ['approved', 'processing', 'ready-for-delivery', 'delivered'].includes(order.status) ? order.updatedAt : null,
       active: ['approved', 'processing', 'ready-for-delivery', 'delivered'].includes(order.status),
       tone: 'bg-green-600',
     },
     {
-      label: 'Prepared / Processing',
+      label: 'Processing',
       date: ['processing', 'ready-for-delivery', 'delivered'].includes(order.status) ? order.updatedAt : null,
       active: ['processing', 'ready-for-delivery', 'delivered'].includes(order.status),
       tone: 'bg-blue-600',
     },
     {
-      label: 'Ready for Delivery',
+      label: 'Shipped',
       date: ['ready-for-delivery', 'delivered'].includes(order.status) ? order.updatedAt : null,
       active: ['ready-for-delivery', 'delivered'].includes(order.status),
       tone: 'bg-blue-600',
@@ -194,6 +195,23 @@ export default function MyOrdersPage() {
     }
   };
 
+  const getStatusExplanation = (status: OrderStatus) => {
+    switch (status) {
+      case 'pending':
+        return 'Waiting for admin approval.';
+      case 'approved':
+        return 'Approved and ready for warehouse processing.';
+      case 'processing':
+        return 'Warehouse is preparing your items.';
+      case 'ready-for-delivery':
+        return 'Packed and waiting for dispatch.';
+      case 'delivered':
+        return 'Completed and received.';
+      case 'cancelled':
+        return 'This order was cancelled.';
+    }
+  };
+
   const getPaymentBadge = (status: Order['paymentStatus']) => {
     switch (status) {
       case 'pending':
@@ -226,6 +244,7 @@ export default function MyOrdersPage() {
     setSelectedFileName('');
     setUploadError('');
     setVerificationResult(null);
+    setPoMatchSource(null);
     setIsUploadOpen(true);
   };
 
@@ -283,6 +302,7 @@ export default function MyOrdersPage() {
       } as Order;
       setVerificationResult(poMatchStatus === 'genuine' ? 'genuine' : 'fraud');
       const matchSource = res.data?.poMatch?.matchSource;
+      setPoMatchSource(matchSource || (poMatchStatus === 'genuine' ? 'typed-code' : 'none'));
       setSelectedOrder(updatedOrder);
       setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? updatedOrder : o)));
       setCache(
@@ -480,7 +500,12 @@ export default function MyOrdersPage() {
               <TableCell className="text-right font-medium">
                 ₱{order.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
               </TableCell>
-              <TableCell>{getStatusBadge(order.status)}</TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  {getStatusBadge(order.status)}
+                  <p className="text-xs text-muted-foreground">{getStatusExplanation(order.status)}</p>
+                </div>
+              </TableCell>
               <TableCell>{getPaymentBadge(order.paymentStatus)}</TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">
@@ -532,6 +557,7 @@ export default function MyOrdersPage() {
           <TableHead>Project</TableHead>
           <TableHead>ETA</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Flow</TableHead>
           <TableHead className="text-right">Track</TableHead>
         </TableRow>
       </TableHeader>
@@ -553,6 +579,11 @@ export default function MyOrdersPage() {
               <TableCell>{delivery.projectName || '-'}</TableCell>
               <TableCell>{delivery.eta ? new Date(delivery.eta).toLocaleDateString('en-PH') : '—'}</TableCell>
               <TableCell>{getDeliveryBadge(delivery.status)}</TableCell>
+              <TableCell>
+                <p className="text-xs text-muted-foreground">
+                  Ordered → Approved → Processing → Shipped → Delivered
+                </p>
+              </TableCell>
               <TableCell className="text-right">
                 <Button
                   variant="outline"
@@ -569,7 +600,7 @@ export default function MyOrdersPage() {
           ))
         ) : (
           <TableRow>
-            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
               No deliveries found
             </TableCell>
           </TableRow>
@@ -733,7 +764,12 @@ export default function MyOrdersPage() {
               <DialogTitle className="text-2xl">
                 {selectedOrder?.orderNumber}
               </DialogTitle>
-              {selectedOrder && getStatusBadge(selectedOrder.status)}
+              {selectedOrder && (
+                <div className="text-right space-y-1">
+                  {getStatusBadge(selectedOrder.status)}
+                  <p className="text-xs text-muted-foreground">{getStatusExplanation(selectedOrder.status)}</p>
+                </div>
+              )}
             </div>
             <DialogDescription>
               Placed on {selectedOrder && new Date(selectedOrder.createdAt).toLocaleDateString('en-PH')}
@@ -777,6 +813,9 @@ export default function MyOrdersPage() {
                     <span className={selectedOrder.status === 'ready-for-delivery' ? 'font-medium text-foreground' : ''}>Ready</span>
                     <span className={selectedOrder.status === 'delivered' ? 'font-medium text-foreground' : ''}>Delivered</span>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    {getStatusExplanation(selectedOrder.status)}
+                  </p>
                 </div>
 
                 <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
@@ -969,7 +1008,7 @@ export default function MyOrdersPage() {
               Upload Purchase Order
             </DialogTitle>
             <DialogDescription>
-              Upload the client purchase order and match its PO code to this order
+              OCR checks uploaded PO images first; the typed PO code is used as fallback.
             </DialogDescription>
           </DialogHeader>
 
@@ -1000,7 +1039,7 @@ export default function MyOrdersPage() {
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Upload a purchase order image for OCR matching. PDFs and unclear images will still use the typed PO code as fallback.
+                  Upload a PO image for OCR match. If OCR cannot read it, the typed PO code below is checked instead.
                 </p>
                 <label className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-3">
                   <input
@@ -1069,12 +1108,20 @@ export default function MyOrdersPage() {
                   )}
                 </div>
                 <p className={cn('text-lg font-bold', verificationResult === 'genuine' ? 'text-success' : 'text-destructive')}>
-                  {verificationResult === 'genuine' ? 'PO Code Matched' : 'PO Code Mismatch'}
+                  {verificationResult === 'genuine'
+                    ? poMatchSource === 'ocr'
+                      ? 'OCR Match'
+                      : poMatchSource === 'typed-code'
+                      ? 'Typed-Code Match'
+                      : 'PO Match'
+                    : 'Mismatch'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
                   {verificationResult === 'genuine'
-                    ? 'Your uploaded purchase order matches this order.'
-                    : 'Please review the PO code and upload the correct purchase order file.'}
+                    ? poMatchSource === 'ocr'
+                      ? 'The expected order code was found in the uploaded image.'
+                      : 'The typed PO code matched the expected order code.'
+                    : 'OCR and typed-code checks did not match this order. Please review the PO file/code.'}
                 </p>
               </div>
             )}
@@ -1084,6 +1131,7 @@ export default function MyOrdersPage() {
             <Button variant="outline" onClick={() => {
               setIsUploadOpen(false);
               setVerificationResult(null);
+              setPoMatchSource(null);
             }}>
               Close
             </Button>

@@ -337,6 +337,10 @@ export default function PlaceOrderPage() {
     setOrderNumber(newOrderNumber);
     setIsCartOpen(false);
     setIsConfirmationOpen(true);
+    toast({
+      title: 'Order submitted',
+      description: 'Next step: wait for admin approval, then upload your purchase order when it is available.',
+    });
   };
 
   const handleRequestProject = async () => {
@@ -511,6 +515,9 @@ export default function PlaceOrderPage() {
                         <p className="text-xs text-muted-foreground">
                           Net: ₱{line.net.toLocaleString('en-PH', { minimumFractionDigits: 2 })} • VAT: ₱
                           {line.vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-xs font-medium text-foreground/80">
+                          Available stock: {cartItem.item.qtyOnHand.toLocaleString('en-PH')} {cartItem.item.unit}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -914,7 +921,7 @@ export default function PlaceOrderPage() {
 
             <div className="p-3 bg-info/10 rounded-lg">
               <p className="text-sm text-info">
-                You'll receive a confirmation email and can track your order status in "My Orders".
+                Next step: wait for admin approval. Once your PO is available, upload it from "My Orders" for OCR matching.
               </p>
             </div>
           </div>
