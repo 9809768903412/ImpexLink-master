@@ -3,7 +3,15 @@ import { Package, FileText, Download, RotateCcw, Upload, Clock, CheckCircle, Tru
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -22,7 +30,6 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Delivery, Order, OrderStatus, Project } from '@/types';
 import { cn } from '@/lib/utils';
@@ -35,12 +42,10 @@ import { printHtml } from '@/utils/print';
 import { useResource } from '@/hooks/use-resource';
 import PaginationNav from '@/components/PaginationNav';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
-import { buildMockPastOrders } from '@/mocks/pastOrders';
 import { ProductImage } from '@/components/ProductImage';
 import { formatPesoAmount } from '@/lib/currency';
 
 export default function MyOrdersPage() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
@@ -49,16 +54,16 @@ export default function MyOrdersPage() {
   const [ordersTotal, setOrdersTotal] = useState(0);
   const [ordersPage, setOrdersPage] = useState(1);
   const [ordersPageSize] = useState(10);
-  const [pastOrdersPage, setPastOrdersPage] = useState(1);
-  const [pastOrdersPageSize] = useState(6);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'my-orders' | 'my-deliveries' | 'past-orders'>(
-    searchParams.get('tab') === 'my-deliveries'
-      ? 'my-deliveries'
-      : searchParams.get('tab') === 'past-orders'
-        ? 'past-orders'
-        : 'my-orders'
+  const [activeTab, setActiveTab] = useState<'my-orders' | 'my-deliveries'>(
+    searchParams.get('tab') === 'my-deliveries' ? 'my-deliveries' : 'my-orders'
   );
+  const [orderSearchTerm, setOrderSearchTerm] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>(
+    searchParams.get('tab') === 'past-orders' ? 'delivered' : 'all'
+  );
+  const [deliverySearchTerm, setDeliverySearchTerm] = useState('');
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all');
   const { data: projects } = useResource<Project[]>('/projects', []);
   const { data: deliveries, reload: reloadDeliveries } = useResource<Delivery[]>('/deliveries', []);
 
@@ -77,32 +82,21 @@ export default function MyOrdersPage() {
 
   // Filter orders for current client's company
   const clientOrders = orders;
-  const pastOrders = useMemo(
-    () =>
-      [...clientOrders]
-        .filter((order) => order.status === 'delivered')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [clientOrders]
-  );
-  const mockPastOrders = useMemo(
-    () =>
-      buildMockPastOrders({
-        clientId: user?.clientId || user?.id || 'mock-client',
-        clientName: user?.companyName || user?.name || 'Client Account',
-        createdBy: user?.id || 'mock-user',
-      }),
-    [user?.clientId, user?.companyName, user?.id, user?.name]
-  );
-  const showingMockPastOrders = pastOrders.length === 0;
-  const visiblePastOrders = showingMockPastOrders ? mockPastOrders : pastOrders;
-  const totalPastOrdersPages = Math.max(1, Math.ceil(visiblePastOrders.length / pastOrdersPageSize));
-  const pagedPastOrders = visiblePastOrders.slice(
-    (pastOrdersPage - 1) * pastOrdersPageSize,
-    pastOrdersPage * pastOrdersPageSize
-  );
   const myDeliveries = deliveries
-    .filter((delivery) => clientOrders.some((order) => order.id === delivery.orderId))
     .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
+  const filteredDeliveries = useMemo(() => {
+    const query = deliverySearchTerm.trim().toLowerCase();
+    return myDeliveries.filter((delivery) => {
+      const matchesSearch =
+        !query ||
+        delivery.drNumber.toLowerCase().includes(query) ||
+        delivery.orderNumber.toLowerCase().includes(query) ||
+        (delivery.projectName || '').toLowerCase().includes(query) ||
+        delivery.items.some((item) => item.itemName.toLowerCase().includes(query));
+      const matchesStatus = deliveryStatusFilter === 'all' || delivery.status === deliveryStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [deliverySearchTerm, deliveryStatusFilter, myDeliveries]);
   const projectStatusById = projects.reduce<Record<string, Project['status']>>((acc, project) => {
     acc[project.id] = project.status;
     return acc;
@@ -386,9 +380,17 @@ export default function MyOrdersPage() {
   const refreshOrders = useCallback(async () => {
     setOrdersLoading(true);
     try {
+      const statusParam =
+        orderStatusFilter === 'all'
+          ? undefined
+          : orderStatusFilter === 'ready-for-delivery'
+            ? 'SHIPPED'
+            : orderStatusFilter.toUpperCase();
       const params: Record<string, string | number | undefined> = {
         page: ordersPage,
         pageSize: ordersPageSize,
+        q: orderSearchTerm.trim() || undefined,
+        status: statusParam,
       };
       const response = await apiClient.get('/orders', { params });
       const payload = response.data;
@@ -407,7 +409,7 @@ export default function MyOrdersPage() {
     } finally {
       setOrdersLoading(false);
     }
-  }, [activeTab, ordersPage, ordersPageSize, user?.id, user?.clientId]);
+  }, [orderSearchTerm, orderStatusFilter, ordersPage, ordersPageSize]);
 
   useEffect(() => {
     refreshOrders();
@@ -425,19 +427,15 @@ export default function MyOrdersPage() {
     const requestedTab =
       searchParams.get('tab') === 'my-deliveries'
         ? 'my-deliveries'
-        : searchParams.get('tab') === 'past-orders'
-          ? 'past-orders'
-          : 'my-orders';
+        : 'my-orders';
     if (requestedTab !== activeTab) {
       setActiveTab(requestedTab);
     }
   }, [activeTab, searchParams]);
 
-  const getPastOrderSummary = (order: Order) =>
-    order.items
-      .slice(0, 3)
-      .map((item) => `${item.itemName} x ${item.quantity}`)
-      .join(', ');
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [orderSearchTerm, orderStatusFilter]);
 
   useEffect(() => {
     if (!orderId || orders.length === 0) return;
@@ -559,51 +557,6 @@ export default function MyOrdersPage() {
     </Table>
   );
 
-  const PastOrdersList = ({ data }: { data: Order[] }) => (
-    <div className="space-y-3">
-      {data.length > 0 ? (
-        data.map((order) => (
-          <button
-            key={order.id}
-            type="button"
-            onClick={() => handleRowClick(order)}
-            className="w-full rounded-2xl border bg-background p-4 text-left transition-colors hover:bg-muted/50"
-          >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex min-w-0 gap-3">
-                <ProductImage name={order.items[0]?.itemName} className="h-16 w-16 shrink-0 rounded-lg p-1.5" />
-                <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold">{order.orderNumber}</p>
-                  <span className="text-sm text-muted-foreground">
-                    {new Date(order.createdAt).toLocaleDateString('en-PH')}
-                  </span>
-                  {getStatusBadge(order.status)}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {order.projectName || 'No project assigned'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {getPastOrderSummary(order)}
-                  {order.items.length > 3 ? `, +${order.items.length - 3} more` : ''}
-                </p>
-                <p className="text-sm font-medium">
-                  ₱{order.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                </p>
-                </div>
-              </div>
-              <Badge variant="outline" className="w-fit">Open details</Badge>
-            </div>
-          </button>
-        ))
-      ) : (
-        <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-          No completed orders yet.
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -623,21 +576,42 @@ export default function MyOrdersPage() {
         const nextTab = value as typeof activeTab;
         setActiveTab(nextTab);
         setOrdersPage(1);
-        setPastOrdersPage(1);
         setSearchParams(nextTab === 'my-orders' ? {} : { tab: nextTab });
       }} className="space-y-4">
         <TabsList>
           <TabsTrigger value="my-orders">My Orders</TabsTrigger>
           <TabsTrigger value="my-deliveries">My Deliveries</TabsTrigger>
-          <TabsTrigger value="past-orders">Past Orders</TabsTrigger>
         </TabsList>
 
         <TabsContent value="my-orders">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Your Orders</CardTitle>
-              <CardDescription>Orders you've personally placed</CardDescription>
+              <CardDescription>Filter by Delivered to review completed orders and reorder from the details modal.</CardDescription>
             </CardHeader>
+            <CardContent className="border-b p-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+                <Input
+                  value={orderSearchTerm}
+                  onChange={(event) => setOrderSearchTerm(event.target.value)}
+                  placeholder="Search order number, client, or project"
+                />
+                <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="processing">Processing</SelectItem>
+                    <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>
+                    <SelectItem value="delivered">Delivered</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
             <CardContent className="p-0">
               <OrderTable data={clientOrders} />
             </CardContent>
@@ -658,43 +632,32 @@ export default function MyOrdersPage() {
               <CardTitle className="text-lg">My Deliveries</CardTitle>
               <CardDescription>Deliveries linked to your orders</CardDescription>
             </CardHeader>
-            <CardContent className="p-0">
-              <DeliveryTable data={myDeliveries} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="past-orders">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle className="text-lg">Past Orders</CardTitle>
-                {showingMockPastOrders ? (
-                  <Badge variant="outline" className="border-[#C0392B]/20 bg-[#fff7f4] text-[#C0392B]">
-                    Preview Data
-                  </Badge>
-                ) : null}
+            <CardContent className="border-b p-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+                <Input
+                  value={deliverySearchTerm}
+                  onChange={(event) => setDeliverySearchTerm(event.target.value)}
+                  placeholder="Search DR, order, project, or item"
+                />
+                <Select value={deliveryStatusFilter} onValueChange={setDeliveryStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Delivery status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="pending">Pending Dispatch</SelectItem>
+                    <SelectItem value="in-transit">In Transit</SelectItem>
+                    <SelectItem value="delivered">Delivered</SelectItem>
+                    <SelectItem value="delayed">Delayed</SelectItem>
+                    <SelectItem value="return-pending">Return Pending</SelectItem>
+                    <SelectItem value="return-rejected">Return Rejected</SelectItem>
+                    <SelectItem value="returned">Returned</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <CardDescription>
-                {showingMockPastOrders
-                  ? 'Preview of completed orders you can quickly repeat.'
-                  : 'Completed orders you can quickly repeat.'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <PastOrdersList data={pagedPastOrders} />
-              {visiblePastOrders.length > pastOrdersPageSize ? (
-                <div className="flex flex-col items-center gap-3">
-                  <p className="text-sm text-muted-foreground">
-                    Showing {(pastOrdersPage - 1) * pastOrdersPageSize + 1}-{Math.min(pastOrdersPage * pastOrdersPageSize, visiblePastOrders.length)} of {visiblePastOrders.length} past orders
-                  </p>
-                  <PaginationNav
-                    page={pastOrdersPage}
-                    totalPages={totalPastOrdersPages}
-                    onPageChange={setPastOrdersPage}
-                  />
-                </div>
-              ) : null}
+            </CardContent>
+            <CardContent className="p-0">
+              <DeliveryTable data={filteredDeliveries} />
             </CardContent>
           </Card>
         </TabsContent>

@@ -287,6 +287,7 @@ router.get('/', async (req, res, next) => {
               OR: [
                 { orderNumber: { contains: q, mode: 'insensitive' } },
                 { client: { clientName: { contains: q, mode: 'insensitive' } } },
+                { project: { projectName: { contains: q, mode: 'insensitive' } } },
               ],
             }
           : {},
