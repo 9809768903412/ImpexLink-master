@@ -50,6 +50,7 @@ import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
 import { useSearchParams } from 'react-router-dom';
+import { toPublicFileUrl } from '@/lib/files';
 
 const statusColors: Record<OrderStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
@@ -774,7 +775,7 @@ export default function ClientOrdersPage() {
                   {(selectedOrder.poDocumentUrl || selectedOrder.chequeImage || '').toLowerCase().endsWith('.pdf') ? (
                     <a
                       className="text-sm text-primary underline"
-                      href={selectedOrder.poDocumentUrl || selectedOrder.chequeImage}
+                      href={toPublicFileUrl(selectedOrder.poDocumentUrl || selectedOrder.chequeImage)}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -782,7 +783,7 @@ export default function ClientOrdersPage() {
                     </a>
                   ) : (
                     <img
-                      src={selectedOrder.poDocumentUrl || selectedOrder.chequeImage}
+                      src={toPublicFileUrl(selectedOrder.poDocumentUrl || selectedOrder.chequeImage)}
                       alt="Uploaded purchase order"
                       className="w-full max-w-md rounded border"
                     />

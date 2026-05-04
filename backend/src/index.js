@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const morgan = require('morgan');
 const { blockDemoWrites } = require('./middleware/demoGuard');
@@ -37,7 +38,8 @@ const corsOrigin = process.env.CORS_ORIGIN
 
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/pending-proofs', express.static(path.join(__dirname, '..', 'storage', 'pending-proofs')));
 app.use(morgan('dev'));
 app.use(blockDemoWrites);
 

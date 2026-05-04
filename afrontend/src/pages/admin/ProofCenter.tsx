@@ -25,6 +25,7 @@ import { apiClient } from '@/api/client';
 import PaginationNav from '@/components/PaginationNav';
 import { Skeleton } from '@/components/ui/skeleton';
 import { downloadCsv } from '@/utils/csv';
+import { toPublicFileUrl } from '@/lib/files';
 
 type ProofType = 'registration' | 'payment' | 'delivery';
 
@@ -69,14 +70,6 @@ function statusClass(status: string) {
     return 'bg-red-100 text-red-800 hover:bg-red-100';
   }
   return 'bg-slate-100 text-slate-800 hover:bg-slate-100';
-}
-
-function toPublicFileUrl(fileUrl: string) {
-  if (!fileUrl) return '#';
-  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) return fileUrl;
-  const apiUrl = import.meta.env.VITE_API_URL || '';
-  const base = apiUrl.replace(/\/api\/?$/, '');
-  return `${base}${fileUrl}`;
 }
 
 export default function ProofCenterPage() {

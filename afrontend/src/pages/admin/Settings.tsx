@@ -44,6 +44,7 @@ import {
   canManageUsers,
   canViewCompanySettings,
 } from '@/lib/roles';
+import { toPublicFileUrl } from '@/lib/files';
 
 // TODO: Replace with real data
 export default function SettingsPage() {
@@ -122,9 +123,6 @@ export default function SettingsPage() {
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userStatusFilter, setUserStatusFilter] = useState('all');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const baseUrl = import.meta.env.VITE_API_URL
-    ? import.meta.env.VITE_API_URL.replace(/\/api$/, '')
-    : '';
   const pendingClients = users.filter((u) => u.role === 'client' && String(u.status).toLowerCase() !== 'active');
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = users.filter((u) => {
@@ -876,7 +874,7 @@ export default function SettingsPage() {
                           <div className="flex items-center gap-2">
                             {u.proofDocUrl && (
                               <Button variant="outline" size="sm" asChild>
-                                <a href={`${baseUrl}${u.proofDocUrl}`} target="_blank" rel="noreferrer">
+                                <a href={toPublicFileUrl(u.proofDocUrl)} target="_blank" rel="noreferrer">
                                   View Proof
                                 </a>
                               </Button>

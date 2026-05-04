@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Truck, Clock3, Upload, Route, Package, UserRound } from 'lucide-react';
 import type { Delivery, DeliveryStatus } from '@/types';
+import { toPublicFileUrl } from '@/lib/files';
 
 const STATUS_STYLES: Record<DeliveryStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -199,7 +200,7 @@ export default function LiveTrackingDialog({
               <CardContent className="space-y-3 text-sm">
                 {delivery.proofOfDelivery ? (
                   <a
-                    href={delivery.proofOfDelivery}
+                    href={toPublicFileUrl(delivery.proofOfDelivery)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-2 text-primary underline-offset-4 hover:underline"
