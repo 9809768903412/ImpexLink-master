@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Polyline, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,6 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Truck, Clock3, Upload, Route, Package, UserRound } from 'lucide-react';
 import type { Delivery, DeliveryStatus } from '@/types';
 
@@ -54,6 +61,26 @@ export default function LiveTrackingDialog({
   const [notes, setNotes] = useState('');
   const route = useMemo(() => (delivery ? getMockRoute(delivery) : BASE_ROUTE), [delivery]);
   const marker = route[route.length - 1];
+  const receivedByOptions = useMemo(() => {
+    if (!delivery) return ['Client Representative'];
+    return Array.from(
+      new Set(
+        [
+          delivery.receivedBy,
+          delivery.clientName,
+          delivery.projectName ? `${delivery.projectName} Site Office` : null,
+          'Client Representative',
+          'Site Engineer',
+          'Receiving Staff',
+        ].filter(Boolean) as string[],
+      ),
+    );
+  }, [delivery]);
+
+  useEffect(() => {
+    setReceivedBy(delivery?.receivedBy || '');
+    setNotes(delivery?.notes || '');
+  }, [delivery?.id, delivery?.receivedBy, delivery?.notes]);
 
   const handleProofUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -202,7 +229,18 @@ export default function LiveTrackingDialog({
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Received By</Label>
-                      <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder="Client representative name" />
+                      <Select value={receivedBy} onValueChange={setReceivedBy}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select receiver" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {receivedByOptions.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Driver / Delivery Notes</Label>

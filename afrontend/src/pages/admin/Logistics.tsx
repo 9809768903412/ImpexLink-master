@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -97,6 +97,7 @@ export default function LogisticsPage() {
     loadKg: '',
     notes: '',
   });
+  const thirdPartyProviders = ['Lalamove', 'Transportify', 'Grab Express', 'Toktok', 'Other third-party courier'];
   const [deliveryLogs, setDeliveryLogs] = useState<{ id: string; timestamp: string; action: string; details: string }[]>([]);
   const { data: orders } = useResource<Order[]>('/orders', []);
   const { data: company } = useResource('/company', {
@@ -122,6 +123,21 @@ export default function LogisticsPage() {
   const deliveriesPageEnd = deliveriesPageStart + deliveriesPageSize;
   const pagedDeliveries = filteredDeliveries.slice(deliveriesPageStart, deliveriesPageEnd);
   const totalFilteredDeliveries = filteredDeliveries.length;
+  const receivedByOptions = useMemo(() => {
+    if (!selectedDelivery) return ['Client Representative'];
+    return Array.from(
+      new Set(
+        [
+          selectedDelivery.receivedBy,
+          selectedDelivery.clientName,
+          selectedDelivery.projectName ? `${selectedDelivery.projectName} Site Office` : null,
+          'Client Representative',
+          'Site Engineer',
+          'Receiving Staff',
+        ].filter(Boolean) as string[],
+      ),
+    );
+  }, [selectedDelivery]);
 
   const fetchDeliveries = async () => {
     setDeliveriesLoading(true);
@@ -340,6 +356,12 @@ export default function LogisticsPage() {
     setIsReturnOpen(true);
   };
 
+  const openDeliveryDetails = (delivery: Delivery) => {
+    setSelectedDelivery(delivery);
+    setReceivedBy(delivery.receivedBy || '');
+    setDeliveryNotes(delivery.notes || '');
+  };
+
   const handleRejectReturn = (delivery: Delivery) => {
     setSelectedDelivery(delivery);
     setReturnRejectReason('');
@@ -548,7 +570,7 @@ export default function LogisticsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setSelectedDelivery(delivery)}
+                            onClick={() => openDeliveryDetails(delivery)}
                           >
                             <Eye size={16} />
                           </Button>
@@ -572,7 +594,16 @@ export default function LogisticsPage() {
       </div>
 
       {/* Delivery Detail Dialog */}
-      <Dialog open={!!selectedDelivery} onOpenChange={() => setSelectedDelivery(null)}>
+      <Dialog
+        open={!!selectedDelivery}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedDelivery(null);
+            setReceivedBy('');
+            setDeliveryNotes('');
+          }
+        }}
+      >
         <DialogContent className="max-w-3xl w-full max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedDelivery?.drNumber}</DialogTitle>
@@ -657,11 +688,18 @@ export default function LogisticsPage() {
               {canManage && selectedDelivery.status === 'in-transit' && (
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
                   <Label>Confirm Delivery</Label>
-                  <Input
-                    placeholder="Received by (name)"
-                    value={receivedBy}
-                    onChange={(e) => setReceivedBy(e.target.value)}
-                  />
+                  <Select value={receivedBy} onValueChange={setReceivedBy}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select receiver" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {receivedByOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Textarea
                     placeholder="Delivery notes..."
                     value={deliveryNotes}
@@ -776,7 +814,18 @@ export default function LogisticsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Provider</Label>
-                <Input value={lalamoveForm.provider} onChange={(e) => setLalamoveForm((prev) => ({ ...prev, provider: e.target.value }))} />
+                <Select value={lalamoveForm.provider} onValueChange={(value) => setLalamoveForm((prev) => ({ ...prev, provider: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {thirdPartyProviders.map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        {provider}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Booking / Reference</Label>
