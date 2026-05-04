@@ -899,6 +899,81 @@ async function main() {
     }
   }
 
+  const seededOcrPoOrders = [
+    {
+      orderNumber: '25-0178',
+      client: ateneoClient,
+      project: ateneoProject,
+      createdBy: ateneoClientUser?.userId || myra?.userId || null,
+      status: 'PROCESSING',
+      paymentStatus: 'VERIFIED',
+      paymentProofUrl: '/uploads/payments/po-25-0178-real.pdf',
+      createdAt: new Date('2026-05-04T14:34:00.000Z'),
+      updatedAt: new Date('2026-05-04T14:45:00.000Z'),
+      specialInstructions: 'OCR demo order using the real purchase order paper. Expected match: PO 25-0178.',
+      itemSpecs: [
+        { itemName: 'Epoxy injection', quantity: 10 },
+      ],
+    },
+    {
+      orderNumber: '25-0497',
+      client: robinsonsClient,
+      project: robinsonsProject,
+      createdBy: robinsonsClientUser?.userId || charlene?.userId || null,
+      status: 'PROCESSING',
+      paymentStatus: 'VERIFIED',
+      paymentProofUrl: '/uploads/payments/po-25-0497-real.pdf',
+      createdAt: new Date('2026-05-04T14:53:00.000Z'),
+      updatedAt: new Date('2026-05-04T15:06:00.000Z'),
+      specialInstructions: 'OCR demo order using the real purchase order paper. Expected match: PO 25-0497.',
+      itemSpecs: [
+        { itemName: 'Paint brush 1-1/2"', quantity: 2 },
+        { itemName: 'Paint brush 2"', quantity: 5 },
+        { itemName: 'Paint brush 1"', quantity: 4 },
+        { itemName: 'Sand paper #100', quantity: 30 },
+        { itemName: 'Sand paper #150', quantity: 30 },
+        { itemName: 'Acrylon Paint roller 7" w/ handle (White)', quantity: 30 },
+        { itemName: 'Lacquer thinner', quantity: 10 },
+        { itemName: 'Paint thinner', quantity: 5 },
+      ],
+    },
+  ];
+
+  for (const seededOrder of seededOcrPoOrders) {
+    const order = await ensureClientOrder({
+      orderNumber: seededOrder.orderNumber,
+      clientId: seededOrder.client.clientId,
+      projectId: seededOrder.project.projectId,
+      createdBy: seededOrder.createdBy,
+      status: seededOrder.status,
+      paymentStatus: seededOrder.paymentStatus,
+      paymentProofUrl: seededOrder.paymentProofUrl,
+      createdAt: seededOrder.createdAt,
+      updatedAt: seededOrder.updatedAt,
+      orderDate: seededOrder.createdAt,
+      specialInstructions: seededOrder.specialInstructions,
+      poMatchStatus: 'ocr-match',
+      itemSpecs: seededOrder.itemSpecs,
+    });
+
+    await ensureAuditLog({
+      userId: seededOrder.createdBy,
+      action: 'VERIFY',
+      target: 'ClientOrder',
+      details: `Demo OCR matched uploaded purchase order ${seededOrder.orderNumber} from real PO paper.`,
+      timestamp: seededOrder.updatedAt,
+    });
+
+    await ensureNotification({
+      userId: admin?.userId || null,
+      type: 'PAYMENT_VERIFIED',
+      title: 'OCR demo PO matched',
+      message: `Real PO paper matched client order ${order.orderNumber}.`,
+      link: `/admin/orders?orderId=${order.clientOrderId}`,
+      createdAt: seededOrder.updatedAt,
+    });
+  }
+
   const proofUser = ateneoClientUser || robinsonsClientUser || ayalaClientUser;
   if (proofUser) {
     await prisma.user.update({
