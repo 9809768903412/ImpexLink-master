@@ -1,4 +1,6 @@
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
 const prisma = require('../src/utils/prisma');
 
 async function ensureRole(roleName) {
@@ -201,12 +203,22 @@ async function ensureClientOrder({
   orderDate,
   specialInstructions,
   poMatchStatus = 'genuine',
+  paymentProofUrl,
   itemSpecs,
 }) {
   const existing = await prisma.clientOrder.findUnique({
     where: { orderNumber },
   });
-  if (existing) return existing;
+  if (existing) {
+    if (paymentProofUrl && existing.paymentProofUrl !== paymentProofUrl) {
+      return prisma.clientOrder.update({
+        where: { clientOrderId: existing.clientOrderId },
+        data: { paymentProofUrl },
+        include: { items: true },
+      });
+    }
+    return existing;
+  }
 
   const products = await Promise.all(
     itemSpecs.map(async (item) => {
@@ -235,6 +247,7 @@ async function ensureClientOrder({
       status,
       paymentStatus,
       chequeVerification: poMatchStatus,
+      paymentProofUrl,
       orderDate: orderDate || createdAt,
       createdAt,
       updatedAt,
@@ -274,7 +287,15 @@ async function ensureDelivery({
   const existing = await prisma.delivery.findUnique({
     where: { drNumber },
   });
-  if (existing) return existing;
+  if (existing) {
+    if (proofOfDeliveryUrl && existing.proofOfDeliveryUrl !== proofOfDeliveryUrl) {
+      return prisma.delivery.update({
+        where: { deliveryId: existing.deliveryId },
+        data: { proofOfDeliveryUrl },
+      });
+    }
+    return existing;
+  }
 
   const data = {
     drNumber,
@@ -311,7 +332,73 @@ async function ensureDelivery({
   });
 }
 
+function ensureDemoFiles() {
+  const pdf = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 76 >>
+stream
+BT /F1 18 Tf 72 720 Td (Impex Engineering Demo Proof Document) Tj ET
+endstream
+endobj
+xref
+0 5
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000204 00000 n
+trailer
+<< /Root 1 0 R /Size 5 >>
+startxref
+330
+%%EOF
+`;
+  const files = [
+    'uploads/pod/mock-ord-2026-1008.pdf',
+    'uploads/pod/mock-ord-2026-0972.pdf',
+    'uploads/pod/mock-ord-2026-0915.pdf',
+    'uploads/payments/demo-ord-2026-1102.pdf',
+    'uploads/payments/demo-ord-2026-1103.pdf',
+    'uploads/payments/demo-ord-2026-1105.pdf',
+    'uploads/proofs/demo-client-proof.pdf',
+  ];
+  for (const relative of files) {
+    const absolute = path.join(__dirname, '..', relative);
+    fs.mkdirSync(path.dirname(absolute), { recursive: true });
+    if (!fs.existsSync(absolute)) {
+      fs.writeFileSync(absolute, pdf);
+    }
+  }
+}
+
+async function ensureAuditLog({ userId, action, target, details, timestamp }) {
+  const existing = await prisma.auditLog.findFirst({ where: { action, target, details } });
+  if (existing) return existing;
+  return prisma.auditLog.create({
+    data: { userId, action, target, details, timestamp },
+  });
+}
+
+async function ensureNotification({ userId, type, title, message, link, createdAt }) {
+  const existing = await prisma.notification.findFirst({ where: { userId, title, message } });
+  if (existing) return existing;
+  return prisma.notification.create({
+    data: { userId, type, title, message, link, createdAt },
+  });
+}
+
 async function main() {
+  ensureDemoFiles();
+
   // === Roles (add missing only) ===
   const roleNames = [
     'PRESIDENT',
@@ -506,6 +593,8 @@ async function main() {
   const charlene = createdUsers.find((u) => u.email === 'charlene.biza@impex.com');
   const enar = createdUsers.find((u) => u.email === 'enar.valencia@impex.com');
   const driver = createdUsers.find((u) => u.email === 'carlos.martinez@impex.com');
+  const admin = josephine || createdUsers.find((u) => u.email === 'demo.viewer@impex.com');
+  const warehouse = createdUsers.find((u) => u.email === 'danilo.benosa@impex.com');
   const ateneoClientUser = createdUsers.find((u) => u.email === 'procurement@ateneoctc.com');
   const robinsonsClientUser = createdUsers.find((u) => u.email === 'procurement@robinsonsland.com');
   const ayalaClientUser = createdUsers.find((u) => u.email === 'procurement@ayalaland.com');
@@ -684,6 +773,7 @@ async function main() {
       createdBy: myra?.userId || ateneoClientUser?.userId || null,
       status: 'PROCESSING',
       paymentStatus: 'VERIFIED',
+      paymentProofUrl: '/uploads/payments/demo-ord-2026-1102.pdf',
       createdAt: new Date('2026-04-06T09:20:00.000Z'),
       updatedAt: new Date('2026-04-07T10:15:00.000Z'),
       specialInstructions: 'Second batch for renovation touch-ups.',
@@ -707,6 +797,7 @@ async function main() {
       createdBy: robinsonsClientUser?.userId || charlene?.userId || null,
       status: 'SHIPPED',
       paymentStatus: 'PAID',
+      paymentProofUrl: '/uploads/payments/demo-ord-2026-1103.pdf',
       createdAt: new Date('2026-04-04T07:10:00.000Z'),
       updatedAt: new Date('2026-04-08T06:55:00.000Z'),
       specialInstructions: 'Deliver to mall expansion service entrance.',
@@ -731,6 +822,7 @@ async function main() {
       createdBy: robinsonsClientUser?.userId || charlene?.userId || null,
       status: 'SHIPPED',
       paymentStatus: 'VERIFIED',
+      paymentProofUrl: '/uploads/payments/demo-ord-2026-1105.pdf',
       createdAt: new Date('2026-04-09T08:30:00.000Z'),
       updatedAt: new Date('2026-04-09T11:45:00.000Z'),
       specialInstructions: 'Demo oversized delivery for batching and third-party logistics.',
@@ -778,6 +870,7 @@ async function main() {
       createdBy: seededOrder.createdBy,
       status: seededOrder.status,
       paymentStatus: seededOrder.paymentStatus,
+      paymentProofUrl: seededOrder.paymentProofUrl,
       createdAt: seededOrder.createdAt,
       updatedAt: seededOrder.updatedAt,
       orderDate: seededOrder.createdAt,
@@ -805,6 +898,60 @@ async function main() {
       });
     }
   }
+
+  const proofUser = ateneoClientUser || robinsonsClientUser || ayalaClientUser;
+  if (proofUser) {
+    await prisma.user.update({
+      where: { userId: proofUser.userId },
+      data: { proofDocUrl: '/uploads/proofs/demo-client-proof.pdf' },
+    });
+  }
+
+  await ensureAuditLog({
+    userId: admin?.userId || null,
+    action: 'CREATE',
+    target: 'ClientOrder',
+    details: 'Created demo client order ORD-2026-1101 for presentation flow',
+    timestamp: new Date('2026-04-05T08:41:00.000Z'),
+  });
+  await ensureAuditLog({
+    userId: admin?.userId || null,
+    action: 'CREATE',
+    target: 'PurchaseOrder',
+    details: 'Created supplier PO PO-DEMO-2026-004 for demo replenishment',
+    timestamp: new Date('2026-04-05T10:30:00.000Z'),
+  });
+  await ensureAuditLog({
+    userId: warehouse?.userId || admin?.userId || null,
+    action: 'UPDATE',
+    target: 'Stock',
+    details: 'Adjusted demo inventory after supplier price increase memo-free update',
+    timestamp: new Date('2026-04-06T09:05:00.000Z'),
+  });
+  await ensureAuditLog({
+    userId: driver?.userId || admin?.userId || null,
+    action: 'CONFIRM',
+    target: 'Delivery',
+    details: 'Confirmed delivered demo batch DR-2026-1008',
+    timestamp: new Date('2026-04-01T14:05:00.000Z'),
+  });
+
+  await ensureNotification({
+    userId: admin?.userId || null,
+    type: 'AI_ALERT',
+    title: 'AI reorder risk ready for demo',
+    message: 'Low-stock consumables and Lalamove batch delivery are ready to review in AI Insights.',
+    link: '/admin/ai-insights',
+    createdAt: new Date('2026-04-09T13:00:00.000Z'),
+  });
+  await ensureNotification({
+    userId: paula?.userId || null,
+    type: 'PROJECT_UPDATE',
+    title: 'Project assigned to you',
+    message: 'You were assigned to project "Robinsons Galleria Expansion".',
+    link: `/admin/projects?projectId=${robinsonsProject.projectId}`,
+    createdAt: new Date('2026-04-09T13:05:00.000Z'),
+  });
 }
 
 main()

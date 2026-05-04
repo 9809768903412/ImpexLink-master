@@ -13,6 +13,20 @@ router.get('/', async (req, res, next) => {
     const q = req.query.q ? String(req.query.q) : '';
     const action = req.query.action ? String(req.query.action).toUpperCase() : '';
     const userId = req.query.userId ? Number(req.query.userId) : null;
+    const orderedWhere =
+      action === 'ORDERED'
+        ? {
+            action: 'CREATE',
+            OR: [
+              { target: { contains: 'order', mode: 'insensitive' } },
+              { target: { contains: 'purchase', mode: 'insensitive' } },
+              { target: { contains: 'po', mode: 'insensitive' } },
+              { details: { contains: 'order', mode: 'insensitive' } },
+              { details: { contains: 'purchase', mode: 'insensitive' } },
+              { details: { contains: 'po', mode: 'insensitive' } },
+            ],
+          }
+        : {};
     const where = {
       AND: [
         q
@@ -24,7 +38,8 @@ router.get('/', async (req, res, next) => {
               ],
             }
           : {},
-        action ? { action } : {},
+        action && action !== 'ORDERED' ? { action } : {},
+        orderedWhere,
         userId ? { userId } : {},
       ],
     };

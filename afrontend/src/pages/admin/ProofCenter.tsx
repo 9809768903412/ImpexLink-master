@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Files, Search, ExternalLink, Filter, FileCheck, Download } from 'lucide-react';
+import { Files, Search, ExternalLink, FileCheck, Download } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import PaginationNav from '@/components/PaginationNav';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -152,16 +152,9 @@ export default function ProofCenterPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            Filters
-          </CardTitle>
-          <CardDescription>Filter by type, status, date range, or owner/reference keywords.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="relative md:col-span-2">
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-col gap-3 xl:flex-row">
+            <div className="relative min-w-[260px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-10"
@@ -174,93 +167,56 @@ export default function ProofCenterPage() {
               />
             </div>
 
-            <Select
-              value={typeFilter}
-              onValueChange={(value) => {
-                setTypeFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="registration">Registration</SelectItem>
-                <SelectItem value="payment">Payment</SelectItem>
-                <SelectItem value="delivery">Delivery</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => {
-                setStatusFilter(value);
-                setStatusTab(
-                  ['all', 'pending', 'pending-verification', 'verified', 'active', 'delivered', 'inactive'].includes(
-                    value
-                  )
-                    ? value
-                    : 'all'
-                );
-                setPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="pending-verification">Pending Verification</SelectItem>
-                <SelectItem value="verified">Verified</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="delivered">Delivered</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Input
-              type="date"
-              autoComplete="off"
-              value={fromDate}
-              onChange={(e) => {
-                setFromDate(e.target.value);
-                setPage(1);
-              }}
-            />
-
-            <Input
-              type="date"
-              autoComplete="off"
-              value={toDate}
-              onChange={(e) => {
-                setToDate(e.target.value);
-                setPage(1);
-              }}
-            />
-
-            <div className="md:col-span-2 xl:col-span-2 flex items-center">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSearchTerm('');
-                  setTypeFilter('all');
-                  setStatusFilter('all');
-                  setStatusTab('all');
-                  setFromDate('');
-                  setToDate('');
+            <div className="grid gap-3 md:grid-cols-2 xl:w-[520px]">
+              <Select
+                value={typeFilter}
+                onValueChange={(value) => {
+                  setTypeFilter(value);
                   setPage(1);
                 }}
               >
-                Clear filters
-              </Button>
+                <SelectTrigger>
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="registration">Registration</SelectItem>
+                  <SelectItem value="payment">Payment</SelectItem>
+                  <SelectItem value="delivery">Delivery</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => {
+                  setStatusFilter(value);
+                  setStatusTab(
+                    ['all', 'pending', 'pending-verification', 'verified', 'active', 'delivered', 'inactive'].includes(
+                      value
+                    )
+                      ? value
+                      : 'all'
+                  );
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="pending-verification">Pending Verification</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <Tabs
               value={statusTab}
               onValueChange={(value) => {
@@ -279,6 +235,40 @@ export default function ProofCenterPage() {
                 <TabsTrigger value="inactive">Inactive</TabsTrigger>
               </TabsList>
             </Tabs>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                type="date"
+                autoComplete="off"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <Input
+                type="date"
+                autoComplete="off"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSearchTerm('');
+                  setTypeFilter('all');
+                  setStatusFilter('all');
+                  setStatusTab('all');
+                  setFromDate('');
+                  setToDate('');
+                  setPage(1);
+                }}
+              >
+                Clear
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -16,7 +16,7 @@ export function Logo({ size = 'md', showText = true, className = '' }: LogoProps
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>
-      <div className={`${logo} flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-black`}>
+      <div className={`${logo} flex shrink-0 items-center justify-center overflow-hidden rounded-md bg-white p-1`}>
         <img
           src="/brand/impex-engineering-logo.jpeg"
           alt="Impex Engineering"

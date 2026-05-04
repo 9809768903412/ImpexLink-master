@@ -140,10 +140,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               sidebarCollapsed ? 'justify-center px-2 lg:px-3' : 'justify-between px-4'
             )}
           >
+            {sidebarCollapsed ? (
+              <div className="hidden lg:flex">
+                <Logo size="md" showText={false} className="[&_div]:bg-white" />
+              </div>
+            ) : null}
             <div className={cn('min-w-0', sidebarCollapsed && 'lg:hidden')}>
               <div className="flex items-center gap-3">
                 <Logo size="md" className="text-white [&_span]:text-white" />
-                <div className="hidden h-10 w-24 items-center justify-center overflow-hidden rounded-xl bg-white px-3 py-1.5 xl:flex">
+                <div className="hidden h-10 w-24 items-center justify-center overflow-hidden rounded-md bg-white px-3 py-1.5 xl:flex">
                   <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain object-center" />
                 </div>
               </div>

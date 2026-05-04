@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Search, Calendar as CalendarIcon, Filter, Download, History } from 'lucide-react';
+import { Search, Calendar as CalendarIcon, Download, History } from 'lucide-react';
 import type { AuditLog, User } from '@/types';
 import { cn } from '@/lib/utils';
 import { useResource } from '@/hooks/use-resource';
@@ -34,12 +34,15 @@ import PaginationNav from '@/components/PaginationNav';
 
 const actionColors: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
+  ORDERED: 'bg-green-100 text-green-800',
   UPDATE: 'bg-blue-100 text-blue-800',
   DELETE: 'bg-red-100 text-red-800',
   APPROVE: 'bg-purple-100 text-purple-800',
   REJECT: 'bg-orange-100 text-orange-800',
   CONFIRM: 'bg-cyan-100 text-cyan-800',
 };
+
+const actionOptions = ['ORDERED', 'CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT', 'CONFIRM', 'VERIFY', 'NOTIFY', 'LOGIN', 'LOGIN_FAILED', 'VIEW', 'TEST'];
 
 function getActionLabel(log: AuditLog) {
   const target = `${log.target} ${log.details}`.toLowerCase();
@@ -99,8 +102,6 @@ export default function AuditLogsPage() {
     const matchesDate = !dateFilter || format(new Date(log.timestamp), 'yyyy-MM-dd') === format(dateFilter, 'yyyy-MM-dd');
     return matchesDate;
   });
-
-  const uniqueActions = [...new Set(logs.map((l) => l.action))];
 
   const handleExport = () => {
     const rows = filteredLogs
@@ -182,9 +183,9 @@ export default function AuditLogsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Actions</SelectItem>
-                {uniqueActions.map((action) => (
+                {actionOptions.map((action) => (
                   <SelectItem key={action} value={action}>
-                    {action}
+                    {action === 'ORDERED' ? 'ORDERED' : action}
                   </SelectItem>
                 ))}
               </SelectContent>
