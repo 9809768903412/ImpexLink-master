@@ -3,6 +3,38 @@ const fs = require('fs');
 const path = require('path');
 const prisma = require('../src/utils/prisma');
 
+let deliveryColumnSupport = null;
+
+async function getDeliveryColumnSupport() {
+  if (deliveryColumnSupport) return deliveryColumnSupport;
+  const optionalColumns = [
+    'delivery_method',
+    'batch_number',
+    'batch_count',
+    'load_kg',
+    'third_party_provider',
+    'third_party_reference',
+  ];
+
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'deliveries'
+        AND column_name IN ('delivery_method', 'batch_number', 'batch_count', 'load_kg', 'third_party_provider', 'third_party_reference')
+    `;
+    const found = new Set(rows.map((row) => row.column_name));
+    deliveryColumnSupport = {
+      batches: optionalColumns.every((column) => found.has(column)),
+    };
+  } catch (error) {
+    console.error('Seed delivery column check failed:', error.message || error);
+    deliveryColumnSupport = { batches: false };
+  }
+
+  return deliveryColumnSupport;
+}
+
 async function ensureRole(roleName) {
   return prisma.role.upsert({
     where: { roleName },
@@ -284,8 +316,14 @@ async function ensureDelivery({
   thirdPartyProvider,
   thirdPartyReference,
 }) {
-  const existing = await prisma.delivery.findUnique({
+  const support = await getDeliveryColumnSupport();
+  const existing = await prisma.delivery.findFirst({
     where: { drNumber },
+    select: {
+      deliveryId: true,
+      drNumber: true,
+      proofOfDeliveryUrl: true,
+    },
   });
   if (existing) {
     if (proofOfDeliveryUrl && existing.proofOfDeliveryUrl !== proofOfDeliveryUrl) {
@@ -307,13 +345,16 @@ async function ensureDelivery({
     proofOfDeliveryUrl,
     notes,
     itemsCount,
-    deliveryMethod,
-    batchNumber,
-    batchCount,
-    loadKg,
-    thirdPartyProvider,
-    thirdPartyReference,
   };
+
+  if (support.batches) {
+    data.deliveryMethod = deliveryMethod;
+    data.batchNumber = batchNumber;
+    data.batchCount = batchCount;
+    data.loadKg = loadKg;
+    data.thirdPartyProvider = thirdPartyProvider;
+    data.thirdPartyReference = thirdPartyReference;
+  }
 
   if (clientOrderId) {
     data.clientOrder = {
