@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Eye, CheckCircle, XCircle, FileText, MessageSquare, Download } from 'lucide-react';
+import { Search, CheckCircle, XCircle, FileText, MessageSquare, Download } from 'lucide-react';
 import type { Order, OrderStatus, QuoteRequest, User } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -49,6 +49,7 @@ import { canManageClientOrders } from '@/lib/roles';
 import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
+import { useSearchParams } from 'react-router-dom';
 
 const statusColors: Record<OrderStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
@@ -62,6 +63,7 @@ const statusColors: Record<OrderStatus, string> = {
 // TODO: Replace with real data
 export default function ClientOrdersPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
   const canManageOrders = canManageClientOrders(roleInput);
   const isAdmin = Array.isArray(roleInput) ? roleInput.includes('admin') : roleInput === 'admin';
@@ -153,6 +155,17 @@ export default function ClientOrdersPage() {
   }, [fetchOrders]);
 
   useEffect(() => {
+    const orderId = searchParams.get('orderId');
+    if (!orderId || orders.length === 0) return;
+    const linkedOrder = orders.find((order) => order.id === orderId);
+    if (!linkedOrder) return;
+    setSelectedOrder(linkedOrder);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('orderId');
+    setSearchParams(nextParams, { replace: true });
+  }, [orders, searchParams, setSearchParams]);
+
+  useEffect(() => {
     setOrdersPage(1);
   }, [searchTerm, statusFilter, sortKey, sortDir]);
 
@@ -171,7 +184,7 @@ export default function ClientOrdersPage() {
   const ordersPageEnd = ordersPageStart + ordersPageSize;
   const pagedOrders = filteredOrders.slice(ordersPageStart, ordersPageEnd);
   const totalFilteredOrders = filteredOrders.length;
-  const tableColSpan = 6 + Number(visibleCols.project) + Number(visibleCols.payment) + Number(visibleCols.date);
+  const tableColSpan = 5 + Number(visibleCols.project) + Number(visibleCols.payment) + Number(visibleCols.date);
 
   const pendingQuotes = quotes.filter((q) => q.status === 'pending');
   const salesAgents = users.filter((entry) => {
@@ -517,7 +530,6 @@ export default function ClientOrdersPage() {
                     <TableHead>Status</TableHead>
                     {visibleCols.payment && <TableHead>Payment</TableHead>}
                     {visibleCols.date && <TableHead>Date</TableHead>}
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -531,8 +543,12 @@ export default function ClientOrdersPage() {
                     ))
                   ) : (
                     pagedOrders.map((order) => (
-                    <TableRow key={order.id}>
-                      <TableCell>
+                    <TableRow
+                      key={order.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelectedOrder(order)}
+                    >
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <Checkbox
                           checked={selectedOrderIds.includes(order.id)}
                           onCheckedChange={() => toggleOrderSelect(order.id)}
@@ -570,12 +586,6 @@ export default function ClientOrdersPage() {
                       {visibleCols.date && (
                         <TableCell>{format(new Date(order.createdAt), 'MMM dd, yyyy')}</TableCell>
                       )}
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)}>
-                          <Eye size={16} className="mr-1" />
-                          View
-                        </Button>
-                      </TableCell>
                     </TableRow>
                     ))
                   )}

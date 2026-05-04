@@ -183,6 +183,15 @@ export default function ProjectsPage() {
   });
   const pendingProjects = filteredProjects.filter((project) => project.status === 'pending');
   const visibleProjects = activeTab === 'pending' ? pendingProjects : filteredProjects;
+
+  useEffect(() => {
+    const projectId = new URLSearchParams(location.search).get('projectId');
+    if (!projectId || projects.length === 0) return;
+    const linkedProject = projects.find((project) => project.id === projectId);
+    if (linkedProject) {
+      setSelectedProject(linkedProject);
+    }
+  }, [location.search, projects]);
   const selectedProjectItems = selectedProject
     ? orders.filter((o) => o.projectId === selectedProject.id).flatMap((o) => o.items)
     : [];

@@ -828,13 +828,22 @@ export default function PlaceOrderPage() {
             <div className="space-y-2">
               <Label>Project (optional)</Label>
               <Select
-                value={quoteForm.projectId}
-                onValueChange={(value) => setQuoteForm((prev) => ({ ...prev, projectId: value }))}
+                value={quoteForm.projectId || 'none'}
+                onValueChange={(value) => {
+                  if (value === 'request-project') {
+                    setQuoteForm((prev) => ({ ...prev, projectId: '' }));
+                    setIsProjectRequestOpen(true);
+                    return;
+                  }
+                  setQuoteForm((prev) => ({ ...prev, projectId: value === 'none' ? '' : value }));
+                }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={activeProjects.length > 0 ? 'Select project' : 'No projects available'} />
+                  <SelectValue placeholder="No project selected" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">No project selected</SelectItem>
+                  <SelectItem value="request-project">Request a Project</SelectItem>
                   {activeProjects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.name}

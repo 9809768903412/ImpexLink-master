@@ -63,15 +63,14 @@ export default function LiveTrackingDialog({
   const marker = route[route.length - 1];
   const receivedByOptions = useMemo(() => {
     if (!delivery) return ['Client Representative'];
+    const contactName = delivery.clientContactPerson?.trim();
     return Array.from(
       new Set(
         [
           delivery.receivedBy,
-          delivery.clientName,
-          delivery.projectName ? `${delivery.projectName} Site Office` : null,
-          'Client Representative',
+          contactName || null,
+          contactName ? `${contactName} - Authorized Representative` : 'Client Representative',
           'Site Engineer',
-          'Receiving Staff',
         ].filter(Boolean) as string[],
       ),
     );

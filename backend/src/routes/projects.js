@@ -235,6 +235,16 @@ router.post('/', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
           })),
         });
       }
+    } else if (assignedPmId) {
+      await prisma.notification.create({
+        data: {
+          userId: assignedPmId,
+          type: 'PROJECT_UPDATE',
+          title: 'Project assigned to you',
+          message: `You were assigned to project "${project.projectName}".`,
+          link: `/admin/projects?projectId=${project.projectId}`,
+        },
+      });
     }
 
     res.status(201).json(project);
@@ -324,6 +334,22 @@ router.put('/:id', requireRole(['ADMIN', 'PROJECT_MANAGER']), async (req, res, n
         details: `Updated project ${project.projectName}`,
       },
     });
+
+    if (
+      assignedPmId &&
+      assignedPmId !== existing.assignedPmId &&
+      userHasRole('ADMIN')
+    ) {
+      await prisma.notification.create({
+        data: {
+          userId: assignedPmId,
+          type: 'PROJECT_UPDATE',
+          title: 'Project assigned to you',
+          message: `You were assigned to project "${project.projectName}".`,
+          link: `/admin/projects?projectId=${project.projectId}`,
+        },
+      });
+    }
 
     if (project.clientId) {
       const client = await prisma.client.findUnique({ where: { clientId: project.clientId } });

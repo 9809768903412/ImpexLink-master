@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Eye, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation, Send } from 'lucide-react';
+import { Search, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation, Send } from 'lucide-react';
 import type { Delivery, DeliveryStatus, Order } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -125,15 +125,14 @@ export default function LogisticsPage() {
   const totalFilteredDeliveries = filteredDeliveries.length;
   const receivedByOptions = useMemo(() => {
     if (!selectedDelivery) return ['Client Representative'];
+    const contactName = selectedDelivery.clientContactPerson?.trim();
     return Array.from(
       new Set(
         [
           selectedDelivery.receivedBy,
-          selectedDelivery.clientName,
-          selectedDelivery.projectName ? `${selectedDelivery.projectName} Site Office` : null,
-          'Client Representative',
+          contactName || null,
+          contactName ? `${contactName} - Authorized Representative` : 'Client Representative',
           'Site Engineer',
-          'Receiving Staff',
         ].filter(Boolean) as string[],
       ),
     );
@@ -500,7 +499,7 @@ export default function LogisticsPage() {
                     <TableHead>Client / Project</TableHead>
                     <TableHead>Details</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right">Tracking</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -514,7 +513,11 @@ export default function LogisticsPage() {
                     ))
                   ) : (
                     pagedDeliveries.map((delivery) => (
-                    <TableRow key={delivery.id}>
+                    <TableRow
+                      key={delivery.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => openDeliveryDetails(delivery)}
+                    >
                       <TableCell className="py-4">
                         <div className="min-w-[140px]">
                           <p className="font-medium text-foreground">{delivery.drNumber}</p>
@@ -562,17 +565,13 @@ export default function LogisticsPage() {
                             variant="outline"
                             size="sm"
                             className="border-primary/20 text-primary"
-                            onClick={() => setTrackingDelivery(delivery)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setTrackingDelivery(delivery);
+                            }}
                           >
                             <Navigation size={16} className="mr-1" />
                             Track
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDeliveryDetails(delivery)}
-                          >
-                            <Eye size={16} />
                           </Button>
                         </div>
                       </TableCell>

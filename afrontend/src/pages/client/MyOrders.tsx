@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Package, FileText, Download, Eye, RotateCcw, Upload, Clock, CheckCircle, Truck, CreditCard } from 'lucide-react';
+import { Package, FileText, Download, RotateCcw, Upload, Clock, CheckCircle, Truck, CreditCard } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -459,13 +459,12 @@ export default function MyOrdersPage() {
           <TableHead className="text-right">Total</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Payment</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {ordersLoading && data.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
               <div className="space-y-2">
                 <Skeleton className="h-4 w-1/2 mx-auto" />
                 <Skeleton className="h-4 w-1/3 mx-auto" />
@@ -501,45 +500,14 @@ export default function MyOrdersPage() {
                 ₱{order.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
               </TableCell>
               <TableCell>
-                <div className="space-y-1">
-                  {getStatusBadge(order.status)}
-                  <p className="text-xs text-muted-foreground">{getStatusExplanation(order.status)}</p>
-                </div>
+                {getStatusBadge(order.status)}
               </TableCell>
               <TableCell>{getPaymentBadge(order.paymentStatus)}</TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  {myDeliveries.some((delivery) => delivery.orderId === order.id) ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const delivery = myDeliveries.find((entry) => entry.orderId === order.id);
-                        if (delivery) setTrackingDelivery(delivery);
-                      }}
-                    >
-                      Track Delivery
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRowClick(order);
-                    }}
-                  >
-                    <Eye size={16} className="mr-1" />
-                    View
-                  </Button>
-                </div>
-              </TableCell>
             </TableRow>
           ))
         ) : (
           <TableRow>
-            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
               No orders found
             </TableCell>
           </TableRow>
@@ -558,7 +526,6 @@ export default function MyOrdersPage() {
           <TableHead>ETA</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Flow</TableHead>
-          <TableHead className="text-right">Track</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -567,12 +534,7 @@ export default function MyOrdersPage() {
             <TableRow
               key={delivery.id}
               className="cursor-pointer hover:bg-muted/50"
-              onClick={() => {
-                const linkedOrder = clientOrders.find((order) => order.id === delivery.orderId);
-                if (linkedOrder) {
-                  handleRowClick(linkedOrder);
-                }
-              }}
+              onClick={() => setTrackingDelivery(delivery)}
             >
               <TableCell className="font-medium">{delivery.drNumber}</TableCell>
               <TableCell>{delivery.orderNumber}</TableCell>
@@ -584,23 +546,11 @@ export default function MyOrdersPage() {
                   Ordered → Approved → Processing → Shipped → Delivered
                 </p>
               </TableCell>
-              <TableCell className="text-right">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setTrackingDelivery(delivery);
-                  }}
-                >
-                  Track Delivery
-                </Button>
-              </TableCell>
             </TableRow>
           ))
         ) : (
           <TableRow>
-            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
               No deliveries found
             </TableCell>
           </TableRow>
@@ -613,7 +563,12 @@ export default function MyOrdersPage() {
     <div className="space-y-3">
       {data.length > 0 ? (
         data.map((order) => (
-          <div key={order.id} className="rounded-2xl border bg-background p-4">
+          <button
+            key={order.id}
+            type="button"
+            onClick={() => handleRowClick(order)}
+            className="w-full rounded-2xl border bg-background p-4 text-left transition-colors hover:bg-muted/50"
+          >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex min-w-0 gap-3">
                 <ProductImage name={order.items[0]?.itemName} className="h-16 w-16 shrink-0 rounded-lg p-1.5" />
@@ -637,11 +592,9 @@ export default function MyOrdersPage() {
                 </p>
                 </div>
               </div>
-              <Button onClick={() => handleReorder(order)} className="w-full lg:w-auto">
-                Reorder This
-              </Button>
+              <Badge variant="outline" className="w-fit">Open details</Badge>
             </div>
-          </div>
+          </button>
         ))
       ) : (
         <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
@@ -978,6 +931,12 @@ export default function MyOrdersPage() {
           )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
+            {selectedOrder?.status === 'delivered' ? (
+              <Button onClick={() => handleReorder(selectedOrder)} className="gap-2">
+                <RotateCcw size={16} />
+                Reorder This Batch
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={() => handleDownloadInvoice(selectedOrder!)} className="gap-2">
               <Download size={16} />
               Download Invoice

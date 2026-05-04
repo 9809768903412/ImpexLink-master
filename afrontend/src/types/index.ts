@@ -200,6 +200,7 @@ export interface Delivery {
   orderNumber: string;
   clientId: string;
   clientName: string;
+  clientContactPerson?: string | null;
   projectName?: string;
   items: OrderItem[];
   status: DeliveryStatus;

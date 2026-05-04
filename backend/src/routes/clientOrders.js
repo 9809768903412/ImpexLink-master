@@ -476,6 +476,18 @@ router.put('/:id/assignment', requireRole(['ADMIN']), async (req, res, next) => 
       },
     });
 
+    if (assignedSalesAgentId && assignedSalesAgentId !== existing.assignedSalesAgentId) {
+      await prisma.notification.create({
+        data: {
+          userId: assignedSalesAgentId,
+          type: 'ORDER_APPROVAL',
+          title: 'Order assigned to you',
+          message: `You were assigned to ${responseOrder.orderNumber}.`,
+          link: `/admin/orders?orderId=${responseOrder.clientOrderId}`,
+        },
+      });
+    }
+
     res.json(mapOrder(responseOrder));
   } catch (err) {
     if (err.message?.includes('Assigned')) {

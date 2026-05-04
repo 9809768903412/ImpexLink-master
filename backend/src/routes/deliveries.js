@@ -105,7 +105,7 @@ function deliverySelect(includeOptionalColumns = false) {
         orderNumber: true,
         status: true,
         createdBy: true,
-        client: { select: { clientName: true } },
+        client: { select: { clientName: true, contactPerson: true } },
         project: { select: { projectName: true } },
         items: { include: { product: true } },
       },
@@ -176,6 +176,7 @@ function mapDelivery(d) {
     orderNumber: d.clientOrder?.orderNumber || '',
     clientId: d.clientOrder?.clientId?.toString() || null,
     clientName: d.clientOrder?.client?.clientName || 'Client',
+    clientContactPerson: d.clientOrder?.client?.contactPerson || null,
     projectName: d.clientOrder?.project?.projectName || null,
     items: (d.clientOrder?.items || []).map((item) => ({
       itemId: item.productId?.toString() || '',
