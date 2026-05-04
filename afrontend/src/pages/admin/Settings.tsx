@@ -144,6 +144,8 @@ export default function SettingsPage() {
     companyName: '',
     phone: '',
   });
+  const getErrorMessage = (error: unknown, fallback: string) =>
+    (error as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
 
   useEffect(() => {
     apiClient
@@ -193,7 +195,7 @@ export default function SettingsPage() {
     }));
   }, [user]);
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     const errors: Record<string, string> = {};
     if (!profileData.name.trim()) errors.name = 'Full name is required.';
     if (profileData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileData.email)) {
@@ -204,67 +206,52 @@ export default function SettingsPage() {
       toast({ title: 'Fix validation errors', description: 'Please review the highlighted fields.', variant: 'destructive' });
       return;
     }
-    const initials = (profileData.name || '')
-      .split(' ')
-      .filter(Boolean)
-      .map((part: string) => part[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-    updateUser({
-      name: profileData.name,
-      email: profileData.email,
-      phone: profileData.phone,
-      avatarUrl: profileData.avatarUrl,
-      avatar: initials || user?.avatar,
-    });
-    apiClient
-      .put('/users/me', profileData)
-      .then((res) => {
-        const initials = (res.data.name || '')
-          .split(' ')
-          .filter(Boolean)
-          .map((part: string) => part[0])
-          .join('')
-          .slice(0, 2)
-          .toUpperCase();
-        const updated = res.data;
-        updateUser({
-          name: updated.name,
-          email: updated.email,
-          phone: updated.phone,
-          avatarUrl: updated.avatarUrl,
-          avatar: initials || user?.avatar,
-        });
-        reloadUsers();
-        refreshUser();
-        if (res.data?.requiresVerification) {
-          toast({
-            title: 'Email verification required',
-            description: res.data.emailSent === false
+    try {
+      const res = await apiClient.put('/users/me', profileData);
+      const initials = (res.data.name || '')
+        .split(' ')
+        .filter(Boolean)
+        .map((part: string) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      const updated = res.data;
+      updateUser({
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        avatarUrl: updated.avatarUrl,
+        avatar: initials || user?.avatar,
+      });
+      reloadUsers();
+      refreshUser();
+      toast({
+        title: 'Profile updated',
+        description: 'Your profile has been saved successfully.',
+      });
+      if (res.data?.requiresVerification) {
+        toast({
+          title: 'Email verification required',
+          description:
+            res.data.emailSent === false
               ? 'Email delivery failed. Use the verification code shown below.'
               : 'Check your email for a verification code.',
-          });
-          if (res.data?.devOtp) {
-            toast({
-              title: 'Verification code (dev)',
-              description: `Code: ${res.data.devOtp}`,
-            });
-          }
-          setIsVerifyOpen(true);
-        }
-      })
-      .catch((err) => {
-        toast({
-          title: 'Update failed',
-          description: err?.response?.data?.error || 'Unable to save your profile. Please try again.',
-          variant: 'destructive',
         });
+        if (res.data?.devOtp) {
+          toast({
+            title: 'Verification code (dev)',
+            description: `Code: ${res.data.devOtp}`,
+          });
+        }
+        setIsVerifyOpen(true);
+      }
+    } catch (error) {
+      toast({
+        title: 'Update failed',
+        description: getErrorMessage(error, 'Unable to save your profile. Please try again.'),
+        variant: 'destructive',
       });
-    toast({
-      title: 'Profile Updated',
-      description: 'Your profile has been saved successfully',
-    });
+    }
   };
 
   const handlePhotoChange = (file: File | null) => {
@@ -281,6 +268,8 @@ export default function SettingsPage() {
     reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
       if (!result) return;
+      const previousProfile = profileData;
+      const previousAvatar = user?.avatar;
       const nextProfile = { ...profileData, avatarUrl: result };
       setProfileData(nextProfile);
       const initials = (nextProfile.name || '')
@@ -300,56 +289,105 @@ export default function SettingsPage() {
       apiClient
         .put('/users/me', nextProfile)
         .then((res) => {
+          const returnedInitials = (res.data.name || '')
+            .split(' ')
+            .filter(Boolean)
+            .map((part: string) => part[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase();
           updateUser({
             name: res.data.name,
             email: res.data.email,
             phone: res.data.phone,
             avatarUrl: res.data.avatarUrl,
-            avatar: initials || user?.avatar,
+            avatar: returnedInitials || user?.avatar,
           });
           refreshUser();
+          toast({
+            title: 'Photo updated',
+            description: 'Your profile photo has been updated.',
+          });
         })
-        .catch(() => {
-          // keep optimistic state
+        .catch((error) => {
+          setProfileData(previousProfile);
+          updateUser({
+            name: previousProfile.name,
+            email: previousProfile.email,
+            phone: previousProfile.phone,
+            avatarUrl: previousProfile.avatarUrl,
+            avatar: previousAvatar,
+          });
+          toast({
+            title: 'Photo update failed',
+            description: getErrorMessage(error, 'Unable to update your profile photo right now.'),
+            variant: 'destructive',
+          });
         });
-      toast({
-        title: 'Photo Updated',
-        description: 'Your profile photo has been updated.',
-      });
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSaveCompany = () => {
-    apiClient
-      .put('/company', company)
-      .then((res) => {
-        reloadCompany();
-        try {
-          localStorage.setItem('company_info', JSON.stringify(res.data));
-        } catch {
-          // ignore
-        }
-      })
-      .catch(() => {
-        // keep optimistic state
+  const handleSaveCompany = async () => {
+    if (!company.name.trim() || !company.address.trim()) {
+      toast({
+        title: 'Missing company details',
+        description: 'Company name and address are required.',
+        variant: 'destructive',
       });
-    toast({
-      title: 'Company Info Updated',
-      description: 'Company information has been saved',
-    });
+      return;
+    }
+    if (company.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(company.email)) {
+      toast({
+        title: 'Invalid company email',
+        description: 'Please enter a valid company email address.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (company.tin && !/^[0-9-]+$/.test(company.tin)) {
+      toast({
+        title: 'Invalid TIN',
+        description: 'TIN should only contain numbers and dashes.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    try {
+      const res = await apiClient.put('/company', company);
+      reloadCompany();
+      try {
+        localStorage.setItem('company_info', JSON.stringify(res.data));
+      } catch {
+        // ignore
+      }
+      toast({
+        title: 'Company info updated',
+        description: 'Company information has been saved.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Company update failed',
+        description: getErrorMessage(error, 'Unable to save company settings right now.'),
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleSaveNotifications = () => {
-    apiClient
-      .put('/users/me/notifications', notifications)
-      .catch(() => {
-        // keep optimistic state
+  const handleSaveNotifications = async () => {
+    try {
+      await apiClient.put('/users/me/notifications', notifications);
+      toast({
+        title: 'Preferences saved',
+        description: 'Notification preferences have been updated.',
       });
-    toast({
-      title: 'Preferences Saved',
-      description: 'Notification preferences updated',
-    });
+    } catch (error) {
+      toast({
+        title: 'Preferences not saved',
+        description: getErrorMessage(error, 'Unable to save notification preferences right now.'),
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleChangePassword = () => {
@@ -383,10 +421,10 @@ export default function SettingsPage() {
         setIsPasswordOpen(false);
         setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       })
-      .catch(() => {
+      .catch((error) => {
         toast({
           title: 'Password update failed',
-          description: 'Please check your current password and try again.',
+          description: getErrorMessage(error, 'Please check your current password and try again.'),
           variant: 'destructive',
         });
       });
@@ -401,16 +439,24 @@ export default function SettingsPage() {
       });
       return;
     }
-    const ok = await apiClient.post('/auth/verify-email', { email: profileData.email, otp: verifyCode });
-    if (ok?.data?.ok) {
-      toast({ title: 'Email verified', description: 'Your email is now verified.' });
-      setIsVerifyOpen(false);
-      setVerifyCode('');
-      refreshUser();
-    } else {
+    try {
+      const ok = await apiClient.post('/auth/verify-email', { email: profileData.email, otp: verifyCode });
+      if (ok?.data?.ok) {
+        toast({ title: 'Email verified', description: 'Your email is now verified.' });
+        setIsVerifyOpen(false);
+        setVerifyCode('');
+        refreshUser();
+        return;
+      }
       toast({
         title: 'Verification failed',
         description: 'Please check the code and try again.',
+        variant: 'destructive',
+      });
+    } catch (error) {
+      toast({
+        title: 'Verification failed',
+        description: getErrorMessage(error, 'Please check the code and try again.'),
         variant: 'destructive',
       });
     }
@@ -451,7 +497,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleCreateUser = () => {
+  const handleCreateUser = async () => {
     const errors: Record<string, string> = {};
     if (!newUser.name.trim()) errors.name = 'Full name is required.';
     if (!newUser.email.trim()) errors.email = 'Email is required.';
@@ -472,29 +518,31 @@ export default function SettingsPage() {
       });
       return;
     }
-    apiClient
-      .post('/users', newUser)
-      .then((res) => {
-        setUsers([res.data, ...users]);
-        setIsAddUserOpen(false);
-        setNewUser({
-          name: '',
-          email: '',
-          password: '',
-          role: 'project_manager',
-          status: 'ACTIVE',
-          companyName: '',
-          phone: '',
-        });
-        setNewUserErrors({});
-      })
-      .catch(() => {
-        toast({
-          title: 'Failed to add user',
-          description: 'Please try again.',
-          variant: 'destructive',
-        });
+    try {
+      const res = await apiClient.post('/users', newUser);
+      setUsers([res.data, ...users]);
+      setIsAddUserOpen(false);
+      setNewUser({
+        name: '',
+        email: '',
+        password: '',
+        role: 'project_manager',
+        status: 'ACTIVE',
+        companyName: '',
+        phone: '',
       });
+      setNewUserErrors({});
+      toast({
+        title: 'User added',
+        description: 'The new account has been created successfully.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Failed to add user',
+        description: getErrorMessage(error, 'Please try again.'),
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleUpdateUser = (userId: string, updates: Partial<UserType> & { status?: string }) => {
@@ -503,10 +551,10 @@ export default function SettingsPage() {
       .then((res) => {
         setUsers(users.map((u) => (u.id === userId ? { ...u, ...res.data } : u)));
       })
-      .catch(() => {
+      .catch((error) => {
         toast({
           title: 'Failed to update user',
-          description: 'Please try again.',
+          description: getErrorMessage(error, 'Please try again.'),
           variant: 'destructive',
         });
       });
@@ -522,10 +570,10 @@ export default function SettingsPage() {
           description: 'Account has been archived and login access revoked.',
         });
       })
-      .catch(() => {
+      .catch((error) => {
         toast({
           title: 'Failed to delete user',
-          description: 'Please try again.',
+          description: getErrorMessage(error, 'Please try again.'),
           variant: 'destructive',
         });
       });
@@ -541,10 +589,10 @@ export default function SettingsPage() {
           description: 'Account has been reactivated.',
         });
       })
-      .catch(() => {
+      .catch((error) => {
         toast({
           title: 'Restore failed',
-          description: 'Please try again.',
+          description: getErrorMessage(error, 'Please try again.'),
           variant: 'destructive',
         });
       });
@@ -560,10 +608,10 @@ export default function SettingsPage() {
           description: 'User can now be assigned to projects.',
         });
       })
-      .catch(() => {
+      .catch((error) => {
         toast({
           title: 'Promotion failed',
-          description: 'Please try again.',
+          description: getErrorMessage(error, 'Please try again.'),
           variant: 'destructive',
         });
       });
@@ -759,10 +807,18 @@ export default function SettingsPage() {
                 <Switch
                   checked={notifications.twoFactorEnabled}
                   onCheckedChange={(v) => {
+                    const previousNotifications = notifications;
                     setNotifications((prev) => ({ ...prev, twoFactorEnabled: v }));
-                    apiClient.put('/users/me/notifications', { ...notifications, twoFactorEnabled: v }).catch(() => {
-                      // keep optimistic state
-                    });
+                    apiClient
+                      .put('/users/me/notifications', { ...notifications, twoFactorEnabled: v })
+                      .catch((error) => {
+                        setNotifications(previousNotifications);
+                        toast({
+                          title: 'Two-factor setting not saved',
+                          description: getErrorMessage(error, 'Unable to update the two-factor setting right now.'),
+                          variant: 'destructive',
+                        });
+                      });
                   }}
                 />
               </div>

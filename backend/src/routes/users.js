@@ -25,6 +25,14 @@ function requestHasRole(req, role) {
   return getRoleList(req.user).includes(String(role).toUpperCase());
 }
 
+function canUseOtpFallback() {
+  return (
+    process.env.NODE_ENV !== 'production' ||
+    process.env.ALLOW_DEV_OTP === 'true' ||
+    process.env.ALLOW_TEST_VERIFICATION === 'true'
+  );
+}
+
 router.get('/', requireAdmin, async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
@@ -199,7 +207,7 @@ router.put('/:id/restore', requireAdmin, async (req, res, next) => {
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: 'RESTORE',
+        action: 'UPDATE',
         target: 'User',
         details: `Restored user ${userId}`,
       },
@@ -273,7 +281,7 @@ router.put('/me', async (req, res, next) => {
         await sendVerificationEmail(email, user.verificationCode);
       } catch (err) {
         emailSent = false;
-        if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP === 'true') {
+        if (canUseOtpFallback()) {
           devOtp = user.verificationCode;
         }
         console.error('Verification email failed:', err.message || err);
