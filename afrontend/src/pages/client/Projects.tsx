@@ -20,12 +20,32 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { FolderKanban, Search, MapPin, CalendarDays, Building2 } from 'lucide-react';
+import { ArrowLeft, Eye, FolderKanban, Search, MapPin, CalendarDays, Building2, PackageSearch } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
 import type { Project, Client, Order, Delivery } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
+
+const orderStatusColors: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  approved: 'bg-blue-100 text-blue-800',
+  processing: 'bg-indigo-100 text-indigo-800',
+  'ready-for-delivery': 'bg-cyan-100 text-cyan-800',
+  shipped: 'bg-purple-100 text-purple-800',
+  delivered: 'bg-green-100 text-green-800',
+  cancelled: 'bg-red-100 text-red-800',
+};
+
+const paymentStatusColors: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  verified: 'bg-blue-100 text-blue-800',
+  paid: 'bg-green-100 text-green-800',
+  failed: 'bg-red-100 text-red-800',
+};
+
+const formatPeso = (value: number) =>
+  `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function ClientProjectsPage() {
   const { user } = useAuth();
@@ -37,7 +57,8 @@ export default function ClientProjectsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [selectedLinkedOrder, setSelectedLinkedOrder] = useState<Order | null>(null);
+  const [showProjectItemsDialog, setShowProjectItemsDialog] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 6;
   const [materialsPage, setMaterialsPage] = useState(1);
@@ -75,6 +96,8 @@ export default function ClientProjectsPage() {
       sum + (typeof item.amount === 'number' && item.amount > 0 ? item.amount : item.quantity * item.unitPrice),
     0
   );
+  const projectMaterialsVat = Number((projectMaterialsTotal * 0.12).toFixed(2));
+  const projectMaterialsGrandTotal = projectMaterialsTotal + projectMaterialsVat;
 
   const getProjectLocation = (project: Project) => {
     if (project.location?.trim()) return project.location.trim();
@@ -188,7 +211,8 @@ export default function ClientProjectsPage() {
   const openProject = (project: Project) => {
     setSelectedProject(project);
     setMaterialsPage(1);
-    setExpandedOrderId(null);
+    setSelectedLinkedOrder(null);
+    setShowProjectItemsDialog(false);
   };
 
   return (
@@ -319,7 +343,8 @@ export default function ClientProjectsPage() {
         open={!!selectedProject}
         onOpenChange={() => {
           setSelectedProject(null);
-          setExpandedOrderId(null);
+          setSelectedLinkedOrder(null);
+          setShowProjectItemsDialog(false);
         }}
       >
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -391,14 +416,20 @@ export default function ClientProjectsPage() {
                       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                       .map((order) => {
                         const linkedDelivery = deliveries.find((delivery) => delivery.orderId === order.id);
-                        const isExpanded = expandedOrderId === order.id;
                         return (
-                          <div key={order.id} className="rounded-2xl border px-4 py-3">
+                          <button
+                            key={order.id}
+                            type="button"
+                            onClick={() => setSelectedLinkedOrder(order)}
+                            className="w-full rounded-2xl border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-muted/30"
+                          >
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <div className="min-w-0 space-y-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="font-semibold">{order.orderNumber}</p>
-                                  <Badge className="capitalize">{order.status.replace(/-/g, ' ')}</Badge>
+                                  <Badge className={`capitalize ${orderStatusColors[order.status] || 'bg-slate-100 text-slate-800'}`}>
+                                    {order.status.replace(/-/g, ' ')}
+                                  </Badge>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
                                   {new Date(order.createdAt).toLocaleDateString('en-PH')} • {order.items.length} items • ₱
@@ -408,16 +439,13 @@ export default function ClientProjectsPage() {
                                   })}
                                 </p>
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
-                              >
-                                {isExpanded ? 'Hide Details' : 'View Order'}
-                              </Button>
+                              <span className="inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-medium">
+                                <Eye size={14} className="mr-2" />
+                                View Order
+                              </span>
                             </div>
 
-                            {isExpanded ? (
+                            {false ? (
                               <div className="mt-4 space-y-4 border-t pt-4">
                                 <div className="grid gap-3 md:grid-cols-3 text-sm">
                                   <div className="rounded-xl bg-muted/30 p-3">
@@ -468,7 +496,7 @@ export default function ClientProjectsPage() {
                                 </div>
                               </div>
                             ) : null}
-                          </div>
+                          </button>
                         );
                       })
                   )}
@@ -484,6 +512,18 @@ export default function ClientProjectsPage() {
                     <p className="text-sm text-muted-foreground">No materials linked yet for this project.</p>
                   ) : (
                     <>
+                      <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-medium">{selectedProjectItems.length} linked materials</p>
+                          <p className="text-sm text-muted-foreground">
+                            Materials subtotal {formatPeso(projectMaterialsTotal)} plus VAT {formatPeso(projectMaterialsVat)}.
+                          </p>
+                        </div>
+                        <Button variant="outline" onClick={() => setShowProjectItemsDialog(true)}>
+                          <PackageSearch size={16} className="mr-2" />
+                          View Linked Items
+                        </Button>
+                      </div>
                       <div className="hidden rounded-md border bg-muted/30 px-3 py-2 text-[11px] font-medium text-muted-foreground md:grid md:grid-cols-[minmax(0,2fr)_90px_120px_130px]">
                         <span>Material</span>
                         <span className="text-right">Qty</span>
@@ -568,7 +608,8 @@ export default function ClientProjectsPage() {
                   variant="outline"
                   onClick={() => {
                     setSelectedProject(null);
-                    setExpandedOrderId(null);
+                    setSelectedLinkedOrder(null);
+                    setShowProjectItemsDialog(false);
                   }}
                 >
                   Close
@@ -576,6 +617,133 @@ export default function ClientProjectsPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedLinkedOrder} onOpenChange={(open) => !open && setSelectedLinkedOrder(null)}>
+        {selectedLinkedOrder && (
+          <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
+            <DialogHeader>
+              <Button variant="ghost" className="mb-2 w-fit px-2" onClick={() => setSelectedLinkedOrder(null)}>
+                <ArrowLeft size={16} className="mr-2" />
+                Back to Project
+              </Button>
+              <DialogTitle>{selectedLinkedOrder.orderNumber}</DialogTitle>
+              <DialogDescription>Linked order details, items, VAT, and delivery status.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-4 text-sm">
+                <div className="rounded-xl bg-muted/30 p-3">
+                  <p className="text-muted-foreground">Date Ordered</p>
+                  <p className="font-medium">{new Date(selectedLinkedOrder.createdAt).toLocaleDateString('en-PH')}</p>
+                </div>
+                <div className="rounded-xl bg-muted/30 p-3">
+                  <p className="text-muted-foreground">Order Status</p>
+                  <Badge className={`mt-1 capitalize ${orderStatusColors[selectedLinkedOrder.status] || 'bg-slate-100 text-slate-800'}`}>
+                    {selectedLinkedOrder.status.replace(/-/g, ' ')}
+                  </Badge>
+                </div>
+                <div className="rounded-xl bg-muted/30 p-3">
+                  <p className="text-muted-foreground">Payment</p>
+                  <Badge className={`mt-1 capitalize ${paymentStatusColors[selectedLinkedOrder.paymentStatus] || 'bg-slate-100 text-slate-800'}`}>
+                    {selectedLinkedOrder.paymentStatus}
+                  </Badge>
+                </div>
+                <div className="rounded-xl bg-muted/30 p-3">
+                  <p className="text-muted-foreground">Delivery</p>
+                  <p className="font-medium capitalize">
+                    {deliveries.find((delivery) => delivery.orderId === selectedLinkedOrder.id)?.status.replace(/-/g, ' ') || 'Not scheduled'}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {selectedLinkedOrder.items.map((item, index) => {
+                  const lineAmount =
+                    typeof item.amount === 'number' && item.amount > 0
+                      ? item.amount
+                      : item.quantity * item.unitPrice;
+                  return (
+                    <div
+                      key={`${selectedLinkedOrder.id}-${item.itemId}-${index}`}
+                      className="grid gap-2 rounded-xl border px-3 py-3 text-sm md:grid-cols-[minmax(0,2fr)_100px_130px_130px]"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.itemName}</p>
+                        <p className="text-xs text-muted-foreground">{item.unit}</p>
+                      </div>
+                      <p className="md:text-right">{item.quantity}</p>
+                      <p className="md:text-right">{formatPeso(item.unitPrice)}</p>
+                      <p className="font-medium md:text-right">{formatPeso(lineAmount)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="ml-auto w-full max-w-xs space-y-2 rounded-md bg-muted/30 p-4 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-semibold">{formatPeso(selectedLinkedOrder.subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">VAT (12%)</span>
+                  <span className="font-semibold">{formatPeso(selectedLinkedOrder.vat)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t pt-2">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-semibold">{formatPeso(selectedLinkedOrder.total)}</span>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      <Dialog open={showProjectItemsDialog} onOpenChange={setShowProjectItemsDialog}>
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <Button variant="ghost" className="mb-2 w-fit px-2" onClick={() => setShowProjectItemsDialog(false)}>
+              <ArrowLeft size={16} className="mr-2" />
+              Back to Project
+            </Button>
+            <DialogTitle>Linked Items</DialogTitle>
+            <DialogDescription>{selectedProject?.name || 'Project'} materials with estimated VAT.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {pagedProjectItems.map((item, idx) => {
+              const lineAmount =
+                typeof item.amount === 'number' && item.amount > 0
+                  ? item.amount
+                  : item.quantity * item.unitPrice;
+              return (
+                <div
+                  key={`client-project-items-modal-${item.itemId}-${materialsPage}-${idx}`}
+                  className="rounded-md border px-4 py-3 md:grid md:grid-cols-[minmax(0,2fr)_110px_140px_140px] md:items-center"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{item.itemName}</p>
+                    <p className="text-xs text-muted-foreground">{item.unit}</p>
+                  </div>
+                  <div className="mt-2 text-sm md:mt-0 md:text-right">{item.quantity}</div>
+                  <div className="mt-1 text-sm md:mt-0 md:text-right">{formatPeso(item.unitPrice)}</div>
+                  <div className="mt-1 text-sm font-semibold md:mt-0 md:text-right">{formatPeso(lineAmount)}</div>
+                </div>
+              );
+            })}
+            <PaginationNav page={materialsPage} totalPages={totalMaterialsPages} onPageChange={setMaterialsPage} maxPages={5} />
+            <div className="ml-auto w-full max-w-xs space-y-2 rounded-md bg-muted/30 p-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Materials Subtotal</span>
+                <span className="font-semibold">{formatPeso(projectMaterialsTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">VAT (12%)</span>
+                <span className="font-semibold">{formatPeso(projectMaterialsVat)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t pt-2">
+                <span className="text-muted-foreground">Estimated Total</span>
+                <span className="font-semibold">{formatPeso(projectMaterialsGrandTotal)}</span>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
