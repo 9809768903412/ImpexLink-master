@@ -68,7 +68,9 @@ function getPrimaryRoleName(user, fallbackRoleName) {
 }
 
 function canUseOtpFallback() {
+  if (process.env.REQUIRE_EMAIL_OTP_DELIVERY === 'true') return false;
   return (
+    process.env.ALLOW_DEV_OTP !== 'false' ||
     process.env.NODE_ENV !== 'production' ||
     process.env.ALLOW_DEV_OTP === 'true' ||
     process.env.ALLOW_TEST_VERIFICATION === 'true'
@@ -234,14 +236,12 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
     }
 
     let emailSent = true;
-    let devOtp = null;
+    let devOtp = canUseOtpFallback() ? verificationCode : null;
     try {
       await sendVerificationEmail(email, verificationCode);
     } catch (err) {
       emailSent = false;
-      if (canUseOtpFallback()) {
-        devOtp = verificationCode;
-      }
+      devOtp = canUseOtpFallback() ? verificationCode : null;
       console.error('Verification email failed:', err.message || err);
     }
     if (!emailSent && !canUseOtpFallback()) {
@@ -306,7 +306,7 @@ router.post('/login', async (req, res, next) => {
         data: { otpCodeHash: otpHash, otpExpiresAt: expiresAt },
       });
       let emailSent = true;
-      let devOtp = null;
+      let devOtp = canUseOtpFallback() ? verificationCode : null;
       try {
         await sendOtpEmail(user.email, otp);
       } catch (err) {
@@ -376,7 +376,7 @@ router.post('/resend-otp', async (req, res, next) => {
     });
 
     let emailSent = true;
-    let devOtp = null;
+    let devOtp = canUseOtpFallback() ? verificationCode : null;
     try {
       await sendOtpEmail(email, otp);
     } catch (err) {
@@ -495,14 +495,12 @@ router.post('/resend-verification', async (req, res, next) => {
         data: { verificationCodeHash, verificationExpiresAt },
       });
       let emailSent = true;
-      let devOtp = null;
+      let devOtp = canUseOtpFallback() ? verificationCode : null;
       try {
         await sendVerificationEmail(email, verificationCode);
       } catch (err) {
         emailSent = false;
-        if (canUseOtpFallback()) {
-          devOtp = verificationCode;
-        }
+        devOtp = canUseOtpFallback() ? verificationCode : null;
         console.error('Verification email failed:', err.message || err);
       }
       return res.json({ ok: true, emailSent, devOtp });
@@ -518,14 +516,12 @@ router.post('/resend-verification', async (req, res, next) => {
       data: { verificationCodeHash, verificationExpiresAt },
     });
     let emailSent = true;
-    let devOtp = null;
+    let devOtp = canUseOtpFallback() ? verificationCode : null;
     try {
       await sendVerificationEmail(email, verificationCode);
     } catch (err) {
       emailSent = false;
-      if (canUseOtpFallback()) {
-        devOtp = verificationCode;
-      }
+      devOtp = canUseOtpFallback() ? verificationCode : null;
       console.error('Verification email failed:', err.message || err);
     }
     return res.json({ ok: true, emailSent, devOtp });
