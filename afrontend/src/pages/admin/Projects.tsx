@@ -170,6 +170,7 @@ export default function ProjectsPage() {
   const [projectItemsPage, setProjectItemsPage] = useState(1);
   const projectItemsPageSize = 5;
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [isAssigneeSelectOpen, setIsAssigneeSelectOpen] = useState(false);
   const projectFormDraftKey = `project-form-draft:${user?.id || 'anon'}`;
 
   const scopedProjects = projects;
@@ -815,10 +816,14 @@ export default function ProjectsPage() {
   const AdminAssigneeSelect = ({
     value,
     onChange,
+    open,
+    onOpenChange,
     users,
   }: {
     value: string;
     onChange: (value: string) => void;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
     users: UserType[];
   }) => {
     const assignableUsers = users.filter((u) => {
@@ -829,11 +834,11 @@ export default function ProjectsPage() {
     return (
       <div>
         <Label>Assigned PM</Label>
-        <Select value={value} onValueChange={onChange}>
+        <Select value={value} onValueChange={onChange} open={open} onOpenChange={onOpenChange}>
           <SelectTrigger className="mt-1">
             <SelectValue placeholder="Select PM" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent position="popper" className="z-[100]">
             <SelectItem value="unassigned">Unassigned</SelectItem>
             {sortedUsers.map((pm) => (
               <SelectItem key={pm.id} value={pm.id}>
@@ -1011,7 +1016,14 @@ export default function ProjectsPage() {
       </div>
 
       {/* Project Detail Dialog */}
-      <Dialog open={!!selectedProject} onOpenChange={() => setSelectedProject(null)}>
+      <Dialog
+        open={!!selectedProject}
+        onOpenChange={(open) => {
+          if (!open && !isAssigneeSelectOpen) {
+            setSelectedProject(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedProject?.name}</DialogTitle>
@@ -1093,6 +1105,8 @@ export default function ProjectsPage() {
                       <AdminAssigneeSelect
                         value={editProject.assignedPmId}
                         onChange={(value) => setEditProject((prev) => ({ ...prev, assignedPmId: value }))}
+                        open={isAssigneeSelectOpen}
+                        onOpenChange={setIsAssigneeSelectOpen}
                         users={users}
                       />
                     )}
