@@ -67,6 +67,14 @@ function getPrimaryRoleName(user, fallbackRoleName) {
   return collectRoleNames(user, fallbackRoleName)[0] || 'CLIENT';
 }
 
+function canUseOtpFallback() {
+  return (
+    process.env.NODE_ENV !== 'production' ||
+    process.env.ALLOW_DEV_OTP === 'true' ||
+    process.env.ALLOW_TEST_VERIFICATION === 'true'
+  );
+}
+
 async function removePendingProof(pendingPath) {
   if (!pendingPath || !String(pendingPath).startsWith('/pending-proofs/')) return;
   const filename = path.basename(String(pendingPath));
@@ -231,12 +239,12 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
       await sendVerificationEmail(email, verificationCode);
     } catch (err) {
       emailSent = false;
-      if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP === 'true') {
+      if (canUseOtpFallback()) {
         devOtp = verificationCode;
       }
       console.error('Verification email failed:', err.message || err);
     }
-    if (!emailSent && process.env.NODE_ENV === 'production') {
+    if (!emailSent && !canUseOtpFallback()) {
       return res.status(503).json({ error: 'Email service unavailable' });
     }
 
@@ -303,12 +311,12 @@ router.post('/login', async (req, res, next) => {
         await sendOtpEmail(user.email, otp);
       } catch (err) {
         emailSent = false;
-        if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP === 'true') {
+        if (canUseOtpFallback()) {
           devOtp = otp;
         }
         console.error('OTP email failed:', err.message || err);
       }
-      if (!emailSent && process.env.NODE_ENV === 'production') {
+      if (!emailSent && !canUseOtpFallback()) {
         return res.status(503).json({ error: 'Email service unavailable' });
       }
       return res.json({ requiresOtp: true, emailSent, devOtp });
@@ -373,12 +381,12 @@ router.post('/resend-otp', async (req, res, next) => {
       await sendOtpEmail(email, otp);
     } catch (err) {
       emailSent = false;
-      if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP === 'true') {
+      if (canUseOtpFallback()) {
         devOtp = otp;
       }
       console.error('OTP email failed:', err.message || err);
     }
-    if (!emailSent && process.env.NODE_ENV === 'production') {
+    if (!emailSent && !canUseOtpFallback()) {
       return res.status(503).json({ error: 'Email service unavailable' });
     }
     return res.json({ ok: true, emailSent, devOtp });
@@ -492,7 +500,7 @@ router.post('/resend-verification', async (req, res, next) => {
         await sendVerificationEmail(email, verificationCode);
       } catch (err) {
         emailSent = false;
-        if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP === 'true') {
+        if (canUseOtpFallback()) {
           devOtp = verificationCode;
         }
         console.error('Verification email failed:', err.message || err);
@@ -515,7 +523,7 @@ router.post('/resend-verification', async (req, res, next) => {
       await sendVerificationEmail(email, verificationCode);
     } catch (err) {
       emailSent = false;
-      if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP === 'true') {
+      if (canUseOtpFallback()) {
         devOtp = verificationCode;
       }
       console.error('Verification email failed:', err.message || err);
@@ -548,7 +556,7 @@ router.post('/request-password-reset', async (req, res, next) => {
       await sendPasswordResetEmail(email, resetCode);
     } catch (err) {
       emailSent = false;
-      if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP === 'true') {
+      if (canUseOtpFallback()) {
         devOtp = resetCode;
       }
       console.error('Reset email failed:', err.message || err);
