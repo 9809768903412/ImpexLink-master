@@ -585,6 +585,25 @@ async function main() {
     data: { deletedAt: new Date() },
   });
 
+  const aiDemoStock = [
+    { itemName: 'Welding machine', qtyOnHand: 0, lowStockThreshold: 2 },
+    { itemName: 'Ceramic Tech EG', qtyOnHand: 4, lowStockThreshold: 25 },
+    { itemName: 'Seal Tech AW 20 ltrs', qtyOnHand: 6, lowStockThreshold: 20 },
+    { itemName: 'Baby roller cotton (white)', qtyOnHand: 18, lowStockThreshold: 40 },
+    { itemName: 'Paint thinner', qtyOnHand: 22, lowStockThreshold: 40 },
+  ];
+
+  for (const item of aiDemoStock) {
+    await prisma.product.updateMany({
+      where: { itemName: item.itemName, deletedAt: null },
+      data: {
+        qtyOnHand: item.qtyOnHand,
+        lowStockThreshold: item.lowStockThreshold,
+        status: toStatus(item.qtyOnHand, item.lowStockThreshold),
+      },
+    });
+  }
+
   // === Demo clients, projects, and past orders (safe, backend-friendly preview data) ===
   const princess = createdUsers.find((u) => u.email === 'princess.espino@impex.com');
   const paula = createdUsers.find((u) => u.email === 'paula.caraig@impex.com');
@@ -914,6 +933,14 @@ async function main() {
       itemSpecs: [
         { itemName: 'Epoxy injection', quantity: 10 },
       ],
+      delivery: {
+        drNumber: 'DR-OCR-25-0178',
+        assignedDriverId: driver?.userId || null,
+        status: 'PENDING',
+        eta: new Date('2026-05-05'),
+        createdAt: new Date('2026-05-04T15:00:00.000Z'),
+        notes: 'Demo dispatch created from real PO OCR order 25-0178.',
+      },
     },
     {
       orderNumber: '25-0497',
@@ -936,6 +963,20 @@ async function main() {
         { itemName: 'Lacquer thinner', quantity: 10 },
         { itemName: 'Paint thinner', quantity: 5 },
       ],
+      delivery: {
+        drNumber: 'DR-OCR-25-0497',
+        assignedDriverId: driver?.userId || null,
+        status: 'IN_TRANSIT',
+        eta: new Date('2026-05-05'),
+        createdAt: new Date('2026-05-04T15:20:00.000Z'),
+        notes: 'Demo in-transit route created from real PO OCR order 25-0497.',
+        deliveryMethod: 'LALAMOVE',
+        batchNumber: 1,
+        batchCount: 1,
+        loadKg: 58,
+        thirdPartyProvider: 'Lalamove',
+        thirdPartyReference: 'LALA-OCR-0497',
+      },
     },
   ];
 
@@ -972,6 +1013,25 @@ async function main() {
       link: `/admin/orders?orderId=${order.clientOrderId}`,
       createdAt: seededOrder.updatedAt,
     });
+
+    if (seededOrder.delivery) {
+      await ensureDelivery({
+        drNumber: seededOrder.delivery.drNumber,
+        clientOrderId: order.clientOrderId,
+        assignedDriverId: seededOrder.delivery.assignedDriverId,
+        status: seededOrder.delivery.status,
+        eta: seededOrder.delivery.eta,
+        createdAt: seededOrder.delivery.createdAt,
+        notes: seededOrder.delivery.notes,
+        itemsCount: seededOrder.itemSpecs.reduce((sum, item) => sum + item.quantity, 0),
+        deliveryMethod: seededOrder.delivery.deliveryMethod,
+        batchNumber: seededOrder.delivery.batchNumber,
+        batchCount: seededOrder.delivery.batchCount,
+        loadKg: seededOrder.delivery.loadKg,
+        thirdPartyProvider: seededOrder.delivery.thirdPartyProvider,
+        thirdPartyReference: seededOrder.delivery.thirdPartyReference,
+      });
+    }
   }
 
   const proofUser = ateneoClientUser || robinsonsClientUser || ayalaClientUser;
