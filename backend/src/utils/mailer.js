@@ -26,6 +26,10 @@ function sanitizeEmailError(error) {
   return { message: String(error) };
 }
 
+function hasEmailDeliveryConfig() {
+  return Boolean(String(process.env.RESEND_API_KEY || '').trim() && getFromAddress());
+}
+
 function getResendClient() {
   const apiKey = String(process.env.RESEND_API_KEY || '').trim();
   if (resendClient && resendClientKey === apiKey) return resendClient;
@@ -38,7 +42,7 @@ function getResendClient() {
 }
 
 function getFromAddress() {
-  return process.env.RESEND_FROM || process.env.SMTP_FROM || 'no-reply@impexengineering.local';
+  return String(process.env.RESEND_FROM || process.env.SMTP_FROM || '').trim();
 }
 
 async function sendEmail({ to, subject, text, html }) {
@@ -54,6 +58,12 @@ async function sendEmail({ to, subject, text, html }) {
     nodeEnv: process.env.NODE_ENV || 'development',
   });
   try {
+    if (!from) {
+      throw new Error('RESEND_FROM is missing. Set it to a sender on a verified Resend domain, for example Impex Engineering <otp@yourdomain.com>.');
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(from.replace(/^.*<(.+)>$/, '$1').trim())) {
+      throw new Error(`RESEND_FROM is invalid: ${from}`);
+    }
     const client = getResendClient();
     const result = await client.emails.send({ from, to, subject, text, html });
     if (result?.error) {
@@ -135,11 +145,24 @@ function getEmailDiagnostics() {
   const from = getFromAddress();
   return {
     provider: 'resend',
+    ready: Boolean(apiKey && from),
     hasResendApiKey: Boolean(apiKey),
     resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    hasFromAddress: Boolean(from),
     from,
+    fromDomain: from ? from.replace(/^.*<(.+)>$/, '$1').trim().split('@')[1] || null : null,
     nodeEnv: process.env.NODE_ENV || 'development',
+    requireEmailOtpDelivery: process.env.REQUIRE_EMAIL_OTP_DELIVERY === 'true',
+    allowDevOtp: process.env.ALLOW_DEV_OTP || null,
   };
 }
 
-module.exports = { sendEmail, sendOtpEmail, sendVerificationEmail, sendPasswordResetEmail, getEmailDiagnostics };
+module.exports = {
+  sendEmail,
+  sendOtpEmail,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  getEmailDiagnostics,
+  sanitizeEmailError,
+  hasEmailDeliveryConfig,
+};

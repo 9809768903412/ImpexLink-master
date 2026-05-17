@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { sendEmail, getEmailDiagnostics } = require('../utils/mailer');
+const { sendEmail, getEmailDiagnostics, sanitizeEmailError } = require('../utils/mailer');
 
 const router = express.Router();
 
@@ -33,7 +33,12 @@ router.get('/', requireAuth, requireRole(['ADMIN', 'PRESIDENT']), async (req, re
       diagnostics,
     });
   } catch (error) {
-    return next(error);
+    return res.status(503).json({
+      ok: false,
+      error: error.message || 'Email test failed',
+      details: sanitizeEmailError(error),
+      diagnostics: getEmailDiagnostics(),
+    });
   }
 });
 
