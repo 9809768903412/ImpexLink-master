@@ -39,6 +39,7 @@ type SupplierForm = {
   phone: string;
   address: string;
   contactPerson: string;
+  country: string;
 };
 
 const emptyForm: SupplierForm = {
@@ -46,6 +47,7 @@ const emptyForm: SupplierForm = {
   phone: '',
   address: '',
   contactPerson: '',
+  country: 'Philippines',
 };
 
 const toForm = (supplier: Supplier): SupplierForm => ({
@@ -53,6 +55,7 @@ const toForm = (supplier: Supplier): SupplierForm => ({
   phone: supplier.phone || '',
   address: supplier.address || '',
   contactPerson: supplier.contactPerson || '',
+  country: supplier.country || 'Philippines',
 });
 
 const COMMON_SUPPLIERS = [
@@ -65,6 +68,18 @@ const COMMON_SUPPLIERS = [
   'LYS Marketing',
   'Davies Marketing',
   'Other',
+];
+
+const SUPPLIER_COUNTRIES = [
+  'Philippines',
+  'Singapore',
+  'Malaysia',
+  'Thailand',
+  'Vietnam',
+  'Indonesia',
+  'China',
+  'Japan',
+  'South Korea',
 ];
 
 export default function SuppliersPage() {
@@ -152,6 +167,7 @@ export default function SuppliersPage() {
         phone: form.phone.trim() || null,
         address: form.address.trim() || null,
         contactPerson: form.contactPerson.trim() || null,
+        country: form.country || 'Philippines',
       };
       if (editingSupplier) {
         await apiClient.put(`/suppliers/${editingSupplier.id}`, payload);
@@ -186,9 +202,10 @@ export default function SuppliersPage() {
       const payload = response.data;
       const rows: Supplier[] = payload?.data || payload || suppliers;
       downloadCsv(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`, [
-        ['Company Name', 'Contact Person', 'Contact Number', 'Address'],
+        ['Company Name', 'Country', 'Contact Person', 'Contact Number', 'Address'],
         ...rows.map((supplier) => [
           supplier.name,
+          supplier.country || 'Philippines',
           supplier.contactPerson || '',
           supplier.phone || '',
           supplier.address || '',
@@ -243,6 +260,7 @@ export default function SuppliersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Supplier</TableHead>
+                  <TableHead>Country</TableHead>
                   <TableHead>Contact Person</TableHead>
                   <TableHead>Contact Number</TableHead>
                   <TableHead>Address</TableHead>
@@ -255,6 +273,7 @@ export default function SuppliersPage() {
                     <TableCell>
                       <p className="font-medium">{supplier.name}</p>
                     </TableCell>
+                    <TableCell>{supplier.country || 'Philippines'}</TableCell>
                     <TableCell>{supplier.contactPerson || '-'}</TableCell>
                     <TableCell>{supplier.phone || '-'}</TableCell>
                     <TableCell className="max-w-[320px] truncate">{supplier.address || '-'}</TableCell>
@@ -274,14 +293,14 @@ export default function SuppliersPage() {
                 ))}
                 {!loading && suppliers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={canManage ? 5 : 4} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={canManage ? 6 : 5} className="py-8 text-center text-muted-foreground">
                       No suppliers found.
                     </TableCell>
                   </TableRow>
                 )}
                 {loading && (
                   <TableRow>
-                    <TableCell colSpan={canManage ? 5 : 4} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={canManage ? 6 : 5} className="py-8 text-center text-muted-foreground">
                       Loading suppliers...
                     </TableCell>
                   </TableRow>
@@ -327,6 +346,24 @@ export default function SuppliersPage() {
                 />
               )}
               {errors.supplierName && <p className="mt-1 text-xs text-destructive">{errors.supplierName}</p>}
+            </div>
+            <div>
+              <Label htmlFor="supplierCountry">Country</Label>
+              <Select
+                value={form.country}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, country: value }))}
+              >
+                <SelectTrigger id="supplierCountry">
+                  <SelectValue placeholder="Select country" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPLIER_COUNTRIES.map((country) => (
+                    <SelectItem key={country} value={country}>
+                      {country}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="supplierContact">Contact Person</Label>

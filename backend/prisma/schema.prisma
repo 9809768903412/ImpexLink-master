@@ -307,6 +307,7 @@ model Supplier {
   supplierId   Int     @id @default(autoincrement()) @map("supplier_id")
   supplierName String  @db.VarChar(150) @map("supplier_name")
   country      String? @db.VarChar(100)
+  contactPerson String? @db.VarChar(150) @map("contact_person")
   email        String? @db.VarChar(150)
   address      String? @db.Text
   phone        String? @db.VarChar(50)

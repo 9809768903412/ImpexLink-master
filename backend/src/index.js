@@ -30,6 +30,7 @@ const companyRoutes = require('./routes/company');
 const publicRoutes = require('./routes/public');
 const proofRoutes = require('./routes/proofs');
 const testEmailRoutes = require('./routes/testEmail');
+const fileRoutes = require('./routes/files');
 
 const app = express();
 
@@ -106,6 +107,7 @@ app.use('/api/company', companyRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/proofs', proofRoutes);
 app.use('/api/test-email', testEmailRoutes);
+app.use('/api/files', fileRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -183,7 +183,7 @@ export interface Supplier {
   phone: string;
   address: string;
   tin?: string;
-  country?: string | null;
+  country: string;
 }
 
 // Delivery Types

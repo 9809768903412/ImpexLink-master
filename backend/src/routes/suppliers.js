@@ -11,7 +11,8 @@ function mapSupplier(s) {
   return {
     id: s.supplierId.toString(),
     name: s.supplierName,
-    contactPerson: s.country || '',
+    contactPerson: s.contactPerson || '',
+    country: s.country || 'Philippines',
     phone: s.phone || '',
     address: s.address || '',
     tin: s.tin || '',
@@ -28,6 +29,7 @@ router.get('/', requireRole(['ADMIN']), async (req, res, next) => {
             { supplierName: { contains: q, mode: 'insensitive' } },
             { phone: { contains: q, mode: 'insensitive' } },
             { address: { contains: q, mode: 'insensitive' } },
+            { contactPerson: { contains: q, mode: 'insensitive' } },
             { country: { contains: q, mode: 'insensitive' } },
           ],
           deletedAt: null,
@@ -62,7 +64,8 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
     const supplier = await prisma.supplier.create({
       data: {
         supplierName: req.body.supplierName,
-        country: req.body.contactPerson,
+        country: req.body.country || 'Philippines',
+        contactPerson: req.body.contactPerson,
         email: null,
         address: req.body.address,
         phone: req.body.phone,
@@ -92,7 +95,8 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
       where: { supplierId: Number(req.params.id) },
       data: {
         supplierName: req.body.supplierName,
-        country: req.body.contactPerson,
+        country: req.body.country || 'Philippines',
+        contactPerson: req.body.contactPerson,
         email: null,
         address: req.body.address,
         phone: req.body.phone,
