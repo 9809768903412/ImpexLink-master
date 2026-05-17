@@ -42,12 +42,14 @@ const escapeHtml = (value: unknown) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 
 // TODO: Replace with real data from Lovable Cloud database
 export default function ReportsPage() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: new Date(2025, 0, 1),
-    to: new Date(),
+    from: startOfDay(new Date(2025, 0, 1)),
+    to: endOfDay(new Date()),
   });
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>('all');
@@ -258,16 +260,22 @@ export default function ReportsPage() {
     .filter((o) => o.paymentStatus === 'pending' || o.paymentStatus === 'verified')
     .sort((a, b) => getOrderTotals(b).total - getOrderTotals(a).total);
   const vatLabel = Math.round(VAT_RATE * 100);
+  const exportDateLabel = `${format(dateRange.from, 'MMM dd, yyyy')} - ${format(dateRange.to, 'MMM dd, yyyy')}`;
+  const exportDateSlug = `${format(dateRange.from, 'yyyy-MM-dd')}_to_${format(dateRange.to, 'yyyy-MM-dd')}`;
 
   const handleExport = (type: string) => {
     const today = format(new Date(), 'yyyy-MM-dd');
     const inventoryCsvRows = [
+      ['Export Period', exportDateLabel, ''],
+      [],
       ['Category', 'Items On Hand', 'Total Value'],
       ...filteredInventoryByCategory.map((cat) => [cat.name, String(cat.count), formatPesoAmount(cat.value)]),
       ['Low Stock Items', String(lowStockItems.length), ''],
       ['Out of Stock Items', String(outOfStockItems.length), ''],
     ];
     const projectCsvRows = [
+      ['Export Period', exportDateLabel, '', '', '', ''],
+      [],
       ['Project', 'Client', 'Status', 'Orders', 'Total Value', 'Last Order'],
       ...filteredProjects.map((proj) => {
         const projectOrders = ordersInRange.filter((o) => o.projectId === proj.id);
@@ -284,6 +292,8 @@ export default function ReportsPage() {
       }),
     ];
     const deliveryCsvRows = [
+      ['Export Period', exportDateLabel, '', '', '', ''],
+      [],
       ['DR Number', 'Client', 'Project', 'Status', 'ETA', 'Delivered At'],
       ...filteredDeliveries.map((delivery) => [
         delivery.drNumber,
@@ -295,6 +305,8 @@ export default function ReportsPage() {
       ]),
     ];
     const financialCsvRows = [
+      ['Export Period', exportDateLabel, '', '', '', ''],
+      [],
       ['Order Number', 'Client', 'Payment Status', 'VATable Sales', `VAT (${vatLabel}%)`, 'Total'],
       ...filteredOrdersForVat.map((order) => {
         const totals = getOrderTotals(order);
@@ -323,7 +335,7 @@ export default function ReportsPage() {
       return;
     }
     if (type === 'all-csv') {
-      downloadCsv(`all-reports-${today}.csv`, [
+      downloadCsv(`all-reports-${exportDateSlug}.csv`, [
         ['Inventory Report'],
         ...inventoryCsvRows,
         [],
@@ -339,16 +351,20 @@ export default function ReportsPage() {
       return;
     }
     if (type === 'all-pdf') {
-      const table = (title: string, rows: string[][]) => `
-        <h2>${escapeHtml(title)}</h2>
-        <table>
-          <thead><tr>${rows[0].map((cell) => `<th>${escapeHtml(cell)}</th>`).join('')}</tr></thead>
-          <tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
-        </table>`;
+      const table = (title: string, rows: string[][]) => {
+        const tableRows = rows.filter((row) => row.length > 0 && row[0] !== 'Export Period');
+        return `
+          <h2>${escapeHtml(title)}</h2>
+          <table>
+            <thead><tr>${tableRows[0].map((cell) => `<th>${escapeHtml(cell)}</th>`).join('')}</tr></thead>
+            <tbody>${tableRows.slice(1).map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>`;
+      };
       printHtml(
         'All Reports',
         `<h1>All Reports</h1>
-        <div class="meta">Date: ${today}</div>
+        <div class="meta">Export period: ${escapeHtml(exportDateLabel)}</div>
+        <div class="meta">Generated: ${today}</div>
         ${table('Inventory Report', inventoryCsvRows)}
         ${table('Project Report', projectCsvRows)}
         ${table('Delivery Report', deliveryCsvRows)}
@@ -363,13 +379,14 @@ export default function ReportsPage() {
       printHtml(
         'Inventory Report',
         `<h1>Inventory Report</h1>
-        <div class="meta">Date: ${format(new Date(), 'yyyy-MM-dd')}</div>
+        <div class="meta">Export period: ${escapeHtml(exportDateLabel)}</div>
+        <div class="meta">Generated: ${today}</div>
         <table><thead><tr><th>Category</th><th>Items</th><th>Total Value</th></tr></thead><tbody>${rows}</tbody></table>`
       );
       return;
     }
     if (type === 'inventory-csv') {
-      downloadCsv(`inventory-report-${today}.csv`, inventoryCsvRows);
+      downloadCsv(`inventory-report-${exportDateSlug}.csv`, inventoryCsvRows);
       return;
     }
     if (type === 'projects') {
@@ -379,13 +396,14 @@ export default function ReportsPage() {
       printHtml(
         'Project Report',
         `<h1>Project Consumption</h1>
-        <div class="meta">Date: ${format(new Date(), 'yyyy-MM-dd')}</div>
+        <div class="meta">Export period: ${escapeHtml(exportDateLabel)}</div>
+        <div class="meta">Generated: ${today}</div>
         <table><thead><tr><th>Project</th><th>Orders</th><th>Total Value</th></tr></thead><tbody>${rows}</tbody></table>`
       );
       return;
     }
     if (type === 'projects-csv') {
-      downloadCsv(`project-report-${today}.csv`, projectCsvRows);
+      downloadCsv(`project-report-${exportDateSlug}.csv`, projectCsvRows);
       return;
     }
     if (type === 'delivery') {
@@ -395,17 +413,18 @@ export default function ReportsPage() {
       printHtml(
         'Delivery Report',
         `<h1>Delivery Report</h1>
-        <div class="meta">Date: ${format(new Date(), 'yyyy-MM-dd')}</div>
+        <div class="meta">Export period: ${escapeHtml(exportDateLabel)}</div>
+        <div class="meta">Generated: ${today}</div>
         <table><thead><tr><th>DR #</th><th>Client</th><th>Status</th><th>ETA</th></tr></thead><tbody>${rows}</tbody></table>`
       );
       return;
     }
     if (type === 'delivery-csv') {
-      downloadCsv(`delivery-report-${today}.csv`, deliveryCsvRows);
+      downloadCsv(`delivery-report-${exportDateSlug}.csv`, deliveryCsvRows);
       return;
     }
     if (type === 'financial-csv') {
-      downloadCsv(`financial-report-${today}.csv`, financialCsvRows);
+      downloadCsv(`financial-report-${exportDateSlug}.csv`, financialCsvRows);
       return;
     }
     if (type.startsWith('financial')) {
@@ -418,7 +437,8 @@ export default function ReportsPage() {
       printHtml(
         'Financial Report',
         `<h1>Financial Report</h1>
-        <div class="meta">Date: ${format(new Date(), 'yyyy-MM-dd')}</div>
+        <div class="meta">Export period: ${escapeHtml(exportDateLabel)}</div>
+        <div class="meta">Generated: ${today}</div>
         <table><thead><tr><th>Order #</th><th>Client</th><th>VATable Sales</th><th>VAT</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
         <div class="total">Total Revenue: ₱${formatPesoAmount(filteredOrdersForVat.reduce((sum, o) => sum + getOrderTotals(o).total, 0))}</div>`
       );
@@ -458,7 +478,7 @@ export default function ReportsPage() {
             <PopoverTrigger asChild>
               <Button className="w-full sm:w-auto" variant="outline">
                 <CalendarIcon size={16} className="mr-2" />
-                {format(dateRange.from, 'MMM dd')} - {format(dateRange.to, 'MMM dd, yyyy')}
+                Export Period: {exportDateLabel}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
@@ -467,7 +487,7 @@ export default function ReportsPage() {
                 selected={{ from: dateRange.from, to: dateRange.to }}
                 onSelect={(range) => {
                   if (range?.from && range?.to) {
-                    setDateRange({ from: range.from, to: range.to });
+                    setDateRange({ from: startOfDay(range.from), to: endOfDay(range.to) });
                   }
                 }}
               />
