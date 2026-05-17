@@ -3,6 +3,10 @@ const { Resend } = require('resend');
 let resendClient = null;
 let resendClientKey = null;
 
+function cleanEnvValue(value) {
+  return String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
+}
+
 function sanitizeEmailError(error) {
   if (!error) return { message: 'Unknown email error' };
   if (error instanceof Error) {
@@ -27,11 +31,11 @@ function sanitizeEmailError(error) {
 }
 
 function hasEmailDeliveryConfig() {
-  return Boolean(String(process.env.RESEND_API_KEY || '').trim() && getFromAddress());
+  return Boolean(cleanEnvValue(process.env.RESEND_API_KEY) && getFromAddress());
 }
 
 function getResendClient() {
-  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  const apiKey = cleanEnvValue(process.env.RESEND_API_KEY);
   if (resendClient && resendClientKey === apiKey) return resendClient;
   if (!apiKey) {
     throw new Error('RESEND_API_KEY is missing');
@@ -42,12 +46,12 @@ function getResendClient() {
 }
 
 function getFromAddress() {
-  return String(process.env.RESEND_FROM || process.env.SMTP_FROM || '').trim();
+  return cleanEnvValue(process.env.RESEND_FROM || process.env.SMTP_FROM);
 }
 
 async function sendEmail({ to, subject, text, html }) {
   const from = getFromAddress();
-  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  const apiKey = cleanEnvValue(process.env.RESEND_API_KEY);
   console.log('[mailer] attempting send', {
     provider: 'resend',
     to,
@@ -141,8 +145,11 @@ async function sendPasswordResetEmail(to, otp) {
 }
 
 function getEmailDiagnostics() {
-  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  const apiKey = cleanEnvValue(process.env.RESEND_API_KEY);
   const from = getFromAddress();
+  const resendEnvKeys = Object.keys(process.env)
+    .filter((key) => key.toUpperCase().includes('RESEND'))
+    .sort();
   return {
     provider: 'resend',
     ready: Boolean(apiKey && from),
@@ -154,6 +161,7 @@ function getEmailDiagnostics() {
     nodeEnv: process.env.NODE_ENV || 'development',
     requireEmailOtpDelivery: process.env.REQUIRE_EMAIL_OTP_DELIVERY === 'true',
     allowDevOtp: process.env.ALLOW_DEV_OTP || null,
+    resendEnvKeys,
   };
 }
 

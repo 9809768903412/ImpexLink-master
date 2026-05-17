@@ -45,6 +45,7 @@ import {
   canViewCompanySettings,
 } from '@/lib/roles';
 import { toPublicFileUrl } from '@/lib/files';
+import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
 
 // TODO: Replace with real data
 export default function SettingsPage() {
@@ -139,10 +140,10 @@ export default function SettingsPage() {
     name: '',
     email: '',
     password: '',
-    role: 'project_manager',
+    role: 'engineer',
     status: 'ACTIVE',
     companyName: '',
-    phone: '',
+    phone: '+63 ',
   });
   const getErrorMessage = (error: unknown, fallback: string) =>
     (error as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
@@ -533,10 +534,10 @@ export default function SettingsPage() {
         name: '',
         email: '',
         password: '',
-        role: 'project_manager',
+        role: 'engineer',
         status: 'ACTIVE',
         companyName: '',
-        phone: '',
+        phone: '+63 ',
       });
       setNewUserErrors({});
       toast({
@@ -756,10 +757,9 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <Label>Phone</Label>
-                  <Input
+                  <PhoneInputWithCountry
                     value={profileData.phone}
-                    onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                    className="mt-1"
+                    onChange={(phone) => setProfileData({ ...profileData, phone })}
                   />
                 </div>
                 <div>
@@ -980,11 +980,11 @@ export default function SettingsPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All Roles</SelectItem>
-                            {roleOptions.map((role) => (
-                              <SelectItem key={role.value} value={role.value}>
-                                {role.label}
-                              </SelectItem>
-                            ))}
+                  {roleOptions.filter((role) => role.value !== 'project_manager').map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
                           </SelectContent>
                         </Select>
                         <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
@@ -1051,13 +1051,13 @@ export default function SettingsPage() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {roleOptions.map((role) => {
-                                const disablePmOption = role.value === 'project_manager' && !canPromoteUserToPm(roleList);
-                                return (
-                                <SelectItem key={role.value} value={role.value} disabled={disablePmOption}>
-                                  {role.label}
-                                </SelectItem>
-                              )})}
+                              {roleOptions
+                                .filter((role) => role.value !== 'project_manager' || canPromoteUserToPm(roleList))
+                                .map((role) => (
+                                  <SelectItem key={role.value} value={role.value}>
+                                    {role.label}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </TableCell>
@@ -1382,10 +1382,9 @@ export default function SettingsPage() {
             )}
             <div>
               <Label>Phone</Label>
-              <Input
+              <PhoneInputWithCountry
                 value={newUser.phone}
-                onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-                className="mt-1"
+                onChange={(phone) => setNewUser({ ...newUser, phone })}
               />
             </div>
           </div>

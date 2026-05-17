@@ -30,6 +30,7 @@ export async function register(payload: {
   name: string;
   email: string;
   password: string;
+  phone?: string;
   role: UserRole;
   companyName?: string;
   proofDoc?: File | null;
@@ -39,6 +40,7 @@ export async function register(payload: {
   form.append('email', payload.email);
   form.append('password', payload.password);
   form.append('role', payload.role);
+  if (payload.phone) form.append('phone', payload.phone);
   if (payload.companyName) form.append('companyName', payload.companyName);
   if (payload.proofDoc) form.append('proofDoc', payload.proofDoc);
   const { data } = await apiClient.post<AuthResponse>('/auth/register', form, {

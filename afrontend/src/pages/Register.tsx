@@ -12,11 +12,13 @@ import type { UserRole } from '@/types';
 import { apiClient } from '@/api/client';
 import { resendVerification } from '@/api/auth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('+63 ');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role] = useState<UserRole>('client');
   const [companyName, setCompanyName] = useState('');
@@ -102,7 +104,7 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      const result = await register(name, email, password, role, companyName, proofDoc);
+      const result = await register(name, email, password, phone, role, companyName, proofDoc);
       if (result.ok && result.pending) {
         toast({
           title: 'Registration submitted',
@@ -124,7 +126,13 @@ export default function Register() {
           description: 'Welcome to Impex Engineering.',
         });
         navigate('/');
+        return;
       }
+      toast({
+        title: 'Registration failed',
+        description: result.error || 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
     } catch (error) {
       toast({
         title: 'Registration failed',
@@ -285,6 +293,10 @@ export default function Register() {
                     autoComplete="email"
                   />
                   {formErrors.email && <p className="text-xs text-destructive">{formErrors.email}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Contact Number</Label>
+                  <PhoneInputWithCountry value={phone} onChange={setPhone} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">

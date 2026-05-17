@@ -4,7 +4,7 @@ const { sendEmail, getEmailDiagnostics, sanitizeEmailError } = require('../utils
 
 const router = express.Router();
 
-router.get('/', requireAuth, requireRole(['ADMIN', 'PRESIDENT']), async (req, res, next) => {
+router.get('/', requireAuth, requireRole(['ADMIN', 'PRESIDENT']), async (req, res) => {
   try {
     const to = String(req.query.to || req.user?.email || '').trim();
     if (!to) {

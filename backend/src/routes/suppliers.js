@@ -2,7 +2,7 @@ const express = require('express');
 const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { isEmail, isNonEmptyString } = require('../utils/validate');
+const { isNonEmptyString } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -11,16 +11,14 @@ function mapSupplier(s) {
   return {
     id: s.supplierId.toString(),
     name: s.supplierName,
-    contactPerson: s.supplierName,
-    email: s.email || '',
+    contactPerson: s.country || '',
     phone: s.phone || '',
-    address: s.address || s.country || '',
+    address: s.address || '',
     tin: s.tin || '',
-    country: s.country || '',
   };
 }
 
-router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+router.get('/', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
@@ -28,13 +26,14 @@ router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next
       ? {
           OR: [
             { supplierName: { contains: q, mode: 'insensitive' } },
-            { email: { contains: q, mode: 'insensitive' } },
+            { phone: { contains: q, mode: 'insensitive' } },
+            { address: { contains: q, mode: 'insensitive' } },
             { country: { contains: q, mode: 'insensitive' } },
           ],
           deletedAt: null,
         }
       : { deletedAt: null };
-    const sort = parseSort(req.query, ['supplierName', 'email', 'country']);
+    const sort = parseSort(req.query, ['supplierName', 'phone']);
     const orderBy = sort ? { [sort.sortBy]: sort.sortDir } : { supplierName: 'asc' };
     const [suppliers, total] = await Promise.all([
       prisma.supplier.findMany({
@@ -60,17 +59,14 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
     if (!isNonEmptyString(req.body.supplierName)) {
       return res.status(400).json({ error: 'Supplier name is required' });
     }
-    if (req.body.email && !isEmail(req.body.email)) {
-      return res.status(400).json({ error: 'Invalid email' });
-    }
     const supplier = await prisma.supplier.create({
       data: {
         supplierName: req.body.supplierName,
-        country: req.body.country,
-        email: req.body.email,
+        country: req.body.contactPerson,
+        email: null,
         address: req.body.address,
         phone: req.body.phone,
-        tin: req.body.tin,
+        tin: null,
       },
     });
     await prisma.auditLog.create({
@@ -92,18 +88,15 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
     if (req.body.supplierName !== undefined && !isNonEmptyString(req.body.supplierName)) {
       return res.status(400).json({ error: 'Supplier name is required' });
     }
-    if (req.body.email && !isEmail(req.body.email)) {
-      return res.status(400).json({ error: 'Invalid email' });
-    }
     const supplier = await prisma.supplier.update({
       where: { supplierId: Number(req.params.id) },
       data: {
         supplierName: req.body.supplierName,
-        country: req.body.country,
-        email: req.body.email,
+        country: req.body.contactPerson,
+        email: null,
         address: req.body.address,
         phone: req.body.phone,
-        tin: req.body.tin,
+        tin: null,
       },
     });
     await prisma.auditLog.create({

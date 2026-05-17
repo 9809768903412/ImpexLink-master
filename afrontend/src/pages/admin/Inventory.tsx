@@ -123,7 +123,7 @@ export default function InventoryPage() {
   const { toast } = useToast();
   const { data: transactions, reload: reloadTransactions } = useResource<StockTransaction[]>('/transactions', []);
   const { data: categories } = useResource<{ categoryName: string }[]>('/categories', []);
-  const { data: suppliers } = useResource<Supplier[]>('/suppliers', []);
+  const { data: suppliers } = useResource<Supplier[]>(canEditItemInfo ? '/suppliers' : '', [], [canEditItemInfo]);
   const categoryList = categories.map((cat) => cat.categoryName);
 
   const reloadInventory = async () => {

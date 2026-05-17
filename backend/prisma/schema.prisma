@@ -191,6 +191,7 @@ model PendingRegistration {
   passwordHash          String    @map("password_hash")
   roleName              String    @db.VarChar(50) @map("role_name")
   companyName           String?   @db.VarChar(150) @map("company_name")
+  phone                 String?   @db.VarChar(30)
   proofDocUrl           String?   @db.Text @map("proof_doc_url")
   verificationCodeHash  String?   @db.Text @map("verification_code_hash")
   verificationExpiresAt DateTime? @map("verification_expires_at")

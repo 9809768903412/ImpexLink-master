@@ -35,6 +35,13 @@ const paginate = <T,>(rows: T[], page: number) =>
   rows.slice((page - 1) * REPORT_PAGE_SIZE, page * REPORT_PAGE_SIZE);
 
 const pageCount = (rows: unknown[]) => Math.max(1, Math.ceil(rows.length / REPORT_PAGE_SIZE));
+const escapeHtml = (value: unknown) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 
 // TODO: Replace with real data from Lovable Cloud database
 export default function ReportsPage() {
@@ -47,6 +54,7 @@ export default function ReportsPage() {
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string>('all');
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
+  const [exportScope, setExportScope] = useState<string>('all');
   const [lowStockPage, setLowStockPage] = useState(1);
   const [topValuePage, setTopValuePage] = useState(1);
   const [categoryPage, setCategoryPage] = useState(1);
@@ -251,6 +259,102 @@ export default function ReportsPage() {
   const vatLabel = Math.round(VAT_RATE * 100);
 
   const handleExport = (type: string) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const inventoryCsvRows = [
+      ['Category', 'Items On Hand', 'Total Value'],
+      ...filteredInventoryByCategory.map((cat) => [cat.name, String(cat.count), formatPesoAmount(cat.value)]),
+      ['Low Stock Items', String(lowStockItems.length), ''],
+      ['Out of Stock Items', String(outOfStockItems.length), ''],
+    ];
+    const projectCsvRows = [
+      ['Project', 'Client', 'Status', 'Orders', 'Total Value', 'Last Order'],
+      ...filteredProjects.map((proj) => {
+        const projectOrders = ordersInRange.filter((o) => o.projectId === proj.id);
+        const value = projectOrders.reduce((sum, o) => sum + o.total, 0);
+        const lastOrder = projectLastOrderMap[String(proj.id)];
+        return [
+          proj.name,
+          proj.clientName,
+          proj.status,
+          String(projectOrders.length),
+          formatPesoAmount(value),
+          lastOrder ? format(lastOrder, 'yyyy-MM-dd') : '',
+        ];
+      }),
+    ];
+    const deliveryCsvRows = [
+      ['DR Number', 'Client', 'Project', 'Status', 'ETA', 'Delivered At'],
+      ...filteredDeliveries.map((delivery) => [
+        delivery.drNumber,
+        delivery.clientName,
+        delivery.projectName || '',
+        delivery.status,
+        delivery.eta ? format(new Date(delivery.eta), 'yyyy-MM-dd') : '',
+        delivery.receivedAt ? format(new Date(delivery.receivedAt), 'yyyy-MM-dd') : '',
+      ]),
+    ];
+    const financialCsvRows = [
+      ['Order Number', 'Client', 'Payment Status', 'VATable Sales', `VAT (${vatLabel}%)`, 'Total'],
+      ...filteredOrdersForVat.map((order) => {
+        const totals = getOrderTotals(order);
+        return [
+          order.orderNumber,
+          order.clientName,
+          order.paymentStatus,
+          formatPesoAmount(totals.net),
+          formatPesoAmount(totals.vat),
+          formatPesoAmount(totals.total),
+        ];
+      }),
+    ];
+    const exportByScope = (formatType: 'csv' | 'pdf') => {
+      if (exportScope === 'all') {
+        return handleExport(`all-${formatType}`);
+      }
+      return handleExport(`${exportScope}${formatType === 'csv' ? '-csv' : exportScope === 'financial' ? '-pdf' : ''}`);
+    };
+    if (type === 'scope-csv') {
+      exportByScope('csv');
+      return;
+    }
+    if (type === 'scope-pdf') {
+      exportByScope('pdf');
+      return;
+    }
+    if (type === 'all-csv') {
+      downloadCsv(`all-reports-${today}.csv`, [
+        ['Inventory Report'],
+        ...inventoryCsvRows,
+        [],
+        ['Project Report'],
+        ...projectCsvRows,
+        [],
+        ['Delivery Report'],
+        ...deliveryCsvRows,
+        [],
+        ['Financial Report'],
+        ...financialCsvRows,
+      ]);
+      return;
+    }
+    if (type === 'all-pdf') {
+      const table = (title: string, rows: string[][]) => `
+        <h2>${escapeHtml(title)}</h2>
+        <table>
+          <thead><tr>${rows[0].map((cell) => `<th>${escapeHtml(cell)}</th>`).join('')}</tr></thead>
+          <tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>`;
+      printHtml(
+        'All Reports',
+        `<h1>All Reports</h1>
+        <div class="meta">Date: ${today}</div>
+        ${table('Inventory Report', inventoryCsvRows)}
+        ${table('Project Report', projectCsvRows)}
+        ${table('Delivery Report', deliveryCsvRows)}
+        ${table('Financial Report', financialCsvRows)}`
+      );
+      return;
+    }
     if (type === 'inventory') {
       const rows = filteredInventoryByCategory
         .map((cat) => `<tr><td>${cat.name}</td><td>${cat.count}</td><td>₱${formatPesoAmount(cat.value)}</td></tr>`)
@@ -264,12 +368,7 @@ export default function ReportsPage() {
       return;
     }
     if (type === 'inventory-csv') {
-      downloadCsv(`inventory-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
-        ['Category', 'Items On Hand', 'Total Value'],
-        ...filteredInventoryByCategory.map((cat) => [cat.name, String(cat.count), formatPesoAmount(cat.value)]),
-        ['Low Stock Items', String(lowStockItems.length), ''],
-        ['Out of Stock Items', String(outOfStockItems.length), ''],
-      ]);
+      downloadCsv(`inventory-report-${today}.csv`, inventoryCsvRows);
       return;
     }
     if (type === 'projects') {
@@ -285,22 +384,7 @@ export default function ReportsPage() {
       return;
     }
     if (type === 'projects-csv') {
-      downloadCsv(`project-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
-        ['Project', 'Client', 'Status', 'Orders', 'Total Value', 'Last Order'],
-        ...filteredProjects.map((proj) => {
-          const projectOrders = ordersInRange.filter((o) => o.projectId === proj.id);
-          const value = projectOrders.reduce((sum, o) => sum + o.total, 0);
-          const lastOrder = projectLastOrderMap[String(proj.id)];
-          return [
-            proj.name,
-            proj.clientName,
-            proj.status,
-            String(projectOrders.length),
-            formatPesoAmount(value),
-            lastOrder ? format(lastOrder, 'yyyy-MM-dd') : '',
-          ];
-        }),
-      ]);
+      downloadCsv(`project-report-${today}.csv`, projectCsvRows);
       return;
     }
     if (type === 'delivery') {
@@ -316,34 +400,11 @@ export default function ReportsPage() {
       return;
     }
     if (type === 'delivery-csv') {
-      downloadCsv(`delivery-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
-        ['DR Number', 'Client', 'Project', 'Status', 'ETA', 'Delivered At'],
-        ...filteredDeliveries.map((delivery) => [
-          delivery.drNumber,
-          delivery.clientName,
-          delivery.projectName || '',
-          delivery.status,
-          delivery.eta ? format(new Date(delivery.eta), 'yyyy-MM-dd') : '',
-          delivery.receivedAt ? format(new Date(delivery.receivedAt), 'yyyy-MM-dd') : '',
-        ]),
-      ]);
+      downloadCsv(`delivery-report-${today}.csv`, deliveryCsvRows);
       return;
     }
     if (type === 'financial-csv') {
-      downloadCsv(`financial-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
-        ['Order Number', 'Client', 'Payment Status', 'VATable Sales', `VAT (${vatLabel}%)`, 'Total'],
-        ...filteredOrdersForVat.map((order) => {
-          const totals = getOrderTotals(order);
-          return [
-            order.orderNumber,
-            order.clientName,
-            order.paymentStatus,
-            formatPesoAmount(totals.net),
-            formatPesoAmount(totals.vat),
-            formatPesoAmount(totals.total),
-          ];
-        }),
-      ]);
+      downloadCsv(`financial-report-${today}.csv`, financialCsvRows);
       return;
     }
     if (type.startsWith('financial')) {
@@ -371,7 +432,27 @@ export default function ReportsPage() {
           <h2 className="text-2xl font-bold text-foreground">Reports</h2>
           <p className="text-muted-foreground">Business analytics and export tools</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={exportScope} onValueChange={setExportScope}>
+            <SelectTrigger className="w-full sm:w-[190px]">
+              <SelectValue placeholder="Export scope" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Reports</SelectItem>
+              <SelectItem value="inventory">Inventory Report</SelectItem>
+              <SelectItem value="projects">Project Report</SelectItem>
+              <SelectItem value="delivery">Delivery Report</SelectItem>
+              <SelectItem value="financial">Financial Report</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => handleExport('scope-csv')}>
+            <Download size={16} className="mr-2" />
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => handleExport('scope-pdf')}>
+            <Download size={16} className="mr-2" />
+            Export PDF
+          </Button>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline">

@@ -139,6 +139,9 @@ router.post('/', requireAdmin, async (req, res, next) => {
     }
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: 'Email already in use' });
+    if (String(role).toUpperCase() === 'PROJECT_MANAGER') {
+      return res.status(400).json({ error: 'Create the user as an Engineer or Paint Chemist before promoting them to Project Manager' });
+    }
 
     const roleRecord = await prisma.role.upsert({
       where: { roleName: String(role).toUpperCase() },

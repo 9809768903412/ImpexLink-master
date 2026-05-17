@@ -7,7 +7,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../utils/prisma');
 const { requireAuth } = require('../middleware/auth');
-const { sendOtpEmail, sendVerificationEmail, sendPasswordResetEmail, getEmailDiagnostics } = require('../utils/mailer');
+const {
+  sendOtpEmail,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  getEmailDiagnostics,
+  sanitizeEmailError,
+} = require('../utils/mailer');
 const crypto = require('crypto');
 const { resolveLinkedClient, inferCompanyNameFromUser } = require('../utils/clientVisibility');
 
@@ -69,6 +75,7 @@ function getPrimaryRoleName(user, fallbackRoleName) {
 
 function canUseOtpFallback() {
   if (process.env.REQUIRE_EMAIL_OTP_DELIVERY === 'true') return false;
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_OTP_IN_PRODUCTION !== 'true') return false;
   return (
     (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP !== 'false') ||
     process.env.ALLOW_DEV_OTP === 'true' ||
@@ -133,6 +140,7 @@ function buildUserResponse(user, roleName, client) {
     avatar: initials,
     avatarUrl: user.avatarUrl || null,
     proofDocUrl: user.proofDocUrl || null,
+    phone: user.phone || null,
     status: user.status,
     emailVerified: user.emailVerified,
     isDemo: isDemoEmail(user.email),
@@ -172,7 +180,7 @@ async function logLoginFailure(email, reason, userId = null) {
 
 router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
   try {
-    const { name, email, password, role, companyName } = req.body;
+    const { name, email, password, role, companyName, phone } = req.body;
     if (!name || !email || !password || !role) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -211,6 +219,7 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
             passwordHash,
             roleName: String(role).toUpperCase(),
             companyName: companyName || null,
+            phone: phone || null,
             proofDocUrl: proofDocUrl ?? existingPending.proofDocUrl,
             verificationCodeHash,
             verificationExpiresAt,
@@ -227,6 +236,7 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
           passwordHash,
           roleName: String(role).toUpperCase(),
           companyName: companyName || null,
+          phone: phone || null,
           proofDocUrl,
           verificationCodeHash,
           verificationExpiresAt,
@@ -236,25 +246,28 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
 
     let emailSent = true;
     let devOtp = null;
+    let emailError = null;
     try {
       await sendVerificationEmail(email, verificationCode);
     } catch (err) {
       emailSent = false;
+      emailError = sanitizeEmailError(err);
       devOtp = canUseOtpFallback() ? verificationCode : null;
       console.error('Verification email failed:', err.message || err);
     }
-    if (!emailSent && !canUseOtpFallback()) {
-      return res.status(503).json({ error: 'Email service unavailable' });
-    }
 
-    return res.status(201).json({
+    return res.status(emailSent ? 201 : 202).json({
       pending: true,
       requiresVerification: true,
       emailSent,
       devOtp,
+      emailDiagnostics: emailSent ? undefined : getEmailDiagnostics(),
+      emailError: emailSent ? undefined : emailError,
       message: emailSent
         ? 'Please verify your email to activate your account.'
-        : 'Email delivery failed. Use the verification code shown below.',
+        : devOtp
+          ? 'Email delivery failed. Use the verification code shown below.'
+          : 'Registration was saved, but email delivery failed. Ask an admin to check /api/test-email and resend the code after Resend is fixed.',
     });
   } catch (err) {
     return next(err);
@@ -306,17 +319,24 @@ router.post('/login', async (req, res, next) => {
       });
       let emailSent = true;
       let devOtp = null;
+      let emailError = null;
       try {
         await sendOtpEmail(user.email, otp);
       } catch (err) {
         emailSent = false;
+        emailError = sanitizeEmailError(err);
         if (canUseOtpFallback()) {
           devOtp = otp;
         }
         console.error('OTP email failed:', err.message || err);
       }
       if (!emailSent && !canUseOtpFallback()) {
-        return res.status(503).json({ error: 'Email service unavailable' });
+        return res.status(503).json({
+          error: 'Email service unavailable',
+          message: 'OTP email could not be sent. Check /api/test-email and Railway Resend variables.',
+          emailError,
+          emailDiagnostics: getEmailDiagnostics(),
+        });
       }
       return res.json({ requiresOtp: true, emailSent, devOtp });
     }
@@ -376,17 +396,24 @@ router.post('/resend-otp', async (req, res, next) => {
 
     let emailSent = true;
     let devOtp = null;
+    let emailError = null;
     try {
       await sendOtpEmail(email, otp);
     } catch (err) {
       emailSent = false;
+      emailError = sanitizeEmailError(err);
       if (canUseOtpFallback()) {
         devOtp = otp;
       }
       console.error('OTP email failed:', err.message || err);
     }
     if (!emailSent && !canUseOtpFallback()) {
-      return res.status(503).json({ error: 'Email service unavailable' });
+      return res.status(503).json({
+        error: 'Email service unavailable',
+        message: 'OTP email could not be sent. Check /api/test-email and Railway Resend variables.',
+        emailError,
+        emailDiagnostics: getEmailDiagnostics(),
+      });
     }
     return res.json({ ok: true, emailSent, devOtp });
   } catch (err) {
@@ -445,6 +472,7 @@ router.post('/verify-email', async (req, res, next) => {
         passwordHash: pending.passwordHash,
         roleId: roleRecord.roleId,
         status: pending.roleName === 'CLIENT' ? 'INACTIVE' : 'ACTIVE',
+        phone: pending.phone || null,
         emailVerified: true,
         proofDocUrl: finalProofDocUrl,
         notificationPrefs: { twoFactorEnabled: true },

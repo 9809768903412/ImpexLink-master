@@ -17,10 +17,11 @@ interface AuthContextType {
     name: string,
     email: string,
     password: string,
+    phone: string,
     role: UserRole,
     companyName?: string,
     proofDoc?: File | null
-  ) => Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean; message?: string; devOtp?: string | null }>;
+  ) => Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean; message?: string; devOtp?: string | null; error?: string }>;
   verifyEmail: (email: string, otp: string) => Promise<boolean>;
   updateUser: (updates: Partial<User>) => void;
   refreshUser: () => Promise<void>;
@@ -109,12 +110,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: string,
       email: string,
       password: string,
+      phone: string,
       role: UserRole,
       companyName?: string,
       proofDoc?: File | null
-    ): Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean }> => {
+    ): Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean; message?: string; devOtp?: string | null; error?: string }> => {
       try {
-        const data = await apiRegister({ name, email, password, role, companyName, proofDoc });
+        const data = await apiRegister({ name, email, password, phone, role, companyName, proofDoc });
         if (data.token) {
           const remember = localStorage.getItem(rememberKey) !== 'false';
           storeToken(data.token, remember);
@@ -133,10 +135,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             devOtp: data.devOtp ?? null,
           };
         }
-        return { ok: false };
+        return { ok: false, error: data.message || 'Registration failed' };
       } catch (err) {
-        console.error(err);
-        return { ok: false };
+        const message =
+          (err as any)?.response?.data?.message ||
+          (err as any)?.response?.data?.error ||
+          (err as any)?.message ||
+          'Registration failed';
+        return { ok: false, error: message };
       }
     },
     []

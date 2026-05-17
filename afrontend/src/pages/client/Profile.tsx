@@ -30,6 +30,7 @@ import { resendVerification } from '@/api/auth';
 import { useResource } from '@/hooks/use-resource';
 import type { Client, Order } from '@/types';
 import { apiClient } from '@/api/client';
+import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
 
 export default function ClientProfilePage() {
   const { user, updateUser, refreshUser } = useAuth();
@@ -445,10 +446,9 @@ export default function ClientProfilePage() {
                 </div>
                 <div>
                   <Label>Phone</Label>
-                  <Input
+                  <PhoneInputWithCountry
                     value={profileData.phone}
-                    onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                    className="mt-1"
+                    onChange={(phone) => setProfileData({ ...profileData, phone })}
                   />
                 </div>
               </div>

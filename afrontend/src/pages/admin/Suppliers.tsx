@@ -13,6 +13,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -29,30 +36,36 @@ import { downloadCsv } from '@/utils/csv';
 
 type SupplierForm = {
   supplierName: string;
-  email: string;
   phone: string;
   address: string;
-  country: string;
-  tin: string;
+  contactPerson: string;
 };
 
 const emptyForm: SupplierForm = {
   supplierName: '',
-  email: '',
   phone: '',
   address: '',
-  country: '',
-  tin: '',
+  contactPerson: '',
 };
 
 const toForm = (supplier: Supplier): SupplierForm => ({
   supplierName: supplier.name || '',
-  email: supplier.email || '',
   phone: supplier.phone || '',
   address: supplier.address || '',
-  country: supplier.country || '',
-  tin: supplier.tin || '',
+  contactPerson: supplier.contactPerson || '',
 });
+
+const COMMON_SUPPLIERS = [
+  'Paco Asia Hardware',
+  'Jhelet General Merchandise',
+  'Rockwell Lumber',
+  'Valqua Industrial',
+  'JP Camaro Hardware',
+  'Knack Commercial',
+  'LYS Marketing',
+  'Davies Marketing',
+  'Other',
+];
 
 export default function SuppliersPage() {
   const { user } = useAuth();
@@ -127,7 +140,6 @@ export default function SuppliersPage() {
   const validate = () => {
     const next: Record<string, string> = {};
     if (!form.supplierName.trim()) next.supplierName = 'Supplier name is required.';
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = 'Enter a valid email.';
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -137,11 +149,9 @@ export default function SuppliersPage() {
     try {
       const payload = {
         supplierName: form.supplierName.trim(),
-        email: form.email.trim() || null,
         phone: form.phone.trim() || null,
         address: form.address.trim() || null,
-        country: form.country.trim() || null,
-        tin: form.tin.trim() || null,
+        contactPerson: form.contactPerson.trim() || null,
       };
       if (editingSupplier) {
         await apiClient.put(`/suppliers/${editingSupplier.id}`, payload);
@@ -176,14 +186,12 @@ export default function SuppliersPage() {
       const payload = response.data;
       const rows: Supplier[] = payload?.data || payload || suppliers;
       downloadCsv(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`, [
-        ['Supplier', 'Email', 'Phone', 'Address', 'Country', 'TIN'],
+        ['Company Name', 'Contact Person', 'Contact Number', 'Address'],
         ...rows.map((supplier) => [
           supplier.name,
-          supplier.email || '',
+          supplier.contactPerson || '',
           supplier.phone || '',
           supplier.address || '',
-          supplier.country || '',
-          supplier.tin || '',
         ]),
       ]);
     } catch {
@@ -225,7 +233,7 @@ export default function SuppliersPage() {
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search supplier, email, or country"
+              placeholder="Search company, contact, phone, or address"
               className="pl-9"
             />
           </div>
@@ -235,9 +243,9 @@ export default function SuppliersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Supplier</TableHead>
-                  <TableHead>Contact</TableHead>
+                  <TableHead>Contact Person</TableHead>
+                  <TableHead>Contact Number</TableHead>
                   <TableHead>Address</TableHead>
-                  <TableHead>TIN</TableHead>
                   {canManage && <TableHead className="w-[120px] text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -246,14 +254,10 @@ export default function SuppliersPage() {
                   <TableRow key={supplier.id}>
                     <TableCell>
                       <p className="font-medium">{supplier.name}</p>
-                      {supplier.country && <p className="text-xs text-muted-foreground">{supplier.country}</p>}
                     </TableCell>
-                    <TableCell>
-                      <p className="text-sm">{supplier.email || '-'}</p>
-                      <p className="text-xs text-muted-foreground">{supplier.phone || '-'}</p>
-                    </TableCell>
+                    <TableCell>{supplier.contactPerson || '-'}</TableCell>
+                    <TableCell>{supplier.phone || '-'}</TableCell>
                     <TableCell className="max-w-[320px] truncate">{supplier.address || '-'}</TableCell>
-                    <TableCell>{supplier.tin || '-'}</TableCell>
                     {canManage && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -298,45 +302,46 @@ export default function SuppliersPage() {
           </DialogHeader>
           <div className="grid gap-4 py-2 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <Label htmlFor="supplierName">Supplier Name</Label>
-              <Input
-                id="supplierName"
-                value={form.supplierName}
-                onChange={(event) => setForm((prev) => ({ ...prev, supplierName: event.target.value }))}
-              />
+              <Label htmlFor="supplierName">Company Name</Label>
+              <Select
+                value={COMMON_SUPPLIERS.includes(form.supplierName) ? form.supplierName : 'Other'}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, supplierName: value === 'Other' ? '' : value }))}
+              >
+                <SelectTrigger id="supplierName">
+                  <SelectValue placeholder="Select supplier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMMON_SUPPLIERS.map((supplier) => (
+                    <SelectItem key={supplier} value={supplier}>
+                      {supplier}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(!COMMON_SUPPLIERS.includes(form.supplierName) || !form.supplierName) && (
+                <Input
+                  value={form.supplierName}
+                  onChange={(event) => setForm((prev) => ({ ...prev, supplierName: event.target.value }))}
+                  placeholder="Enter local supplier name"
+                  className="mt-2"
+                />
+              )}
               {errors.supplierName && <p className="mt-1 text-xs text-destructive">{errors.supplierName}</p>}
             </div>
             <div>
-              <Label htmlFor="supplierEmail">Email</Label>
+              <Label htmlFor="supplierContact">Contact Person</Label>
               <Input
-                id="supplierEmail"
-                value={form.email}
-                onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+                id="supplierContact"
+                value={form.contactPerson}
+                onChange={(event) => setForm((prev) => ({ ...prev, contactPerson: event.target.value }))}
               />
-              {errors.email && <p className="mt-1 text-xs text-destructive">{errors.email}</p>}
             </div>
             <div>
-              <Label htmlFor="supplierPhone">Phone</Label>
+              <Label htmlFor="supplierPhone">Contact Number</Label>
               <Input
                 id="supplierPhone"
                 value={form.phone}
                 onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="supplierTin">TIN</Label>
-              <Input
-                id="supplierTin"
-                value={form.tin}
-                onChange={(event) => setForm((prev) => ({ ...prev, tin: event.target.value }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="supplierCountry">Country</Label>
-              <Input
-                id="supplierCountry"
-                value={form.country}
-                onChange={(event) => setForm((prev) => ({ ...prev, country: event.target.value }))}
               />
             </div>
             <div className="sm:col-span-2">
