@@ -54,7 +54,8 @@ export default function ReportsPage() {
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string>('all');
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
-  const [exportScope, setExportScope] = useState<string>('all');
+  const [activeReport, setActiveReport] = useState<string>('inventory');
+  const [exportScope, setExportScope] = useState<string>('inventory');
   const [lowStockPage, setLowStockPage] = useState(1);
   const [topValuePage, setTopValuePage] = useState(1);
   const [categoryPage, setCategoryPage] = useState(1);
@@ -427,14 +428,14 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Reports</h2>
           <p className="text-muted-foreground">Business analytics and export tools</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:justify-end">
           <Select value={exportScope} onValueChange={setExportScope}>
-            <SelectTrigger className="w-full sm:w-[190px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <SelectValue placeholder="Export scope" />
             </SelectTrigger>
             <SelectContent>
@@ -445,17 +446,17 @@ export default function ReportsPage() {
               <SelectItem value="financial">Financial Report</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => handleExport('scope-csv')}>
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => handleExport('scope-csv')}>
             <Download size={16} className="mr-2" />
             Export CSV
           </Button>
-          <Button variant="outline" onClick={() => handleExport('scope-pdf')}>
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => handleExport('scope-pdf')}>
             <Download size={16} className="mr-2" />
             Export PDF
           </Button>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline">
+              <Button className="w-full sm:w-auto" variant="outline">
                 <CalendarIcon size={16} className="mr-2" />
                 {format(dateRange.from, 'MMM dd')} - {format(dateRange.to, 'MMM dd, yyyy')}
               </Button>
@@ -475,7 +476,14 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="inventory" className="space-y-4">
+      <Tabs
+        value={activeReport}
+        onValueChange={(value) => {
+          setActiveReport(value);
+          setExportScope(value);
+        }}
+        className="space-y-4"
+      >
         <TabsList className="grid grid-cols-4 w-full max-w-md">
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
@@ -485,7 +493,7 @@ export default function ReportsPage() {
 
         {/* Inventory Report */}
         <TabsContent value="inventory" className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <Select
               value={inventoryCategoryFilter}
               onValueChange={setInventoryCategoryFilter}
@@ -502,14 +510,6 @@ export default function ReportsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={() => handleExport('inventory-csv')}>
-              <Download size={16} className="mr-2" />
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={() => handleExport('inventory')}>
-              <Download size={16} className="mr-2" />
-              Export PDF
-            </Button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -659,17 +659,6 @@ export default function ReportsPage() {
 
         {/* Project Consumption Report */}
         <TabsContent value="projects" className="space-y-4">
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => handleExport('projects-csv')}>
-              <Download size={16} className="mr-2" />
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={() => handleExport('projects')}>
-              <Download size={16} className="mr-2" />
-              Export PDF
-            </Button>
-          </div>
-
           <div className="flex flex-col sm:flex-row gap-3">
             <Select
               value={projectFilter}
@@ -819,17 +808,6 @@ export default function ReportsPage() {
 
         {/* Delivery Report */}
         <TabsContent value="delivery" className="space-y-4">
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => handleExport('delivery-csv')}>
-              <Download size={16} className="mr-2" />
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={() => handleExport('delivery')}>
-              <Download size={16} className="mr-2" />
-              Export PDF
-            </Button>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-6">
@@ -1019,17 +997,6 @@ export default function ReportsPage() {
 
         {/* Financial Report */}
         <TabsContent value="financial" className="space-y-4">
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => handleExport('financial-csv')}>
-              <Download size={16} className="mr-2" />
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={() => handleExport('financial-pdf')}>
-              <Download size={16} className="mr-2" />
-              Export PDF
-            </Button>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-6">
