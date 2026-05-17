@@ -146,6 +146,13 @@ export default function SettingsPage() {
   });
   const getErrorMessage = (error: unknown, fallback: string) =>
     (error as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
+  const formatTin = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 14);
+    const parts = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9), digits.slice(9, 14)].filter(Boolean);
+    return parts.join('-');
+  };
+  const canPromoteUserToPm = (roles: string[]) =>
+    roles.includes('engineer') || roles.includes('paint_chemist') || roles.includes('project_manager');
 
   useEffect(() => {
     apiClient
@@ -858,8 +865,10 @@ export default function SettingsPage() {
                   <Label>TIN</Label>
                   <Input
                     value={company.tin}
-                    onChange={(e) => setCompany({ ...company, tin: e.target.value })}
+                    onChange={(e) => setCompany({ ...company, tin: formatTin(e.target.value) })}
                     className="mt-1"
+                    inputMode="numeric"
+                    placeholder="100-191-563-00000"
                   />
                 </div>
                 <div>
@@ -1014,9 +1023,7 @@ export default function SettingsPage() {
                       filteredUsers.map((u) => {
                         const roleList = u.roles?.length ? u.roles : u.role ? [u.role] : [];
                         const isPm = roleList.includes('project_manager');
-                        const promoteBlocked = roleList.some((role) =>
-                          ['admin', 'president', 'delivery_guy', 'client'].includes(role)
-                        );
+                        const promoteBlocked = !canPromoteUserToPm(roleList);
                         return (
                       <TableRow key={u.id}>
                         <TableCell>
@@ -1044,11 +1051,13 @@ export default function SettingsPage() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {roleOptions.map((role) => (
-                                <SelectItem key={role.value} value={role.value}>
+                              {roleOptions.map((role) => {
+                                const disablePmOption = role.value === 'project_manager' && !canPromoteUserToPm(roleList);
+                                return (
+                                <SelectItem key={role.value} value={role.value} disabled={disablePmOption}>
                                   {role.label}
                                 </SelectItem>
-                              ))}
+                              )})}
                             </SelectContent>
                           </Select>
                         </TableCell>

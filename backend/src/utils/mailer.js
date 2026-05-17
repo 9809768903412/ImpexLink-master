@@ -1,14 +1,39 @@
 const { Resend } = require('resend');
 
 let resendClient = null;
+let resendClientKey = null;
+
+function sanitizeEmailError(error) {
+  if (!error) return { message: 'Unknown email error' };
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      statusCode: error.statusCode || error.status,
+      code: error.code,
+    };
+  }
+  if (typeof error === 'object') {
+    return {
+      message: error.message || error.error || 'Unknown email error',
+      name: error.name,
+      statusCode: error.statusCode || error.status,
+      code: error.code,
+      raw: error,
+    };
+  }
+  return { message: String(error) };
+}
 
 function getResendClient() {
-  if (resendClient) return resendClient;
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  if (resendClient && resendClientKey === apiKey) return resendClient;
   if (!apiKey) {
     throw new Error('RESEND_API_KEY is missing');
   }
   resendClient = new Resend(apiKey);
+  resendClientKey = apiKey;
   return resendClient;
 }
 
@@ -18,13 +43,46 @@ function getFromAddress() {
 
 async function sendEmail({ to, subject, text, html }) {
   const from = getFromAddress();
-  const client = getResendClient();
-  const result = await client.emails.send({ from, to, subject, text, html });
-  if (result?.error) {
-    const message = result.error.message || result.error.name || 'Email provider rejected the request';
-    throw new Error(message);
+  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  console.log('[mailer] attempting send', {
+    provider: 'resend',
+    to,
+    from,
+    subject,
+    hasApiKey: Boolean(apiKey),
+    apiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    nodeEnv: process.env.NODE_ENV || 'development',
+  });
+  try {
+    const client = getResendClient();
+    const result = await client.emails.send({ from, to, subject, text, html });
+    if (result?.error) {
+      const message = result.error.message || result.error.name || 'Email provider rejected the request';
+      console.error('[mailer] resend rejected request', {
+        to,
+        from,
+        subject,
+        error: result.error,
+      });
+      throw new Error(message);
+    }
+    console.log('[mailer] send success', {
+      to,
+      from,
+      subject,
+      id: result?.data?.id || result?.id || null,
+    });
+    return result?.data || result;
+  } catch (error) {
+    const details = sanitizeEmailError(error);
+    console.error('[mailer] send failed', {
+      to,
+      from,
+      subject,
+      ...details,
+    });
+    throw error;
   }
-  return result?.data || result;
 }
 
 async function sendOtpEmail(to, otp) {
@@ -72,4 +130,16 @@ async function sendPasswordResetEmail(to, otp) {
   await sendEmail({ to, subject, text, html });
 }
 
-module.exports = { sendOtpEmail, sendVerificationEmail, sendPasswordResetEmail };
+function getEmailDiagnostics() {
+  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  const from = getFromAddress();
+  return {
+    provider: 'resend',
+    hasResendApiKey: Boolean(apiKey),
+    resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    from,
+    nodeEnv: process.env.NODE_ENV || 'development',
+  };
+}
+
+module.exports = { sendEmail, sendOtpEmail, sendVerificationEmail, sendPasswordResetEmail, getEmailDiagnostics };

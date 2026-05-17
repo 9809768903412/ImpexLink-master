@@ -51,6 +51,14 @@ const INVENTORY_REASON_OPTIONS = [
   'Others',
 ];
 
+const STOCK_ACTION_REASON_OPTIONS: Record<'restock' | 'issue' | 'adjust', string[]> = {
+  restock: ['Supplier Delivery', 'Returned Stock', 'Replacement Stock', 'Emergency Refill', 'Initial Stock', 'Other'],
+  issue: ['Client Order Fulfillment', 'Project Use', 'Material Request', 'Warehouse Transfer', 'Sample Issue', 'Other'],
+  adjust: ['Cycle Count Correction', 'Damage/Loss', 'Expired Items', 'System Correction', 'Theft/Incident', 'Other'],
+};
+
+const UNIT_OPTIONS = ['Pieces', 'Gallons', 'Kilograms', 'Liters', 'Bundles', 'Kits', 'Sacks', 'Pairs', 'Rolls', 'Boxes', 'Sets'];
+
 export default function InventoryPage() {
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
@@ -729,11 +737,21 @@ export default function InventoryPage() {
               <p className="text-sm font-medium mb-1">
                 {stockAction.type === 'restock' ? 'Reference / Notes (optional)' : 'Reference / Notes'}
               </p>
-              <Input
+              <Select
                 value={stockAction.notes}
-                onChange={(e) => setStockAction((prev) => ({ ...prev, notes: e.target.value }))}
-                placeholder={stockAction.type === 'issue' ? 'Project or request reference' : 'Notes'}
-              />
+                onValueChange={(value) => setStockAction((prev) => ({ ...prev, notes: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={stockAction.type === 'issue' ? 'Select issue reason' : 'Select reason'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {STOCK_ACTION_REASON_OPTIONS[stockAction.type].map((reason) => (
+                    <SelectItem key={reason} value={reason}>
+                      {reason}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
@@ -749,7 +767,7 @@ export default function InventoryPage() {
 
       {/* Add Item Modal */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg w-[calc(100vw-1rem)] sm:w-full">
           <DialogHeader>
             <DialogTitle>Add Inventory Item</DialogTitle>
             <DialogDescription>Fill out the details below to create a new item.</DialogDescription>
@@ -790,17 +808,28 @@ export default function InventoryPage() {
               </Select>
               {newItemErrors.category && <p className="text-xs text-destructive mt-1">{newItemErrors.category}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-sm font-medium mb-1">Unit</p>
-                <Input
+                <Select
                   value={newItem.unit}
-                  onChange={(e) => {
-                    const next = { ...newItem, unit: e.target.value };
+                  onValueChange={(value) => {
+                    const next = { ...newItem, unit: value };
                     setNewItem(next);
                     setNewItemErrors(validateItem(next));
                   }}
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {UNIT_OPTIONS.map((unit) => (
+                      <SelectItem key={unit} value={unit}>
+                        {unit}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <p className="text-sm font-medium mb-1">Unit Price</p>
@@ -818,7 +847,7 @@ export default function InventoryPage() {
                 {newItemErrors.unitPrice && <p className="text-xs text-destructive mt-1">{newItemErrors.unitPrice}</p>}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-sm font-medium mb-1">Qty On Hand</p>
                 <Input
@@ -860,7 +889,7 @@ export default function InventoryPage() {
 
       {/* Edit Item Modal */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg w-[calc(100vw-1rem)] sm:w-full">
           <DialogHeader>
             <DialogTitle>Edit Inventory Item</DialogTitle>
             <DialogDescription>Update item details or apply a stock adjustment.</DialogDescription>
@@ -901,17 +930,28 @@ export default function InventoryPage() {
               </Select>
               {editItemErrors.category && <p className="text-xs text-destructive mt-1">{editItemErrors.category}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-sm font-medium mb-1">Unit</p>
-              <Input
+              <Select
                 value={editItem.unit}
-                onChange={(e) => {
-                  const next = { ...editItem, unit: e.target.value };
+                onValueChange={(value) => {
+                  const next = { ...editItem, unit: value };
                   setEditItem(next);
                   setEditItemErrors(validateEditItem(next));
                 }}
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIT_OPTIONS.map((unit) => (
+                    <SelectItem key={unit} value={unit}>
+                      {unit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               </div>
               <div>
                 <p className="text-sm font-medium mb-1">Unit Price</p>

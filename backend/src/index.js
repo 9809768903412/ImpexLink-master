@@ -29,6 +29,7 @@ const aiRoutes = require('./routes/ai');
 const companyRoutes = require('./routes/company');
 const publicRoutes = require('./routes/public');
 const proofRoutes = require('./routes/proofs');
+const testEmailRoutes = require('./routes/testEmail');
 
 const app = express();
 
@@ -104,6 +105,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/proofs', proofRoutes);
+app.use('/api/test-email', testEmailRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

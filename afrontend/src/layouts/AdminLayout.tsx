@@ -73,7 +73,7 @@ const navItems = [
   { path: '/admin/reports', icon: BarChart3, label: 'Reports', roles: ADMIN_AREA_ROLES.filter(canViewReports) },
   { path: '/admin/ai-insights', icon: Brain, label: 'AI Insights', roles: ADMIN_AREA_ROLES.filter(canViewAIInsights) },
   { path: '/admin/audit-logs', icon: History, label: 'Audit Logs', roles: ADMIN_AREA_ROLES.filter(canViewAuditLogs) },
-  { path: '/admin/proofs', icon: Files, label: 'Proof Center', roles: ADMIN_AREA_ROLES.filter(canViewProofCenter) },
+  { path: '/admin/proofs', icon: Files, label: 'Attachments', roles: ADMIN_AREA_ROLES.filter(canViewProofCenter) },
   { path: '/admin/notifications', icon: Bell, label: 'Notifications', roles: ADMIN_AREA_ROLES.filter(canViewNotifications) },
   { path: '/admin/settings', icon: Settings, label: 'Settings', roles: ADMIN_AREA_ROLES.filter(canAccessSettings) },
 ];

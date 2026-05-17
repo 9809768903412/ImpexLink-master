@@ -41,6 +41,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { canApproveMaterialRequests, canCreateMaterialRequests, hasRole } from '@/lib/roles';
 import { formatPesoAmount } from '@/lib/currency';
 
+const MATERIAL_REQUEST_PURPOSE_OPTIONS = [
+  'Routine Maintenance',
+  'Project Execution',
+  'Emergency Repair',
+  'Site Mobilization',
+  'Testing and Inspection',
+  'Client Delivery Support',
+];
+
 export default function MaterialRequestsPage() {
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
@@ -807,19 +816,27 @@ export default function MaterialRequestsPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="purpose">Purpose</Label>
-                <Textarea
-                  id="purpose"
-                  placeholder="Describe the purpose of this request..."
+                <Select
                   value={newRequest.purpose}
-                  onChange={(e) => {
-                    const next = { ...newRequest, purpose: e.target.value };
+                  onValueChange={(value) => {
+                    const next = { ...newRequest, purpose: value };
                     setNewRequest(next);
                     if (requestErrors.purpose) {
                       setRequestErrors((prev) => ({ ...prev, purpose: '' }));
                     }
                   }}
-                  rows={3}
-                />
+                >
+                  <SelectTrigger id="purpose">
+                    <SelectValue placeholder="Select request purpose" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MATERIAL_REQUEST_PURPOSE_OPTIONS.map((purpose) => (
+                      <SelectItem key={purpose} value={purpose}>
+                        {purpose}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {requestErrors.purpose && (
                   <p className="text-xs text-destructive">{requestErrors.purpose}</p>
                 )}

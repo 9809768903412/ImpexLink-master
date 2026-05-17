@@ -29,8 +29,10 @@ const uploadProof = multer({
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!allowed.includes(file.mimetype)) {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf', 'image/heic', 'image/heif'];
+    const extension = path.extname(String(file.originalname || '')).toLowerCase();
+    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.heic']);
+    if (!allowedMimeTypes.includes(file.mimetype) && !allowedExtensions.has(extension)) {
       return cb(new Error('Invalid file type'));
     }
     cb(null, true);

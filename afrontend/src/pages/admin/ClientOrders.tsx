@@ -691,7 +691,7 @@ export default function ClientOrdersPage() {
 
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Order {selectedOrder?.orderNumber}</DialogTitle>
             <DialogDescription>

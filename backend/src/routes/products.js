@@ -13,6 +13,27 @@ function resolveStatus(qtyOnHand, lowStockThreshold) {
   return 'AVAILABLE';
 }
 
+const UNIT_ALIASES = [
+  { matcher: /gallon/i, value: 'Gallons' },
+  { matcher: /piece|pcs?/i, value: 'Pieces' },
+  { matcher: /kg|kilogram/i, value: 'Kilograms' },
+  { matcher: /liter|ltrs?|l\b/i, value: 'Liters' },
+  { matcher: /bundle/i, value: 'Bundles' },
+  { matcher: /kit/i, value: 'Kits' },
+  { matcher: /sack/i, value: 'Sacks' },
+  { matcher: /pair/i, value: 'Pairs' },
+  { matcher: /roll/i, value: 'Rolls' },
+  { matcher: /box/i, value: 'Boxes' },
+  { matcher: /set/i, value: 'Sets' },
+];
+
+function normalizeUnit(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Pieces';
+  const match = UNIT_ALIASES.find((entry) => entry.matcher.test(raw));
+  return match ? match.value : raw;
+}
+
 async function notifyWatchers(productId, itemName) {
   if (!productId) return;
   const watches = await prisma.productWatch.findMany({
@@ -87,7 +108,7 @@ router.get('/', async (req, res, next) => {
       id: p.productId.toString(),
       name: p.itemName,
       category: p.category?.categoryName || 'Uncategorized',
-      unit: p.unit,
+      unit: normalizeUnit(p.unit),
       unitPrice: Number(p.unitPrice),
       qtyOnHand: p.qtyOnHand,
       status:
@@ -137,7 +158,7 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
     const product = await prisma.product.create({
       data: {
         itemName,
-        unit,
+        unit: normalizeUnit(unit),
         unitPrice,
         categoryId: resolvedCategoryId,
         qtyOnHand: qtyOnHand ?? 0,
@@ -231,7 +252,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
       where: { productId: Number(req.params.id) },
       data: {
         itemName: req.body.itemName,
-        unit: req.body.unit,
+        unit: req.body.unit !== undefined ? normalizeUnit(req.body.unit) : undefined,
         unitPrice: req.body.unitPrice,
         categoryId: resolvedCategoryId,
         qtyOnHand,

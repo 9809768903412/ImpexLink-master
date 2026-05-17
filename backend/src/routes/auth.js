@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../utils/prisma');
 const { requireAuth } = require('../middleware/auth');
-const { sendOtpEmail, sendVerificationEmail, sendPasswordResetEmail } = require('../utils/mailer');
+const { sendOtpEmail, sendVerificationEmail, sendPasswordResetEmail, getEmailDiagnostics } = require('../utils/mailer');
 const crypto = require('crypto');
 const { resolveLinkedClient, inferCompanyNameFromUser } = require('../utils/clientVisibility');
 
@@ -306,7 +306,7 @@ router.post('/login', async (req, res, next) => {
         data: { otpCodeHash: otpHash, otpExpiresAt: expiresAt },
       });
       let emailSent = true;
-      let devOtp = canUseOtpFallback() ? verificationCode : null;
+      let devOtp = canUseOtpFallback() ? otp : null;
       try {
         await sendOtpEmail(user.email, otp);
       } catch (err) {
@@ -376,7 +376,7 @@ router.post('/resend-otp', async (req, res, next) => {
     });
 
     let emailSent = true;
-    let devOtp = canUseOtpFallback() ? verificationCode : null;
+    let devOtp = canUseOtpFallback() ? otp : null;
     try {
       await sendOtpEmail(email, otp);
     } catch (err) {
@@ -659,6 +659,13 @@ router.get('/me', requireAuth, async (req, res, next) => {
   } catch (err) {
     return next(err);
   }
+});
+
+router.get('/email-diagnostics', requireAuth, async (req, res) => {
+  return res.json({
+    ok: true,
+    diagnostics: getEmailDiagnostics(),
+  });
 });
 
 module.exports = router;

@@ -31,6 +31,7 @@ import { useLocation } from 'react-router-dom';
 import { VAT_RATE } from '@/lib/vat';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import PaginationNav from '@/components/PaginationNav';
+import { ProjectStatusDots } from '@/components/ProjectStatusDots';
 
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -248,22 +249,6 @@ export default function ProjectsPage() {
     const address = client?.address || '';
     const parts = address.split(',');
     return parts.length > 1 ? parts[parts.length - 1].trim() : address || '—';
-  };
-
-  const getProgressPercent = (status: Project['status']) => {
-    switch (status) {
-      case 'completed':
-        return 100;
-      case 'on-hold':
-        return 45;
-      case 'active':
-        return 65;
-      case 'pending':
-        return 20;
-      case 'rejected':
-      default:
-        return 0;
-    }
   };
 
   const normalizeLineItems = (lines: ProjectFormDraftLine[]) =>
@@ -968,7 +953,6 @@ export default function ProjectsPage() {
         ) : (
           visibleProjects.map((project) => {
             const stats = getProjectStats(project.id);
-            const progress = getProgressPercent(project.status);
             const statusMeta = {
               active: { label: 'Active', dot: 'bg-green-600', text: 'text-green-700' },
               'on-hold': { label: 'On Hold', dot: 'bg-orange-500', text: 'text-orange-600' },
@@ -1014,17 +998,9 @@ export default function ProjectsPage() {
                         : '—'}
                     </span>
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                      <span>Progress</span>
-                      <span>{progress}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-muted">
-                      <div
-                        className="h-2 rounded-full bg-[#C0392B]"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Project Status</p>
+                    <ProjectStatusDots status={project.status} />
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {formatNumber(stats.orderCount)} orders • {formatCurrency(stats.totalValue, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -1045,7 +1021,14 @@ export default function ProjectsPage() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-2xl max-h-[85vh] overflow-y-auto"
+          onInteractOutside={(event) => {
+            if (isAssigneeSelectOpen) {
+              event.preventDefault();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{selectedProject?.name}</DialogTitle>
             <DialogDescription>{selectedProject?.clientName}</DialogDescription>

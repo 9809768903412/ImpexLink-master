@@ -124,18 +124,8 @@ export default function LogisticsPage() {
   const pagedDeliveries = filteredDeliveries.slice(deliveriesPageStart, deliveriesPageEnd);
   const totalFilteredDeliveries = filteredDeliveries.length;
   const receivedByOptions = useMemo(() => {
-    if (!selectedDelivery) return ['Client Representative'];
-    const contactName = selectedDelivery.clientContactPerson?.trim();
-    return Array.from(
-      new Set(
-        [
-          selectedDelivery.receivedBy,
-          contactName || null,
-          contactName ? `${contactName} - Authorized Representative` : 'Client Representative',
-          'Site Engineer',
-        ].filter(Boolean) as string[],
-      ),
-    );
+    if (!selectedDelivery) return ['Client Authorized Representative', 'Site Engineer'];
+    return ['Client Authorized Representative', 'Site Engineer'];
   }, [selectedDelivery]);
 
   const fetchDeliveries = async () => {
@@ -714,7 +704,7 @@ export default function LogisticsPage() {
                     <Input
                       id="detail-pod-upload"
                       type="file"
-                      accept="image/png,image/jpeg,application/pdf"
+                      accept="image/png,image/jpeg,application/pdf,image/heic,.heic"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -724,7 +714,7 @@ export default function LogisticsPage() {
                         e.target.value = '';
                       }}
                     />
-                    <span className="text-sm text-muted-foreground">Photo proof of delivery</span>
+                    <span className="text-sm text-muted-foreground">JPG, PNG, PDF, or HEIC</span>
                   </div>
                 </div>
               )}

@@ -26,6 +26,7 @@ import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
 import type { Project, Client, Order, Delivery } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
+import { ProjectStatusDots } from '@/components/ProjectStatusDots';
 
 const orderStatusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -114,22 +115,6 @@ export default function ClientProjectsPage() {
     );
     const totalValue = projectOrders.reduce((sum, o) => sum + o.total, 0);
     return { orderCount: projectOrders.length, deliveryCount: projectDeliveries.length, totalValue };
-  };
-
-  const getProgressPercent = (status: Project['status']) => {
-    switch (status) {
-      case 'completed':
-        return 100;
-      case 'on-hold':
-        return 45;
-      case 'active':
-        return 65;
-      case 'pending':
-        return 20;
-      case 'rejected':
-      default:
-        return 0;
-    }
   };
 
   const buildProjectTimeline = (project: Project) => {
@@ -259,7 +244,6 @@ export default function ClientProjectsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {pagedProjects.map((project) => {
           const stats = getProjectStats(project.id);
-          const progress = getProgressPercent(project.status);
           const statusMeta = {
             active: { label: 'Active', dot: 'bg-emerald-600', text: 'text-emerald-700' },
             'on-hold': { label: 'On Hold', dot: 'bg-orange-500', text: 'text-orange-600' },
@@ -301,14 +285,9 @@ export default function ClientProjectsPage() {
                     {project.startDate ? format(new Date(project.startDate), 'MMM dd, yyyy') : '—'}
                   </span>
                 </div>
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Progress</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted">
-                    <div className="h-2 rounded-full bg-[#C0392B]" style={{ width: `${progress}%` }} />
-                  </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Project Status</p>
+                  <ProjectStatusDots status={project.status} />
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {stats.orderCount} orders • {stats.deliveryCount} deliveries
@@ -384,17 +363,9 @@ export default function ClientProjectsPage() {
                     <CardTitle className="text-base">Overview</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
-                    <div>
-                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>Progress</span>
-                        <span>{getProgressPercent(selectedProject.status)}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted">
-                        <div
-                          className="h-2 rounded-full bg-[#C0392B]"
-                          style={{ width: `${getProgressPercent(selectedProject.status)}%` }}
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Status Flow</p>
+                      <ProjectStatusDots status={selectedProject.status} />
                     </div>
                     <p className="text-muted-foreground">
                       This view shows your project status, timeline, and delivery progress without the internal item list.

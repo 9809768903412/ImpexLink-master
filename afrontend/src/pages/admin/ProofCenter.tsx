@@ -130,7 +130,7 @@ export default function ProofCenterPage() {
         toPublicFileUrl(row.fileUrl),
       ]),
     ];
-    downloadCsv(`proof-center-${format(new Date(), 'yyyy-MM-dd')}.csv`, rows);
+    downloadCsv(`attachments-${format(new Date(), 'yyyy-MM-dd')}.csv`, rows);
   };
 
   return (
@@ -139,10 +139,10 @@ export default function ProofCenterPage() {
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
             <Files className="text-muted-foreground" />
-            Proof Center
+            Attachments
           </h2>
           <p className="text-muted-foreground">
-            Centralized proofs and documents for registration, payment, and delivery operations.
+            Centralized attachments for registration, payment, and delivery operations.
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

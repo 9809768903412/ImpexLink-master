@@ -33,6 +33,20 @@ function canUseOtpFallback() {
   );
 }
 
+function extractRoleNames(user) {
+  return [
+    user?.role?.roleName,
+    ...(Array.isArray(user?.userRoles) ? user.userRoles.map((ur) => ur?.role?.roleName) : []),
+  ]
+    .filter(Boolean)
+    .map((role) => String(role).toUpperCase());
+}
+
+function canBecomeProjectManager(user) {
+  const roles = new Set(extractRoleNames(user));
+  return roles.has('PROJECT_MANAGER') || roles.has('ENGINEER') || roles.has('PAINT_CHEMIST');
+}
+
 router.get('/', requireAdmin, async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
@@ -323,10 +337,21 @@ router.put('/:id', requireAdmin, async (req, res, next) => {
     }
     let roleId;
     if (req.body.role) {
+      const requestedRole = String(req.body.role).toUpperCase();
+      const currentUser = await prisma.user.findUnique({
+        where: { userId, deletedAt: null },
+        include: { role: true, userRoles: { include: { role: true } } },
+      });
+      if (!currentUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (requestedRole === 'PROJECT_MANAGER' && !canBecomeProjectManager(currentUser)) {
+        return res.status(400).json({ error: 'Only Engineers and Paint Chemists can be promoted to Project Manager' });
+      }
       const roleRecord = await prisma.role.upsert({
-        where: { roleName: String(req.body.role).toUpperCase() },
+        where: { roleName: requestedRole },
         update: {},
-        create: { roleName: String(req.body.role).toUpperCase() },
+        create: { roleName: requestedRole },
       });
       roleId = roleRecord.roleId;
     }
@@ -401,6 +426,13 @@ router.post('/:id/roles', requireAdmin, async (req, res, next) => {
     });
     const user = await prisma.user.findUnique({ where: { userId, deletedAt: null } });
     if (!user) return res.status(404).json({ error: 'User not found' });
+    const roleContextUser = await prisma.user.findUnique({
+      where: { userId, deletedAt: null },
+      include: { role: true, userRoles: { include: { role: true } } },
+    });
+    if (roleName === 'PROJECT_MANAGER' && !canBecomeProjectManager(roleContextUser)) {
+      return res.status(400).json({ error: 'Only Engineers and Paint Chemists can be promoted to Project Manager' });
+    }
     await prisma.userRole.upsert({
       where: { userId_roleId: { userId, roleId: role.roleId } },
       update: {},

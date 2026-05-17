@@ -462,14 +462,14 @@ export default function PlaceOrderPage() {
         <div>
           <h1 className="text-2xl font-bold">Catalog</h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsQuoteModalOpen(true)} className="gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="outline" onClick={() => setIsQuoteModalOpen(true)} className="gap-2 w-full sm:w-auto">
             <MessageSquare size={18} />
             Request Quotation
           </Button>
           <Dialog open={isCartOpen} onOpenChange={setIsCartOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2 relative">
+              <Button className="gap-2 relative w-full sm:w-auto">
                 <ShoppingCart size={18} />
                 Cart
                 {cart.length > 0 && (
@@ -479,7 +479,7 @@ export default function PlaceOrderPage() {
                 )}
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-full sm:max-w-2xl">
+            <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl sm:w-full max-h-[90vh] overflow-hidden p-4 sm:p-6">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <ShoppingCart size={20} />
@@ -500,15 +500,15 @@ export default function PlaceOrderPage() {
                 </div>
               ) : null}
 
-              <ScrollArea className="flex-1 -mx-6 px-6">
+              <ScrollArea className="max-h-[46vh] flex-1 -mx-4 px-4 sm:-mx-6 sm:px-6">
                 <div className="space-y-4 py-4">
                   {cart.map((cartItem) => {
                     const line = calcLineAmounts(cartItem.quantity, cartItem.item.unitPrice);
                     return (
-                    <div key={cartItem.item.id} className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                    <div key={cartItem.item.id} className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3 sm:flex-row sm:items-start">
                       <ProductImage name={cartItem.item.name} className="h-12 w-12 shrink-0" iconSize={20} />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{cartItem.item.name}</p>
+                        <p className="font-medium break-words">{cartItem.item.name}</p>
                         <p className="text-sm text-muted-foreground">
                           ₱{cartItem.item.unitPrice.toLocaleString('en-PH')} / {cartItem.item.unit}
                         </p>
@@ -520,17 +520,17 @@ export default function PlaceOrderPage() {
                           Available stock: {cartItem.item.qtyOnHand.toLocaleString('en-PH')} {cartItem.item.unit}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
                         <Button
                           variant="outline"
                           size="icon"
-                          className="h-8 w-8"
+                          className="h-8 w-8 shrink-0"
                           onClick={() => updateCartQuantity(cartItem.item.id, cartItem.quantity - 1)}
                         >
                           <Minus size={14} />
                         </Button>
                         <Input
-                          className="h-8 w-16 text-center"
+                          className="h-8 w-14 text-center sm:w-16"
                           value={cartQtyInput[cartItem.item.id] ?? String(cartItem.quantity)}
                           inputMode="numeric"
                           onChange={(e) => {
@@ -554,7 +554,7 @@ export default function PlaceOrderPage() {
                         <Button
                           variant="outline"
                           size="icon"
-                          className="h-8 w-8"
+                          className="h-8 w-8 shrink-0"
                           onClick={() => updateCartQuantity(cartItem.item.id, cartItem.quantity + 1)}
                         >
                           <Plus size={14} />
@@ -562,7 +562,7 @@ export default function PlaceOrderPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-destructive"
+                          className="h-8 w-8 shrink-0 text-destructive"
                           onClick={() => removeFromCart(cartItem.item.id)}
                         >
                           <X size={14} />
