@@ -437,6 +437,22 @@ async function ensureNotification({ userId, type, title, message, link, createdA
   });
 }
 
+async function ensureStockTransaction({ productId, type, qtyChange, newBalance, userId, notes, date }) {
+  const existing = await prisma.stockTransaction.findFirst({ where: { notes } });
+  if (existing) return existing;
+  return prisma.stockTransaction.create({
+    data: {
+      productId,
+      type,
+      qtyChange,
+      newBalance,
+      userId,
+      notes,
+      date,
+    },
+  });
+}
+
 async function main() {
   ensureDemoFiles();
 
@@ -643,6 +659,77 @@ async function main() {
         status: toStatus(item.qtyOnHand, item.lowStockThreshold),
       },
     });
+  }
+
+  const historyProducts = await prisma.product.findMany({
+    where: {
+      itemName: {
+        in: [
+          'Paint thinner',
+          'Ceramic Tech EG',
+          'Seal Tech AW 20 ltrs',
+          'Baby roller cotton (white)',
+          'Welding machine',
+          'Cotton rags',
+        ],
+      },
+      deletedAt: null,
+    },
+    orderBy: { itemName: 'asc' },
+  });
+  const productByName = new Map(historyProducts.map((product) => [product.itemName, product]));
+  const historyUser =
+    createdUsers.find((u) => u.email === 'danilo.benosa@impex.com') ||
+    josephine ||
+    createdUsers[0] ||
+    null;
+  const historyUserId = historyUser?.userId || null;
+  const stockHistoryMonths = Array.from({ length: 18 }).map((_, idx) => {
+    const date = new Date(Date.UTC(2024, 10 + idx, 15, 8, 0, 0));
+    return {
+      label: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`,
+      date,
+      idx,
+    };
+  });
+  const stockHistoryPlan = [
+    { itemName: 'Paint thinner', base: 180, purchase: 42, issue: 29 },
+    { itemName: 'Ceramic Tech EG', base: 96, purchase: 24, issue: 31 },
+    { itemName: 'Seal Tech AW 20 ltrs', base: 44, purchase: 12, issue: 14 },
+    { itemName: 'Baby roller cotton (white)', base: 210, purchase: 55, issue: 47 },
+    { itemName: 'Welding machine', base: 9, purchase: 2, issue: 1 },
+    { itemName: 'Cotton rags', base: 360, purchase: 85, issue: 72 },
+  ];
+
+  for (const plan of stockHistoryPlan) {
+    const product = productByName.get(plan.itemName);
+    if (!product) continue;
+    let balance = plan.base;
+    for (const month of stockHistoryMonths) {
+      const purchaseQty = plan.purchase + ((month.idx + product.productId) % 5);
+      balance += purchaseQty;
+      await ensureStockTransaction({
+        productId: product.productId,
+        type: 'PURCHASE',
+        qtyChange: purchaseQty,
+        newBalance: balance,
+        userId: historyUserId,
+        notes: `Demo ${month.label} supplier stock-in for ${plan.itemName}`,
+        date: new Date(month.date),
+      });
+
+      const issueQty = Math.min(balance, plan.issue + ((month.idx * 2 + product.productId) % 7));
+      balance -= issueQty;
+      await ensureStockTransaction({
+        productId: product.productId,
+        type: 'ISSUE',
+        qtyChange: -issueQty,
+        newBalance: balance,
+        userId: historyUserId,
+        notes: `Demo ${month.label} project issue for ${plan.itemName}`,
+        date: new Date(Date.UTC(month.date.getUTCFullYear(), month.date.getUTCMonth(), 25, 9, 30, 0)),
+      });
+    }
   }
 
   // === Demo clients, projects, and past orders (safe, backend-friendly preview data) ===

@@ -26,6 +26,15 @@ import type { InventoryItem, Order, Delivery, Project } from '@/types';
 import { printHtml } from '@/utils/print';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
+import { downloadCsv } from '@/utils/csv';
+import PaginationNav from '@/components/PaginationNav';
+
+const REPORT_PAGE_SIZE = 10;
+
+const paginate = <T,>(rows: T[], page: number) =>
+  rows.slice((page - 1) * REPORT_PAGE_SIZE, page * REPORT_PAGE_SIZE);
+
+const pageCount = (rows: unknown[]) => Math.max(1, Math.ceil(rows.length / REPORT_PAGE_SIZE));
 
 // TODO: Replace with real data from Lovable Cloud database
 export default function ReportsPage() {
@@ -38,6 +47,16 @@ export default function ReportsPage() {
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string>('all');
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
+  const [lowStockPage, setLowStockPage] = useState(1);
+  const [topValuePage, setTopValuePage] = useState(1);
+  const [categoryPage, setCategoryPage] = useState(1);
+  const [projectPage, setProjectPage] = useState(1);
+  const [projectNoOrderPage, setProjectNoOrderPage] = useState(1);
+  const [overduePage, setOverduePage] = useState(1);
+  const [upcomingPage, setUpcomingPage] = useState(1);
+  const [deliveryPage, setDeliveryPage] = useState(1);
+  const [openBalancePage, setOpenBalancePage] = useState(1);
+  const [vatPage, setVatPage] = useState(1);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
@@ -75,6 +94,19 @@ export default function ReportsPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    setLowStockPage(1);
+    setTopValuePage(1);
+    setCategoryPage(1);
+    setProjectPage(1);
+    setProjectNoOrderPage(1);
+    setOverduePage(1);
+    setUpcomingPage(1);
+    setDeliveryPage(1);
+    setOpenBalancePage(1);
+    setVatPage(1);
+  }, [dateRange, projectFilter, projectStatusFilter, inventoryCategoryFilter, deliveryStatusFilter, paymentStatusFilter]);
 
   const ordersInRange = orders.filter((o) => {
     const created = new Date(o.createdAt);
@@ -231,6 +263,15 @@ export default function ReportsPage() {
       );
       return;
     }
+    if (type === 'inventory-csv') {
+      downloadCsv(`inventory-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
+        ['Category', 'Items On Hand', 'Total Value'],
+        ...filteredInventoryByCategory.map((cat) => [cat.name, String(cat.count), formatPesoAmount(cat.value)]),
+        ['Low Stock Items', String(lowStockItems.length), ''],
+        ['Out of Stock Items', String(outOfStockItems.length), ''],
+      ]);
+      return;
+    }
     if (type === 'projects') {
       const rows = projectConsumption
         .map((proj) => `<tr><td>${proj.name}</td><td>${proj.orders}</td><td>₱${formatPesoAmount(proj.value)}</td></tr>`)
@@ -243,6 +284,25 @@ export default function ReportsPage() {
       );
       return;
     }
+    if (type === 'projects-csv') {
+      downloadCsv(`project-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
+        ['Project', 'Client', 'Status', 'Orders', 'Total Value', 'Last Order'],
+        ...filteredProjects.map((proj) => {
+          const projectOrders = ordersInRange.filter((o) => o.projectId === proj.id);
+          const value = projectOrders.reduce((sum, o) => sum + o.total, 0);
+          const lastOrder = projectLastOrderMap[String(proj.id)];
+          return [
+            proj.name,
+            proj.clientName,
+            proj.status,
+            String(projectOrders.length),
+            formatPesoAmount(value),
+            lastOrder ? format(lastOrder, 'yyyy-MM-dd') : '',
+          ];
+        }),
+      ]);
+      return;
+    }
     if (type === 'delivery') {
       const rows = filteredDeliveries
         .map((d) => `<tr><td>${d.drNumber}</td><td>${d.clientName}</td><td>${d.status}</td><td>${format(new Date(d.eta), 'MMM dd')}</td></tr>`)
@@ -253,6 +313,37 @@ export default function ReportsPage() {
         <div class="meta">Date: ${format(new Date(), 'yyyy-MM-dd')}</div>
         <table><thead><tr><th>DR #</th><th>Client</th><th>Status</th><th>ETA</th></tr></thead><tbody>${rows}</tbody></table>`
       );
+      return;
+    }
+    if (type === 'delivery-csv') {
+      downloadCsv(`delivery-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
+        ['DR Number', 'Client', 'Project', 'Status', 'ETA', 'Delivered At'],
+        ...filteredDeliveries.map((delivery) => [
+          delivery.drNumber,
+          delivery.clientName,
+          delivery.projectName || '',
+          delivery.status,
+          delivery.eta ? format(new Date(delivery.eta), 'yyyy-MM-dd') : '',
+          delivery.receivedAt ? format(new Date(delivery.receivedAt), 'yyyy-MM-dd') : '',
+        ]),
+      ]);
+      return;
+    }
+    if (type === 'financial-csv') {
+      downloadCsv(`financial-report-${format(new Date(), 'yyyy-MM-dd')}.csv`, [
+        ['Order Number', 'Client', 'Payment Status', 'VATable Sales', `VAT (${vatLabel}%)`, 'Total'],
+        ...filteredOrdersForVat.map((order) => {
+          const totals = getOrderTotals(order);
+          return [
+            order.orderNumber,
+            order.clientName,
+            order.paymentStatus,
+            formatPesoAmount(totals.net),
+            formatPesoAmount(totals.vat),
+            formatPesoAmount(totals.total),
+          ];
+        }),
+      ]);
       return;
     }
     if (type.startsWith('financial')) {
@@ -330,6 +421,10 @@ export default function ReportsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" onClick={() => handleExport('inventory-csv')}>
+              <Download size={16} className="mr-2" />
+              Export CSV
+            </Button>
             <Button variant="outline" onClick={() => handleExport('inventory')}>
               <Download size={16} className="mr-2" />
               Export PDF
@@ -380,7 +475,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lowStockItems.slice(0, 15).map((item) => (
+                  {paginate(lowStockItems, lowStockPage).map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell className="text-center">{item.qtyOnHand}</TableCell>
@@ -398,6 +493,11 @@ export default function ReportsPage() {
                   )}
                 </TableBody>
               </Table>
+              <PaginationNav
+                page={lowStockPage}
+                totalPages={pageCount(lowStockItems)}
+                onPageChange={setLowStockPage}
+              />
             </CardContent>
           </Card>
 
@@ -417,7 +517,7 @@ export default function ReportsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {topValueItems.map((item) => (
+                    {paginate(topValueItems, topValuePage).map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell className="text-center">{item.qtyOnHand}</TableCell>
@@ -426,6 +526,11 @@ export default function ReportsPage() {
                     ))}
                   </TableBody>
                 </Table>
+                <PaginationNav
+                  page={topValuePage}
+                  totalPages={pageCount(topValueItems)}
+                  onPageChange={setTopValuePage}
+                />
               </CardContent>
             </Card>
 
@@ -443,7 +548,7 @@ export default function ReportsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredInventoryByCategory.map((cat) => (
+                    {paginate(filteredInventoryByCategory, categoryPage).map((cat) => (
                       <TableRow key={cat.name}>
                         <TableCell className="font-medium">{cat.name}</TableCell>
                         <TableCell className="text-center">{cat.count}</TableCell>
@@ -461,6 +566,11 @@ export default function ReportsPage() {
                     </TableRow>
                   </TableBody>
                 </Table>
+                <PaginationNav
+                  page={categoryPage}
+                  totalPages={pageCount(filteredInventoryByCategory)}
+                  onPageChange={setCategoryPage}
+                />
               </CardContent>
             </Card>
           </div>
@@ -468,7 +578,11 @@ export default function ReportsPage() {
 
         {/* Project Consumption Report */}
         <TabsContent value="projects" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => handleExport('projects-csv')}>
+              <Download size={16} className="mr-2" />
+              Export CSV
+            </Button>
             <Button variant="outline" onClick={() => handleExport('projects')}>
               <Download size={16} className="mr-2" />
               Export PDF
@@ -556,7 +670,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProjects.map((proj) => {
+                  {paginate(filteredProjects, projectPage).map((proj) => {
                       const projectOrders = ordersInRange.filter((o) => o.projectId === proj.id);
                       const value = projectOrders.reduce((sum, o) => sum + o.total, 0);
                       const lastOrder = projectLastOrderMap[String(proj.id)];
@@ -575,6 +689,11 @@ export default function ReportsPage() {
               })}
             </TableBody>
           </Table>
+          <PaginationNav
+            page={projectPage}
+            totalPages={pageCount(filteredProjects)}
+            onPageChange={setProjectPage}
+          />
         </CardContent>
       </Card>
 
@@ -592,7 +711,7 @@ export default function ReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projectsNoOrders.map((proj) => (
+              {paginate(projectsNoOrders, projectNoOrderPage).map((proj) => (
                 <TableRow key={proj.id}>
                   <TableCell className="font-medium">{proj.name}</TableCell>
                   <TableCell>{proj.clientName}</TableCell>
@@ -608,13 +727,22 @@ export default function ReportsPage() {
               )}
             </TableBody>
           </Table>
+          <PaginationNav
+            page={projectNoOrderPage}
+            totalPages={pageCount(projectsNoOrders)}
+            onPageChange={setProjectNoOrderPage}
+          />
         </CardContent>
       </Card>
         </TabsContent>
 
         {/* Delivery Report */}
         <TabsContent value="delivery" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => handleExport('delivery-csv')}>
+              <Download size={16} className="mr-2" />
+              Export CSV
+            </Button>
             <Button variant="outline" onClick={() => handleExport('delivery')}>
               <Download size={16} className="mr-2" />
               Export PDF
@@ -684,7 +812,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {overdueDeliveries.map((d) => (
+                  {paginate(overdueDeliveries, overduePage).map((d) => (
                     <TableRow key={d.id}>
                       <TableCell className="font-medium">{d.drNumber}</TableCell>
                       <TableCell>{d.clientName}</TableCell>
@@ -703,6 +831,11 @@ export default function ReportsPage() {
                   )}
                 </TableBody>
               </Table>
+              <PaginationNav
+                page={overduePage}
+                totalPages={pageCount(overdueDeliveries)}
+                onPageChange={setOverduePage}
+              />
             </CardContent>
           </Card>
 
@@ -721,7 +854,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {upcomingDeliveries.map((d) => (
+                  {paginate(upcomingDeliveries, upcomingPage).map((d) => (
                     <TableRow key={d.id}>
                       <TableCell className="font-medium">{d.drNumber}</TableCell>
                       <TableCell>{d.clientName}</TableCell>
@@ -738,6 +871,11 @@ export default function ReportsPage() {
                   )}
                 </TableBody>
               </Table>
+              <PaginationNav
+                page={upcomingPage}
+                totalPages={pageCount(upcomingDeliveries)}
+                onPageChange={setUpcomingPage}
+              />
             </CardContent>
           </Card>
 
@@ -775,7 +913,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredDeliveries.map((del) => (
+                  {paginate(filteredDeliveries, deliveryPage).map((del) => (
                     <TableRow key={del.id}>
                       <TableCell className="font-medium">{del.drNumber}</TableCell>
                       <TableCell>{del.clientName}</TableCell>
@@ -789,6 +927,11 @@ export default function ReportsPage() {
                   ))}
                 </TableBody>
               </Table>
+              <PaginationNav
+                page={deliveryPage}
+                totalPages={pageCount(filteredDeliveries)}
+                onPageChange={setDeliveryPage}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -887,7 +1030,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {openBalances.map((order) => (
+                  {paginate(openBalances, openBalancePage).map((order) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">{order.orderNumber}</TableCell>
                       <TableCell>{order.clientName}</TableCell>
@@ -904,6 +1047,11 @@ export default function ReportsPage() {
                   )}
                 </TableBody>
               </Table>
+              <PaginationNav
+                page={openBalancePage}
+                totalPages={pageCount(openBalances)}
+                onPageChange={setOpenBalancePage}
+              />
             </CardContent>
           </Card>
 
@@ -941,7 +1089,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredOrdersForVat.map((order) => (
+                  {paginate(filteredOrdersForVat, vatPage).map((order) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">{order.orderNumber}</TableCell>
                       <TableCell>{order.clientName}</TableCell>
@@ -966,6 +1114,11 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableBody>
               </Table>
+              <PaginationNav
+                page={vatPage}
+                totalPages={pageCount(filteredOrdersForVat)}
+                onPageChange={setVatPage}
+              />
             </CardContent>
           </Card>
         </TabsContent>

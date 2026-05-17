@@ -73,6 +73,9 @@ export const canManageClientOrders = (role?: RoleInput) =>
 
 export const canViewPurchaseOrders = (role?: RoleInput) => hasRole(role, 'admin');
 
+export const canViewSuppliers = (role?: RoleInput) =>
+  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff'].includes(r));
+
 export const canViewLogistics = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'delivery_guy'].includes(r));
 

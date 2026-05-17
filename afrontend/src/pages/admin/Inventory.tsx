@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
-import type { InventoryItem, StockTransaction } from '@/types';
+import type { InventoryItem, StockTransaction, Supplier } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
@@ -80,6 +80,7 @@ export default function InventoryPage() {
     item: InventoryItem | null;
     qty: string;
     notes: string;
+    supplierId: string;
     direction: 'add' | 'deduct';
   }>({
     open: false,
@@ -87,6 +88,7 @@ export default function InventoryPage() {
     item: null,
     qty: '',
     notes: '',
+    supplierId: '',
     direction: 'add',
   });
   const [sortKey] = useState<'name' | 'qty' | 'price'>('name');
@@ -121,6 +123,7 @@ export default function InventoryPage() {
   const { toast } = useToast();
   const { data: transactions, reload: reloadTransactions } = useResource<StockTransaction[]>('/transactions', []);
   const { data: categories } = useResource<{ categoryName: string }[]>('/categories', []);
+  const { data: suppliers } = useResource<Supplier[]>('/suppliers', []);
   const categoryList = categories.map((cat) => cat.categoryName);
 
   const reloadInventory = async () => {
@@ -235,8 +238,9 @@ export default function InventoryPage() {
     ? transactions.filter((t) => t.itemId === selectedItem.id)
     : [];
   const selectedItemDisplayId = selectedItem ? getDisplayId(selectedItem) : '';
-  const lastUpdatedTxn = itemTransactions.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
-  const lastRestockTxn = itemTransactions.find((t) => t.type === 'purchase');
+  const itemTransactionsByDate = [...itemTransactions].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  const lastUpdatedTxn = itemTransactionsByDate[0];
+  const lastRestockTxn = itemTransactionsByDate.find((t) => t.type === 'purchase');
   const monthlyUsage = itemTransactions
     .filter((t) => t.type === 'issue' && Date.now() - Date.parse(t.date) <= 1000 * 60 * 60 * 24 * 30)
     .reduce((sum, t) => sum + Math.abs(t.qtyChange), 0);
@@ -376,6 +380,7 @@ export default function InventoryPage() {
       item,
       qty: '',
       notes: '',
+      supplierId: '',
       direction: 'add',
     });
   };
@@ -407,6 +412,7 @@ export default function InventoryPage() {
       await apiClient.put(`/inventory/${stockAction.item.id}/stock`, {
         qtyChange,
         type,
+        supplierId: stockAction.type === 'restock' ? stockAction.supplierId || undefined : undefined,
         notes: stockAction.notes.trim() || null,
       });
       await reloadInventory();
@@ -649,6 +655,9 @@ export default function InventoryPage() {
                     <p className="font-medium">
                       {lastRestockTxn ? new Date(lastRestockTxn.date).toLocaleDateString('en-PH') : '—'}
                     </p>
+                    {lastRestockTxn?.supplierName && (
+                      <p className="text-xs text-muted-foreground">{lastRestockTxn.supplierName}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-muted-foreground">Monthly Usage</p>
@@ -729,6 +738,29 @@ export default function InventoryPage() {
                   <SelectContent>
                     <SelectItem value="add">Increase</SelectItem>
                     <SelectItem value="deduct">Decrease</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {stockAction.type === 'restock' && suppliers.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-1">Supplier</p>
+                <Select
+                  value={stockAction.supplierId || 'none'}
+                  onValueChange={(value) =>
+                    setStockAction((prev) => ({ ...prev, supplierId: value === 'none' ? '' : value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No supplier selected</SelectItem>
+                    {suppliers.map((supplier) => (
+                      <SelectItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

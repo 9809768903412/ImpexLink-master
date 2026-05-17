@@ -300,7 +300,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 
 router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
-    const { qtyChange, newBalance: requestedBalance, qtyOnHand, type, notes } = req.body;
+    const { qtyChange, newBalance: requestedBalance, qtyOnHand, type, notes, supplierId } = req.body;
     const hasAbsoluteBalance = requestedBalance !== undefined || qtyOnHand !== undefined;
     const absoluteBalance = requestedBalance !== undefined ? requestedBalance : qtyOnHand;
     if (!hasAbsoluteBalance && (qtyChange === undefined || Number.isNaN(Number(qtyChange)))) {
@@ -331,6 +331,15 @@ router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, 
     }
     const status = resolveStatus(newBalance, product.lowStockThreshold);
 
+    let supplierNote = '';
+    if (supplierId) {
+      const supplier = await prisma.supplier.findFirst({
+        where: { supplierId: Number(supplierId), deletedAt: null },
+      });
+      if (!supplier) return res.status(400).json({ error: 'Invalid supplier' });
+      supplierNote = `Supplier: ${supplier.supplierName}`;
+    }
+
     const updated = await prisma.product.update({
       where: { productId: product.productId },
       data: { qtyOnHand: newBalance, status },
@@ -343,7 +352,7 @@ router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, 
         qtyChange: resolvedQtyChange,
         newBalance,
         userId: req.user.userId,
-        notes: notes || null,
+        notes: [supplierNote, notes].filter(Boolean).join(' | ') || null,
       },
     });
 

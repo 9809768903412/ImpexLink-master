@@ -15,6 +15,7 @@ import MaterialRequestsPage from "@/pages/admin/MaterialRequests";
 import ProjectsPage from "@/pages/admin/Projects";
 import ClientOrdersPage from "@/pages/admin/ClientOrders";
 import PurchaseOrdersPage from "@/pages/admin/PurchaseOrders";
+import SuppliersPage from "@/pages/admin/Suppliers";
 import LogisticsPage from "@/pages/admin/Logistics";
 import ReportsPage from "@/pages/admin/Reports";
 import AIInsightsPage from "@/pages/admin/AIInsights";
@@ -38,6 +39,7 @@ import {
   canViewMaterialRequests,
   canViewClientOrders,
   canViewPurchaseOrders,
+  canViewSuppliers,
   canViewLogistics,
   canViewReports,
   canViewAIInsights,
@@ -92,6 +94,7 @@ function AppRoutes() {
       <Route path="/admin/requests" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewMaterialRequests)}><AdminLayout><MaterialRequestsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewClientOrders)}><AdminLayout><ClientOrdersPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/purchase-orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewPurchaseOrders)}><AdminLayout><PurchaseOrdersPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/suppliers" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewSuppliers)}><AdminLayout><SuppliersPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/logistics" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewLogistics)}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewReports)}><AdminLayout><ReportsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/ai-insights" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewAIInsights)}><AdminLayout><AIInsightsPage /></AdminLayout></ProtectedRoute>} />

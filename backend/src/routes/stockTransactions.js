@@ -34,8 +34,43 @@ router.get('/', async (req, res, next) => {
       }),
       prisma.stockTransaction.count({ where }),
     ]);
+    const poIds = [
+      ...new Set(
+        txns
+          .map((t) => {
+            const match = String(t.notes || '').match(/\bPO\s+#?(\d+)\b/i);
+            return match ? Number(match[1]) : null;
+          })
+          .filter(Boolean)
+      ),
+    ];
+    const supplierByPo = poIds.length
+      ? new Map(
+          (
+            await prisma.supplierOrder.findMany({
+              where: { orderId: { in: poIds } },
+              include: { supplier: true },
+            })
+          ).map((order) => [
+            order.orderId,
+            {
+              supplierId: order.supplierId?.toString() || null,
+              supplierName: order.supplier?.supplierName || null,
+            },
+          ])
+        )
+      : new Map();
 
     const data = txns.map((t) => ({
+      ...(() => {
+        const match = String(t.notes || '').match(/\bPO\s+#?(\d+)\b/i);
+        const linked = match ? supplierByPo.get(Number(match[1])) : null;
+        const noteSupplier = String(t.notes || '').match(/\bSupplier:\s*([^|;\n]+)/i);
+        return {
+          supplierId: linked?.supplierId || null,
+          supplierName: linked?.supplierName || (noteSupplier ? noteSupplier[1].trim() : null),
+        };
+      })(),
       id: t.transactionId.toString(),
       itemId: t.productId?.toString() || null,
       date: t.date.toISOString().split('T')[0],

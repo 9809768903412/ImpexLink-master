@@ -49,6 +49,8 @@ export interface StockTransaction {
   date: string;
   type: 'purchase' | 'issue' | 'return' | 'adjustment';
   project?: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
   qtyChange: number;
   newBalance: number;
   userId: string;
@@ -181,6 +183,7 @@ export interface Supplier {
   phone: string;
   address: string;
   tin?: string;
+  country?: string | null;
 }
 
 // Delivery Types

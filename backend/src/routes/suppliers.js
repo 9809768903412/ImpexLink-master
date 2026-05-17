@@ -7,6 +7,19 @@ const { isEmail, isNonEmptyString } = require('../utils/validate');
 const router = express.Router();
 router.use(requireAuth);
 
+function mapSupplier(s) {
+  return {
+    id: s.supplierId.toString(),
+    name: s.supplierName,
+    contactPerson: s.supplierName,
+    email: s.email || '',
+    phone: s.phone || '',
+    address: s.address || s.country || '',
+    tin: s.tin || '',
+    country: s.country || '',
+  };
+}
+
 router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
@@ -32,15 +45,7 @@ router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next
       }),
       prisma.supplier.count({ where }),
     ]);
-    const data = suppliers.map((s) => ({
-      id: s.supplierId.toString(),
-      name: s.supplierName,
-      contactPerson: s.supplierName,
-      email: s.email,
-      phone: s.phone || null,
-      address: s.address || s.country || null,
-      tin: s.tin || null,
-    }));
+    const data = suppliers.map(mapSupplier);
     if (pagination) {
       return res.json(buildPaginatedResponse(data, total, pagination.page, pagination.pageSize));
     }
@@ -76,7 +81,7 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
         details: `Created supplier ${supplier.supplierName}`,
       },
     });
-    res.status(201).json(supplier);
+    res.status(201).json(mapSupplier(supplier));
   } catch (err) {
     next(err);
   }
@@ -109,7 +114,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
         details: `Updated supplier ${supplier.supplierName}`,
       },
     });
-    res.json(supplier);
+    res.json(mapSupplier(supplier));
   } catch (err) {
     next(err);
   }
