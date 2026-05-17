@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const prisma = require('../src/utils/prisma');
+const { resolveShelfLifeDays } = require('../src/utils/shelfLife');
 
 let deliveryColumnSupport = null;
 
@@ -147,7 +148,7 @@ async function ensureProduct(item) {
         unitPrice: item.unitPrice,
         categoryId: category.categoryId,
         lowStockThreshold: item.lowStockThreshold,
-        shelfLifeDays: item.shelfLifeDays,
+        shelfLifeDays: resolveShelfLifeDays({ ...item, shelfLifeDays: undefined }),
         status: toStatus(existing.qtyOnHand, item.lowStockThreshold),
         deletedAt: null,
       },
@@ -175,7 +176,7 @@ async function ensureProduct(item) {
       categoryId: category.categoryId,
       qtyOnHand: item.qtyOnHand,
       lowStockThreshold: item.lowStockThreshold,
-      shelfLifeDays: item.shelfLifeDays,
+      shelfLifeDays: resolveShelfLifeDays({ ...item, shelfLifeDays: undefined }),
       status: toStatus(item.qtyOnHand, item.lowStockThreshold),
     },
   });

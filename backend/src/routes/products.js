@@ -3,6 +3,7 @@ const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { isNonEmptyString, isNonNegativeNumber } = require('../utils/validate');
+const { resolveShelfLifeDays } = require('../utils/shelfLife');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -163,7 +164,7 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
         categoryId: resolvedCategoryId,
         qtyOnHand: qtyOnHand ?? 0,
         lowStockThreshold: lowStockThreshold ?? 20,
-        shelfLifeDays: req.body.shelfLifeDays ? Number(req.body.shelfLifeDays) : 180,
+        shelfLifeDays: resolveShelfLifeDays({ itemName, categoryName, unit, shelfLifeDays: req.body.shelfLifeDays }),
         status,
       },
     });

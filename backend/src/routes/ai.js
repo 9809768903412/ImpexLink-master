@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../utils/prisma');
 const { requireAuth } = require('../middleware/auth');
+const { resolveShelfLifeDays } = require('../utils/shelfLife');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -216,7 +217,11 @@ function buildLocalWarehouseRisks(products, purchaseMap) {
   return products.map((p) => {
     const lastPurchase = purchaseMap.get(p.productId) || p.createdAt || now;
     const daysInStock = Math.max(0, toDays(now.getTime() - new Date(lastPurchase).getTime()));
-    const shelfLifeDays = p.shelfLifeDays || 180;
+    const shelfLifeDays = resolveShelfLifeDays({
+      itemName: p.itemName,
+      unit: p.unit,
+      shelfLifeDays: [365, 730].includes(Number(p.shelfLifeDays)) ? undefined : p.shelfLifeDays,
+    });
     const daysToExpiry = shelfLifeDays - daysInStock;
     const percentUsed = shelfLifeDays > 0 ? Math.min(100, Math.round((daysInStock / shelfLifeDays) * 100)) : 0;
 
