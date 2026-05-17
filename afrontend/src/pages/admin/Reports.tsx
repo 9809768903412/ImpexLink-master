@@ -22,7 +22,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Download, Calendar as CalendarIcon, TrendingUp, TrendingDown, Package, Truck, AlertTriangle } from 'lucide-react';
 import { apiClient } from '@/api/client';
-import type { InventoryItem, Order, Delivery, Project } from '@/types';
+import type { InventoryItem, Order, Delivery, Project, StockTransaction } from '@/types';
 import { printHtml } from '@/utils/print';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
@@ -72,32 +72,37 @@ export default function ReportsPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [transactions, setTransactions] = useState<StockTransaction[]>([]);
 
   useEffect(() => {
     let mounted = true;
     const fetchAll = async () => {
       try {
-        const [inventoryRes, ordersRes, deliveriesRes, projectsRes] = await Promise.all([
+        const [inventoryRes, ordersRes, deliveriesRes, projectsRes, transactionsRes] = await Promise.all([
           apiClient.get('/inventory', { params: { page: 1, pageSize: 10000 } }),
           apiClient.get('/orders', { params: { page: 1, pageSize: 10000 } }),
           apiClient.get('/deliveries', { params: { page: 1, pageSize: 10000 } }),
           apiClient.get('/projects', { params: { page: 1, pageSize: 10000 } }),
+          apiClient.get('/transactions', { params: { page: 1, pageSize: 10000 } }),
         ]);
         if (!mounted) return;
         const invPayload = inventoryRes.data;
         const ordersPayload = ordersRes.data;
         const deliveriesPayload = deliveriesRes.data;
         const projectsPayload = projectsRes.data;
+        const transactionsPayload = transactionsRes.data;
         setInventory(invPayload?.data || invPayload || []);
         setOrders(ordersPayload?.data || ordersPayload || []);
         setDeliveries(deliveriesPayload?.data || deliveriesPayload || []);
         setProjects(projectsPayload?.data || projectsPayload || []);
+        setTransactions(transactionsPayload?.data || transactionsPayload || []);
       } catch {
         if (!mounted) return;
         setInventory([]);
         setOrders([]);
         setDeliveries([]);
         setProjects([]);
+        setTransactions([]);
       }
     };
     fetchAll();
@@ -130,16 +135,23 @@ export default function ReportsPage() {
     return date >= dateRange.from && date <= dateRange.to;
   });
 
+  const transactionsInRange = transactions.filter((transaction) => {
+    const date = new Date(transaction.date);
+    return date >= dateRange.from && date <= dateRange.to;
+  });
+  const inventoryItemIdsInRange = new Set(transactionsInRange.map((transaction) => String(transaction.itemId)));
+  const inventoryInRange = inventory.filter((item) => inventoryItemIdsInRange.has(String(item.id)));
+
   // Inventory Report Data
-  const totalSku = inventory.length;
-  const totalOnHand = inventory.reduce((sum, item) => sum + item.qtyOnHand, 0);
-  const lowStockItems = inventory
+  const totalSku = inventoryInRange.length;
+  const totalOnHand = inventoryInRange.reduce((sum, item) => sum + item.qtyOnHand, 0);
+  const lowStockItems = inventoryInRange
     .filter((item) => item.qtyOnHand <= item.minStock)
     .sort((a, b) => (a.minStock ? a.qtyOnHand / a.minStock : 1) - (b.minStock ? b.qtyOnHand / b.minStock : 1));
-  const outOfStockItems = inventory.filter((item) => item.qtyOnHand === 0);
+  const outOfStockItems = inventoryInRange.filter((item) => item.qtyOnHand === 0);
 
   const inventoryByCategory = Object.values(
-    inventory.reduce<Record<string, { name: string; count: number; value: number }>>(
+    inventoryInRange.reduce<Record<string, { name: string; count: number; value: number }>>(
       (acc, item) => {
         const key = item.category || 'Uncategorized';
         if (!acc[key]) acc[key] = { name: key, count: 0, value: 0 };
@@ -151,7 +163,7 @@ export default function ReportsPage() {
     )
   );
 
-  const topValueItems = [...inventory]
+  const topValueItems = [...inventoryInRange]
     .sort((a, b) => b.qtyOnHand * b.unitPrice - a.qtyOnHand * a.unitPrice)
     .slice(0, 10);
 
@@ -246,11 +258,14 @@ export default function ReportsPage() {
     revenuePrevMonth === 0 ? null : Math.round((revenueDelta / revenuePrevMonth) * 1000) / 10;
 
   const monthlyTrend = Array.from({ length: 5 }).map((_, idx) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (4 - idx), 1);
+    const reportEnd = dateRange.to;
+    const date = new Date(reportEnd.getFullYear(), reportEnd.getMonth() - (4 - idx), 1);
     const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
     const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    const effectiveStart = monthStart < dateRange.from ? dateRange.from : monthStart;
+    const effectiveEnd = monthEnd > dateRange.to ? dateRange.to : monthEnd;
     const monthOrders = orders.filter(
-      (o) => new Date(o.createdAt) >= monthStart && new Date(o.createdAt) < monthEnd
+      (o) => new Date(o.createdAt) >= effectiveStart && new Date(o.createdAt) < effectiveEnd
     );
     const revenue = monthOrders.reduce((sum, o) => sum + getOrderTotals(o).total, 0);
     return { month: format(date, 'MMM'), revenue, orders: monthOrders.length };
