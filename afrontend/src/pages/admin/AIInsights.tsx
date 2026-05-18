@@ -42,7 +42,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
-import type { AiAnalysis, AiLogisticsSnapshot, AiSummary, ReorderSuggestion, StockTransaction, InventoryItem, WarehouseRisk } from '@/types';
+import type { AiAnalysis, AiLogisticsSnapshot, AiSummary, ReorderSuggestion, StockTransaction, WarehouseRisk } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
 
 const riskColors = {
@@ -85,48 +85,35 @@ export default function AIInsightsPage() {
   const fraudAlerts = aiAnalysis?.fraudAlerts || [];
   const logisticsSnapshot = aiAnalysis?.logisticsSnapshot || fallbackLogistics;
   const { data: transactions } = useResource<StockTransaction[]>('/transactions', []);
-  const { data: inventory } = useResource<InventoryItem[]>('/inventory', []);
-
-  const usageTrends = (() => {
-    const now = new Date();
-    const weeks = Array.from({ length: 5 }).map((_, idx) => {
-      const end = new Date(now);
-      end.setDate(now.getDate() - (4 - idx) * 7);
-      const start = new Date(end);
-      start.setDate(end.getDate() - 6);
-      return { label: `W${idx + 1}`, start, end };
+  const monthlyMovement = useMemo(() => {
+    const months = Array.from({ length: 24 }).map((_, idx) => {
+      const date = new Date(2024, 4 + idx, 1);
+      return {
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+        month: format(date, 'MMM yy'),
+        stockIn: 0,
+        stockOut: 0,
+        net: 0,
+      };
     });
+    const monthMap = new Map(months.map((month) => [month.key, month]));
 
-    const usageByItem: Record<string, number[]> = {};
     transactions.forEach((txn) => {
-      if (!txn.itemId) return;
-      const txnDate = new Date(txn.date);
-      const weekIndex = weeks.findIndex((w) => txnDate >= w.start && txnDate <= w.end);
-      if (weekIndex === -1) return;
-      const delta = Math.abs(txn.qtyChange);
-      if (!usageByItem[txn.itemId]) {
-        usageByItem[txn.itemId] = Array(weeks.length).fill(0);
+      const txnDate = new Date(`${txn.date}T00:00:00`);
+      if (Number.isNaN(txnDate.getTime())) return;
+      const key = `${txnDate.getFullYear()}-${String(txnDate.getMonth() + 1).padStart(2, '0')}`;
+      const month = monthMap.get(key);
+      if (!month) return;
+      if (txn.qtyChange >= 0) {
+        month.stockIn += txn.qtyChange;
+      } else {
+        month.stockOut += Math.abs(txn.qtyChange);
       }
-      usageByItem[txn.itemId][weekIndex] += delta;
+      month.net += txn.qtyChange;
     });
 
-    const totals = Object.entries(usageByItem).map(([itemId, counts]) => ({
-      itemId,
-      total: counts.reduce((sum, val) => sum + val, 0),
-      counts,
-    }));
-    const topItems = totals.sort((a, b) => b.total - a.total).slice(0, 3);
-    const nameMap = new Map(inventory.map((item) => [item.id, item.name]));
-
-    return weeks.map((week, idx) => {
-      const row: Record<string, string | number> = { week: week.label };
-      topItems.forEach((item) => {
-        const name = nameMap.get(item.itemId) || `Item ${item.itemId}`;
-        row[name] = item.counts[idx] || 0;
-      });
-      return row;
-    });
-  })();
+    return months;
+  }, [transactions]);
 
   const summary = useMemo(() => {
     const criticalCount = warehouseRisks.filter((risk) => risk.riskLevel === 'critical').length;
@@ -134,30 +121,19 @@ export default function AIInsightsPage() {
     const totalLow = warehouseRisks.length;
     const reorderTotal = reorderSuggestions.reduce((sum, item) => sum + item.estimatedCost, 0);
     const savingsEstimate = reorderTotal ? Math.round(reorderTotal * 0.08) : 0;
-    const trendItem =
-      usageTrends.length > 0
-        ? Object.keys(usageTrends[0]).find((key) => key !== 'week') || 'Top item'
-        : 'Top item';
+    const peakMonth = monthlyMovement.reduce(
+      (peak, month) => (month.stockOut > peak.stockOut ? month : peak),
+      monthlyMovement[0] || { month: 'Top month', stockOut: 0 }
+    );
     return {
       criticalCount,
       highCount,
       totalLow,
       reorderTotal,
       savingsEstimate,
-      trendItem,
+      peakMonth,
     };
-  }, [warehouseRisks, reorderSuggestions, usageTrends]);
-
-  const usageComparison = useMemo(() => {
-    if (usageTrends.length === 0) return [];
-    return Object.keys(usageTrends[0])
-      .filter((key) => key !== 'week')
-      .map((itemName) => ({
-        itemName,
-        usage: usageTrends.reduce((sum, week) => sum + Number(week[itemName] || 0), 0),
-      }))
-      .sort((a, b) => b.usage - a.usage);
-  }, [usageTrends]);
+  }, [warehouseRisks, reorderSuggestions, monthlyMovement]);
 
   const filteredRisks = useMemo(() => {
     const isRisky = (risk: WarehouseRisk) => {
@@ -307,44 +283,62 @@ export default function AIInsightsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp size={20} />
-              Usage Pattern Trends
+              24-Month Stock Movement
             </CardTitle>
-            <CardDescription>Top consumed items over the last five weeks</CardDescription>
+            <CardDescription>Monthly stock in and stock out from May 2024 through April 2026</CardDescription>
           </CardHeader>
           <CardContent>
-            {usageComparison.length > 0 ? (
+            {monthlyMovement.some((month) => month.stockIn > 0 || month.stockOut > 0) ? (
               <div className="space-y-4">
-                <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={340}>
                   <BarChart
-                    data={usageComparison}
-                    layout="vertical"
-                    margin={{ top: 8, right: 24, left: 24, bottom: 8 }}
+                    data={monthlyMovement}
+                    margin={{ top: 8, right: 20, left: 0, bottom: 40 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" allowDecimals={false} />
-                    <YAxis
-                      type="category"
-                      dataKey="itemName"
-                      width={220}
-                      tick={{ fontSize: 12 }}
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="month"
+                      interval={0}
+                      angle={-45}
+                      textAnchor="end"
+                      height={70}
+                      tick={{ fontSize: 11 }}
                     />
-                    <Tooltip formatter={(value) => [`${value} units`, 'Total usage']} />
-                    <Bar dataKey="usage" fill="#2563eb" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip
+                      formatter={(value, name) => [
+                        `${Number(value).toLocaleString()} units`,
+                        name === 'stockIn' ? 'Stock In' : name === 'stockOut' ? 'Stock Out' : 'Net',
+                      ]}
+                    />
+                    <Bar dataKey="stockIn" fill="#16a34a" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="stockOut" fill="#dc2626" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  {usageComparison.map((item, idx) => (
-                    <div key={item.itemName} className="rounded-md border bg-muted/30 p-3">
-                      <p className="text-xs text-muted-foreground">Rank {idx + 1}</p>
-                      <p className="truncate text-sm font-medium">{item.itemName}</p>
-                      <p className="text-lg font-semibold">{item.usage.toLocaleString()} units</p>
-                    </div>
-                  ))}
+                  <div className="rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">Total Stock In</p>
+                    <p className="text-lg font-semibold text-green-700">
+                      {monthlyMovement.reduce((sum, month) => sum + month.stockIn, 0).toLocaleString()} units
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">Total Stock Out</p>
+                    <p className="text-lg font-semibold text-red-700">
+                      {monthlyMovement.reduce((sum, month) => sum + month.stockOut, 0).toLocaleString()} units
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">Highest Outflow Month</p>
+                    <p className="text-lg font-semibold">
+                      {summary.peakMonth.month} ({summary.peakMonth.stockOut.toLocaleString()} units)
+                    </p>
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="rounded-lg border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-                Usage signals will appear after stock movements are recorded.
+                Monthly stock movement signals will appear after transactions are recorded.
               </div>
             )}
           </CardContent>
@@ -621,9 +615,9 @@ export default function AIInsightsPage() {
               <TrendingUp className="text-blue-600 mb-2" size={24} />
               <h4 className="font-medium">Demand Forecast</h4>
               <p className="text-sm text-muted-foreground">
-                {usageTrends.length > 0
-                  ? `${summary.trendItem} demand is trending upward this week.`
-                  : 'Usage trends will update once transactions accumulate.'}
+                {summary.peakMonth.stockOut > 0
+                  ? `${summary.peakMonth.month} had the highest stock-out volume in the 24-month view.`
+                  : 'Stock movement trends will update once transactions accumulate.'}
               </p>
               <Button
                 variant="link"
