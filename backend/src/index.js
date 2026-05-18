@@ -34,11 +34,39 @@ const fileRoutes = require('./routes/files');
 
 const app = express();
 
-const corsOrigin = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
-  : '*';
+const defaultAllowedOrigins = [
+  'https://impexengineering.org',
+  'https://www.impexengineering.org',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+const configuredAllowedOrigins = [
+  process.env.CORS_ORIGIN,
+  process.env.FRONTEND_URL,
+  process.env.CLIENT_URL,
+  process.env.APP_URL,
+]
+  .filter(Boolean)
+  .flatMap((value) => String(value).split(','))
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins]));
 
-app.use(cors({ origin: corsOrigin, credentials: true }));
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  const normalized = String(origin).trim().replace(/\/$/, '');
+  return allowedOrigins.includes(normalized);
+}
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`CORS origin not allowed: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '2mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use('/pending-proofs', express.static(path.join(__dirname, '..', 'storage', 'pending-proofs')));
@@ -49,9 +77,8 @@ app.use(blockDemoWrites);
 app.use((req, res, next) => {
   const method = req.method.toUpperCase();
   if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return next();
-  if (corsOrigin === '*' || corsOrigin.length === 0) return next();
   const origin = req.headers.origin || '';
-  if (origin && corsOrigin.includes(origin)) return next();
+  if (isAllowedOrigin(origin)) return next();
   return res.status(403).json({ error: 'Invalid origin' });
 });
 
