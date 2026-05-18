@@ -77,8 +77,16 @@ export default function AIInsightsPage() {
   const risksRef = useRef<HTMLDivElement | null>(null);
   const reorderRef = useRef<HTMLDivElement | null>(null);
   const [riskFilter, setRiskFilter] = useState<'alerts' | 'include-low' | 'all'>('alerts');
+  const [patternPage, setPatternPage] = useState(1);
   const [riskPage, setRiskPage] = useState(1);
+  const [reorderPage, setReorderPage] = useState(1);
+  const [fraudPage, setFraudPage] = useState(1);
+  const [dispatchPage, setDispatchPage] = useState(1);
+  const patternPageSize = 6;
   const riskPageSize = 5;
+  const reorderPageSize = 5;
+  const fraudPageSize = 4;
+  const dispatchPageSize = 3;
   const { data: aiAnalysis, setData: setAiAnalysis } = useResource<AiAnalysis | null>('/ai/analysis', null, [], 10 * 60 * 1000);
   const aiSummary: AiSummary | null = aiAnalysis
     ? {
@@ -150,14 +158,8 @@ export default function AIInsightsPage() {
     };
   }, [patternTrends]);
 
-  const visiblePatternRows = useMemo(() => {
-    const importantMonths = new Set(
-      patternTrends
-        .filter((month) => Number(month.totalUsage || 0) > 0)
-        .map((month) => String(month.month))
-    );
-    return patternTrends.filter((month, idx) => idx % 3 === 0 || importantMonths.has(String(month.month)));
-  }, [patternTrends]);
+  const patternTotalPages = Math.max(1, Math.ceil(patternTrends.length / patternPageSize));
+  const patternRows = patternTrends.slice((patternPage - 1) * patternPageSize, patternPage * patternPageSize);
   const summary = useMemo(() => {
     const criticalCount = warehouseRisks.filter((risk) => risk.riskLevel === 'critical').length;
     const highCount = warehouseRisks.filter((risk) => risk.riskLevel === 'high').length;
@@ -213,6 +215,31 @@ export default function AIInsightsPage() {
 
   const riskTotalPages = Math.max(1, Math.ceil(filteredRisks.length / riskPageSize));
   const riskPageItems = filteredRisks.slice((riskPage - 1) * riskPageSize, riskPage * riskPageSize);
+  const reorderTotalPages = Math.max(1, Math.ceil(reorderSuggestions.length / reorderPageSize));
+  const reorderPageItems = reorderSuggestions.slice((reorderPage - 1) * reorderPageSize, reorderPage * reorderPageSize);
+  const fraudTotalPages = Math.max(1, Math.ceil(fraudAlerts.length / fraudPageSize));
+  const fraudPageItems = fraudAlerts.slice((fraudPage - 1) * fraudPageSize, fraudPage * fraudPageSize);
+  const dispatchTotalPages = Math.max(1, Math.ceil(logisticsSnapshot.dispatches.length / dispatchPageSize));
+  const dispatchPageItems = logisticsSnapshot.dispatches.slice(
+    (dispatchPage - 1) * dispatchPageSize,
+    dispatchPage * dispatchPageSize
+  );
+
+  useEffect(() => {
+    setPatternPage(1);
+  }, [patternTrends.length]);
+
+  useEffect(() => {
+    setReorderPage(1);
+  }, [reorderSuggestions.length]);
+
+  useEffect(() => {
+    setFraudPage(1);
+  }, [fraudAlerts.length]);
+
+  useEffect(() => {
+    setDispatchPage(1);
+  }, [logisticsSnapshot.dispatches.length]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -393,7 +420,7 @@ export default function AIInsightsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {visiblePatternRows.map((month) => (
+                      {patternRows.map((month) => (
                         <TableRow key={String(month.key)}>
                           <TableCell className="font-medium">{month.month}</TableCell>
                           {DEMO_PATTERN_ITEMS.map((item) => (
@@ -408,6 +435,13 @@ export default function AIInsightsPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+                <div className="flex items-center justify-center">
+                  <PaginationNav
+                    page={patternPage}
+                    totalPages={patternTotalPages}
+                    onPageChange={setPatternPage}
+                  />
                 </div>
               </div>
             ) : (
@@ -517,7 +551,7 @@ export default function AIInsightsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {reorderSuggestions.map((item) => (
+                {reorderPageItems.map((item) => (
                   <TableRow key={item.itemId}>
                     <TableCell className="font-medium">{item.itemName}</TableCell>
                     <TableCell className="text-center">
@@ -535,6 +569,13 @@ export default function AIInsightsPage() {
                 ))}
               </TableBody>
             </Table>
+            <div className="mt-4 flex items-center justify-center">
+              <PaginationNav
+                page={reorderPage}
+                totalPages={reorderTotalPages}
+                onPageChange={setReorderPage}
+              />
+            </div>
             <div className="mt-4 pt-4 border-t flex justify-between items-center">
               <p className="text-sm text-muted-foreground">
                 Total estimated: ₱
@@ -566,7 +607,7 @@ export default function AIInsightsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {fraudAlerts.map((alert) => (
+                {fraudPageItems.map((alert) => (
                   <div
                     key={alert.id}
                     className={`p-3 rounded-lg border ${
@@ -599,6 +640,15 @@ export default function AIInsightsPage() {
                     </p>
                   </div>
                 ))}
+              </div>
+            )}
+            {fraudAlerts.length > 0 && (
+              <div className="mt-4 flex items-center justify-center">
+                <PaginationNav
+                  page={fraudPage}
+                  totalPages={fraudTotalPages}
+                  onPageChange={setFraudPage}
+                />
               </div>
             )}
             <p className="text-sm text-muted-foreground text-center mt-4">
@@ -636,7 +686,7 @@ export default function AIInsightsPage() {
                 <p className="text-sm font-medium mb-2">Dispatch Watchlist</p>
                 <div className="space-y-2 text-sm">
                   {logisticsSnapshot.dispatches.length > 0 ? (
-                    logisticsSnapshot.dispatches.map((dispatch) => (
+                    dispatchPageItems.map((dispatch) => (
                       <div key={`${dispatch.route}-${dispatch.status}`} className="rounded-md border bg-background p-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">{dispatch.route}</span>
@@ -651,6 +701,15 @@ export default function AIInsightsPage() {
                     <p className="text-sm text-muted-foreground">No active dispatch watchlist items.</p>
                   )}
                 </div>
+                {logisticsSnapshot.dispatches.length > 0 && (
+                  <div className="mt-3 flex items-center justify-center">
+                    <PaginationNav
+                      page={dispatchPage}
+                      totalPages={dispatchTotalPages}
+                      onPageChange={setDispatchPage}
+                    />
+                  </div>
+                )}
               <div className="text-xs text-muted-foreground">
                 {logisticsSnapshot.recommendation}
               </div>
