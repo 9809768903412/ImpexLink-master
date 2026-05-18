@@ -40,6 +40,7 @@ type SupplierForm = {
   address: string;
   contactPerson: string;
   country: string;
+  tin: string;
 };
 
 const emptyForm: SupplierForm = {
@@ -48,6 +49,7 @@ const emptyForm: SupplierForm = {
   address: '',
   contactPerson: '',
   country: 'Philippines',
+  tin: '',
 };
 
 const toForm = (supplier: Supplier): SupplierForm => ({
@@ -56,17 +58,20 @@ const toForm = (supplier: Supplier): SupplierForm => ({
   address: supplier.address || '',
   contactPerson: supplier.contactPerson || '',
   country: supplier.country || 'Philippines',
+  tin: supplier.tin || '',
 });
 
 const COMMON_SUPPLIERS = [
-  'Paco Asia Hardware',
-  'Jhelet General Merchandise',
-  'Rockwell Lumber',
-  'Valqua Industrial',
-  'JP Camaro Hardware',
-  'Knack Commercial',
-  'LYS Marketing',
-  'Davies Marketing',
+  'JHELET GENERAL MERCHANDISING',
+  'PACO ASIA PLUMBING SUPPLY AND HARDWARE',
+  'Elite Hardware, Electrical & Industrial Supply Co (Davies)',
+  'GAZPAC ENTERPRISES CORPORATION',
+  'Polymer Products (Phil) Inc',
+  'JP Camaro Construction Supply',
+  'Knack Commercial (Kelyn Commercial Corp)',
+  'LYS Marketing Corporation',
+  'Rockwell Lumber and Hardware Inc',
+  'Valqua Industrial Corporation',
   'Other',
 ];
 
@@ -168,6 +173,7 @@ export default function SuppliersPage() {
         address: form.address.trim() || null,
         contactPerson: form.contactPerson.trim() || null,
         country: form.country || 'Philippines',
+        tin: form.tin.trim() || null,
       };
       if (editingSupplier) {
         await apiClient.put(`/suppliers/${editingSupplier.id}`, payload);
@@ -202,10 +208,11 @@ export default function SuppliersPage() {
       const payload = response.data;
       const rows: Supplier[] = payload?.data || payload || suppliers;
       downloadCsv(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`, [
-        ['Company Name', 'Country', 'Contact Person', 'Contact Number', 'Address'],
+        ['Company Name', 'Country', 'TIN', 'Contact Person', 'Contact Number', 'Address'],
         ...rows.map((supplier) => [
           supplier.name,
           supplier.country || 'Philippines',
+          supplier.tin || '',
           supplier.contactPerson || '',
           supplier.phone || '',
           supplier.address || '',
@@ -261,6 +268,7 @@ export default function SuppliersPage() {
                 <TableRow>
                   <TableHead>Supplier</TableHead>
                   <TableHead>Country</TableHead>
+                  <TableHead>TIN</TableHead>
                   <TableHead>Contact Person</TableHead>
                   <TableHead>Contact Number</TableHead>
                   <TableHead>Address</TableHead>
@@ -274,6 +282,7 @@ export default function SuppliersPage() {
                       <p className="font-medium">{supplier.name}</p>
                     </TableCell>
                     <TableCell>{supplier.country || 'Philippines'}</TableCell>
+                    <TableCell>{supplier.tin || '-'}</TableCell>
                     <TableCell>{supplier.contactPerson || '-'}</TableCell>
                     <TableCell>{supplier.phone || '-'}</TableCell>
                     <TableCell className="max-w-[320px] truncate">{supplier.address || '-'}</TableCell>
@@ -293,14 +302,14 @@ export default function SuppliersPage() {
                 ))}
                 {!loading && suppliers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={canManage ? 6 : 5} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={canManage ? 7 : 6} className="py-8 text-center text-muted-foreground">
                       No suppliers found.
                     </TableCell>
                   </TableRow>
                 )}
                 {loading && (
                   <TableRow>
-                    <TableCell colSpan={canManage ? 6 : 5} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={canManage ? 7 : 6} className="py-8 text-center text-muted-foreground">
                       Loading suppliers...
                     </TableCell>
                   </TableRow>
@@ -371,6 +380,14 @@ export default function SuppliersPage() {
                 id="supplierContact"
                 value={form.contactPerson}
                 onChange={(event) => setForm((prev) => ({ ...prev, contactPerson: event.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="supplierTin">TIN No.</Label>
+              <Input
+                id="supplierTin"
+                value={form.tin}
+                onChange={(event) => setForm((prev) => ({ ...prev, tin: event.target.value }))}
               />
             </div>
             <div>

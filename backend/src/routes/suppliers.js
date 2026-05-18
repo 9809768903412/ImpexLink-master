@@ -31,6 +31,7 @@ router.get('/', requireRole(['ADMIN']), async (req, res, next) => {
             { address: { contains: q, mode: 'insensitive' } },
             { contactPerson: { contains: q, mode: 'insensitive' } },
             { country: { contains: q, mode: 'insensitive' } },
+            { tin: { contains: q, mode: 'insensitive' } },
           ],
           deletedAt: null,
         }
@@ -69,7 +70,7 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
         email: null,
         address: req.body.address,
         phone: req.body.phone,
-        tin: null,
+        tin: req.body.tin || null,
       },
     });
     await prisma.auditLog.create({
@@ -100,7 +101,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
         email: null,
         address: req.body.address,
         phone: req.body.phone,
-        tin: null,
+        tin: req.body.tin || null,
       },
     });
     await prisma.auditLog.create({

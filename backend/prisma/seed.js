@@ -52,13 +52,31 @@ async function ensureCategory(categoryName) {
   });
 }
 
-async function ensureSupplier(supplierName) {
+async function ensureSupplier({ supplierName, address = null, tin = null, contactPerson = null, phone = null, country = 'Philippines' }) {
   const existing = await prisma.supplier.findFirst({ where: { supplierName } });
-  if (existing) return existing;
+  if (existing) {
+    return prisma.supplier.update({
+      where: { supplierId: existing.supplierId },
+      data: {
+        address,
+        tin,
+        contactPerson,
+        phone,
+        country,
+        email: null,
+        deletedAt: null,
+      },
+    });
+  }
   return prisma.supplier.create({
     data: {
       supplierName,
-      country: 'Philippines',
+      address,
+      tin,
+      contactPerson,
+      phone,
+      country,
+      email: null,
     },
   });
 }
@@ -569,18 +587,80 @@ async function main() {
 
   // === Suppliers ===
   const suppliers = [
-    'Paco Asia Hardware',
-    'Jhelet General Merchandise',
-    'Rockwell Lumbr',
-    'Valqua Industrial',
-    'JP Camaro Hardware',
-    'Knack Commercial',
-    'LYS Marketing',
-    'Davies Marketing',
+    {
+      supplierName: 'JHELET GENERAL MERCHANDISING',
+      address: 'Lot 17 & 18 Martinez St., Brgy Rizal Makati City',
+      tin: '191-017-762-00000',
+      contactPerson: 'Mam Vangie',
+      phone: '09228629686',
+    },
+    {
+      supplierName: 'PACO ASIA PLUMBING SUPPLY AND HARDWARE',
+      address: '1475 Gen. Luna St., Barangay 676 Zone 73, Dist V 1007, Paco, City of Manila',
+      tin: '140-467-869-0000',
+      contactPerson: 'Mam Susan',
+      phone: '09101937600',
+    },
+    {
+      supplierName: 'Elite Hardware, Electrical & Industrial Supply Co (Davies)',
+      address: '238 15th Avenue, corner Aurora Boulevard, Cubao, Quezon City, 1109 Philippines',
+      tin: '000-389-799-00000',
+      contactPerson: 'Mam Tess',
+      phone: '09178779302',
+    },
+    {
+      supplierName: 'GAZPAC ENTERPRISES CORPORATION',
+      address: '1463 Doroteo Jose St., Barangay 314 Zone 031 1003 Santa Cruz NCR City of Manila',
+      tin: '644-777-972-00000',
+      contactPerson: 'Mam Tery',
+      phone: '09228099952',
+    },
+    {
+      supplierName: 'Polymer Products (Phil) Inc',
+      address: '11 Joe Borris St Bagong Ilog, 1604 City of Pasig NCR',
+      tin: '000-281-511-00000',
+      contactPerson: 'Mam Sheng',
+      phone: '09454274426',
+    },
+    {
+      supplierName: 'JP Camaro Construction Supply',
+      address: '4983 Arnaiz Ave cor. Mayor St., Brgy. Pio Del Pilar Makati City',
+      tin: '605-521-666-00000',
+      contactPerson: 'Mam Liza',
+      phone: '09267527299',
+    },
+    {
+      supplierName: 'Knack Commercial (Kelyn Commercial Corp)',
+      address: '4996 A. Arnaiz Ave., Brgy. Pio Del Pilar Makati City',
+      tin: null,
+      contactPerson: null,
+      phone: '09435814433',
+    },
+    {
+      supplierName: 'LYS Marketing Corporation',
+      address: '187 Roosevelt Ave., Brgy Del Monte 1 Quezon City',
+      tin: '000-365-807-00000',
+      contactPerson: 'Mam Sol',
+      phone: '09171870151',
+    },
+    {
+      supplierName: 'Rockwell Lumber and Hardware Inc',
+      address: '1159 JP Rizal St. Guadalupe Viejo 1211 City of Makati',
+      tin: '000-167-700-00000',
+      contactPerson: 'Sir Edgar',
+      phone: '09277843280',
+    },
+    {
+      supplierName: 'Valqua Industrial Corporation',
+      address: '1007 Tomas Mapua St Brgy 329 Zone 33 Dist III Sta Cruz Manila',
+      tin: '004-827-090-000',
+      contactPerson: 'Mam Kristine',
+      phone: '8-7115103',
+    },
   ];
 
-  for (const supplierName of suppliers) {
-    await ensureSupplier(supplierName);
+  for (const supplier of suppliers) {
+    await ensureSupplier(supplier);
   }
 
   // === Categories ===
