@@ -267,7 +267,7 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
         ? 'Please verify your email to activate your account.'
         : devOtp
           ? 'Email delivery failed. Use the verification code shown below.'
-          : 'Registration was saved, but email delivery failed. Ask an admin to check /api/test-email and resend the code after Resend is fixed.',
+          : 'Registration was saved, but email delivery failed. Ask an admin to check /api/test-email and verify the Railway Hostinger SMTP settings, then resend the code.',
     });
   } catch (err) {
     return next(err);
@@ -333,7 +333,7 @@ router.post('/login', async (req, res, next) => {
       if (!emailSent && !canUseOtpFallback()) {
         return res.status(503).json({
           error: 'Email service unavailable',
-          message: 'OTP email could not be sent. Check /api/test-email and Railway Resend variables.',
+          message: 'OTP email could not be sent. Check /api/test-email and Railway Hostinger SMTP variables.',
           emailError,
           emailDiagnostics: getEmailDiagnostics(),
         });
@@ -410,7 +410,7 @@ router.post('/resend-otp', async (req, res, next) => {
     if (!emailSent && !canUseOtpFallback()) {
       return res.status(503).json({
         error: 'Email service unavailable',
-        message: 'OTP email could not be sent. Check /api/test-email and Railway Resend variables.',
+        message: 'OTP email could not be sent. Check /api/test-email and Railway Hostinger SMTP variables.',
         emailError,
         emailDiagnostics: getEmailDiagnostics(),
       });

@@ -4,6 +4,13 @@ const { sendEmail, getEmailDiagnostics, sanitizeEmailError } = require('../utils
 
 const router = express.Router();
 
+router.get('/diagnostics', (_req, res) => {
+  res.json({
+    ok: true,
+    diagnostics: getEmailDiagnostics(),
+  });
+});
+
 router.get('/', requireAuth, requireRole(['ADMIN', 'PRESIDENT']), async (req, res) => {
   try {
     const to = String(req.query.to || req.user?.email || '').trim();
