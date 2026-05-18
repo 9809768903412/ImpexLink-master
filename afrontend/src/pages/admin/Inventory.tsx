@@ -249,7 +249,7 @@ export default function InventoryPage() {
   const pageEnd = pageStart + pageSize;
   const pagedInventory = sortedInventory.slice(pageStart, pageEnd);
   const totalFilteredItems = sortedInventory.length;
-  const tableColSpan = canEditInventory ? 8 : 7;
+  const tableColSpan = 7;
 
   // Get transactions for selected item
   const itemTransactions = selectedItem
@@ -572,7 +572,6 @@ export default function InventoryPage() {
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead>Stock Alert</TableHead>
                   <TableHead>Status</TableHead>
-                  {canEditInventory && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -609,18 +608,6 @@ export default function InventoryPage() {
                       </div>
                     </TableCell>
                     <TableCell>{getStatusBadge(item.status)}</TableCell>
-                    {canEditInventory && (
-                      <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openStockAction('restock', item)}>
-                            Stock In
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => openStockAction('issue', item)}>
-                            Stock Out
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
                   </TableRow>
                     );
                   })
