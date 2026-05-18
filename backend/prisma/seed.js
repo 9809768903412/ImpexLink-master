@@ -765,8 +765,8 @@ async function main() {
     createdUsers[0] ||
     null;
   const historyUserId = historyUser?.userId || null;
-  const stockHistoryMonths = Array.from({ length: 18 }).map((_, idx) => {
-    const date = new Date(Date.UTC(2024, 10 + idx, 15, 8, 0, 0));
+  const stockHistoryMonths = Array.from({ length: 24 }).map((_, idx) => {
+    const date = new Date(Date.UTC(2024, 4 + idx, 15, 8, 0, 0));
     return {
       label: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`,
       date,

@@ -218,6 +218,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
         await prisma.stockTransaction.create({
           data: {
             productId: product.productId,
+            supplierId: existing.supplierId || order.supplierId || null,
             type: 'PURCHASE',
             qtyChange: item.quantity,
             newBalance,

@@ -315,6 +315,7 @@ model Supplier {
   deletedAt    DateTime? @map("deleted_at")
 
   supplierOrders SupplierOrder[]
+  stockTransactions StockTransaction[]
 
   @@map("suppliers")
 }
@@ -550,6 +551,7 @@ model QuoteRequestItem {
 model StockTransaction {
   transactionId Int                 @id @default(autoincrement()) @map("transaction_id")
   productId     Int?                @map("product_id")
+  supplierId    Int?                @map("supplier_id")
   date          DateTime            @default(now())
   type          StockTransactionType
   qtyChange     Int                 @map("qty_change")
@@ -558,9 +560,11 @@ model StockTransaction {
   notes         String?             @db.Text
 
   product Product? @relation(fields: [productId], references: [productId])
+  supplier Supplier? @relation(fields: [supplierId], references: [supplierId])
   user    User?    @relation(fields: [userId], references: [userId])
 
   @@index([productId])
+  @@index([supplierId])
   @@index([userId])
   @@map("stock_transactions")
 }

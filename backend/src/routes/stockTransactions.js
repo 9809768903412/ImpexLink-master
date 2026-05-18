@@ -26,7 +26,7 @@ router.get('/', async (req, res, next) => {
     };
     const [txns, total] = await Promise.all([
       prisma.stockTransaction.findMany({
-        include: { product: true, user: true },
+        include: { product: true, user: true, supplier: true },
         where,
         skip: pagination ? (pagination.page - 1) * pagination.pageSize : undefined,
         take: pagination ? pagination.pageSize : undefined,
@@ -67,8 +67,8 @@ router.get('/', async (req, res, next) => {
         const linked = match ? supplierByPo.get(Number(match[1])) : null;
         const noteSupplier = String(t.notes || '').match(/\bSupplier:\s*([^|;\n]+)/i);
         return {
-          supplierId: linked?.supplierId || null,
-          supplierName: linked?.supplierName || (noteSupplier ? noteSupplier[1].trim() : null),
+          supplierId: t.supplierId?.toString() || linked?.supplierId || null,
+          supplierName: t.supplier?.supplierName || linked?.supplierName || (noteSupplier ? noteSupplier[1].trim() : null),
         };
       })(),
       id: t.transactionId.toString(),
@@ -96,6 +96,7 @@ router.post('/', async (req, res, next) => {
     const txn = await prisma.stockTransaction.create({
       data: {
         productId: req.body.productId ? Number(req.body.productId) : null,
+        supplierId: req.body.supplierId ? Number(req.body.supplierId) : null,
         type: req.body.type ? req.body.type.toUpperCase() : 'ADJUSTMENT',
         qtyChange: Number(req.body.qtyChange || 0),
         newBalance: Number(req.body.newBalance || 0),

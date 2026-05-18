@@ -133,7 +133,7 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
   try {
-    const { itemName, unit, unitPrice, categoryId, categoryName, qtyOnHand, lowStockThreshold } = req.body;
+    const { itemName, unit, unitPrice, categoryId, categoryName, qtyOnHand, lowStockThreshold, supplierId } = req.body;
     if (!isNonEmptyString(itemName)) return res.status(400).json({ error: 'Item name is required' });
     if (unitPrice !== undefined && !isNonNegativeNumber(unitPrice)) {
       return res.status(400).json({ error: 'Unit price must be 0 or greater' });
@@ -144,8 +144,18 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
     if (lowStockThreshold !== undefined && !isNonNegativeNumber(lowStockThreshold)) {
       return res.status(400).json({ error: 'Low stock threshold must be 0 or greater' });
     }
+    const duplicate = await prisma.product.findFirst({
+      where: {
+        deletedAt: null,
+        itemName: { equals: String(itemName).trim(), mode: 'insensitive' },
+      },
+    });
+    if (duplicate) {
+      return res.status(409).json({ error: 'Inventory item name already exists' });
+    }
     const status = resolveStatus(qtyOnHand ?? 0, lowStockThreshold ?? 20);
     let resolvedCategoryId = categoryId ? Number(categoryId) : null;
+    let supplier = null;
 
     if (!resolvedCategoryId && categoryName) {
       const category = await prisma.productCategory.upsert({
@@ -155,10 +165,17 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
       });
       resolvedCategoryId = category.categoryId;
     }
+    if ((qtyOnHand ?? 0) > 0) {
+      if (!supplierId) return res.status(400).json({ error: 'Supplier is required for initial stock' });
+      supplier = await prisma.supplier.findFirst({
+        where: { supplierId: Number(supplierId), deletedAt: null },
+      });
+      if (!supplier) return res.status(400).json({ error: 'Invalid supplier' });
+    }
 
     const product = await prisma.product.create({
       data: {
-        itemName,
+        itemName: String(itemName).trim(),
         unit: normalizeUnit(unit),
         unitPrice,
         categoryId: resolvedCategoryId,
@@ -173,11 +190,12 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
       await prisma.stockTransaction.create({
         data: {
           productId: product.productId,
+          supplierId: supplier?.supplierId || null,
           type: 'PURCHASE',
           qtyChange: Number(qtyOnHand ?? 0),
           newBalance: product.qtyOnHand,
           userId: req.user.userId,
-          notes: `Initial stock for ${product.itemName}`,
+          notes: `Initial stock for ${product.itemName}${supplier ? ` | Supplier: ${supplier.supplierName}` : ''}`,
         },
       });
     }
@@ -235,6 +253,18 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
     }
     const existing = await prisma.product.findUnique({ where: { productId: Number(req.params.id) } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
+    if (req.body.itemName !== undefined) {
+      const duplicate = await prisma.product.findFirst({
+        where: {
+          deletedAt: null,
+          productId: { not: existing.productId },
+          itemName: { equals: String(req.body.itemName).trim(), mode: 'insensitive' },
+        },
+      });
+      if (duplicate) {
+        return res.status(409).json({ error: 'Inventory item name already exists' });
+      }
+    }
     const nextQty = qtyOnHand ?? existing.qtyOnHand;
     const nextLowStockThreshold = lowStockThreshold ?? existing.lowStockThreshold;
     const status = resolveStatus(nextQty, nextLowStockThreshold);
@@ -252,7 +282,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
     const product = await prisma.product.update({
       where: { productId: Number(req.params.id) },
       data: {
-        itemName: req.body.itemName,
+        itemName: req.body.itemName !== undefined ? String(req.body.itemName).trim() : undefined,
         unit: req.body.unit !== undefined ? normalizeUnit(req.body.unit) : undefined,
         unitPrice: req.body.unitPrice,
         categoryId: resolvedCategoryId,
@@ -333,12 +363,17 @@ router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, 
     const status = resolveStatus(newBalance, product.lowStockThreshold);
 
     let supplierNote = '';
+    let supplier = null;
     if (supplierId) {
-      const supplier = await prisma.supplier.findFirst({
+      supplier = await prisma.supplier.findFirst({
         where: { supplierId: Number(supplierId), deletedAt: null },
       });
       if (!supplier) return res.status(400).json({ error: 'Invalid supplier' });
       supplierNote = `Supplier: ${supplier.supplierName}`;
+    }
+    const transactionType = type ? String(type).toUpperCase() : 'ADJUSTMENT';
+    if (transactionType === 'PURCHASE' && resolvedQtyChange > 0 && !supplier) {
+      return res.status(400).json({ error: 'Supplier is required for stock-in batches' });
     }
 
     const updated = await prisma.product.update({
@@ -349,7 +384,8 @@ router.put('/:id/stock', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, 
     await prisma.stockTransaction.create({
       data: {
         productId: product.productId,
-        type: type ? String(type).toUpperCase() : 'ADJUSTMENT',
+        supplierId: supplier?.supplierId || null,
+        type: transactionType,
         qtyChange: resolvedQtyChange,
         newBalance,
         userId: req.user.userId,

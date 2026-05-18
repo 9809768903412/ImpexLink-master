@@ -9,10 +9,10 @@
     "prestart": "npm run db:deploy && npm run prisma:generate",
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "prisma:generate": "prisma generate",
-    "db:deploy": "prisma migrate deploy",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
+    "prisma:generate": "node node_modules/prisma/build/index.js generate",
+    "db:deploy": "node node_modules/prisma/build/index.js migrate deploy",
+    "prisma:migrate": "node node_modules/prisma/build/index.js migrate dev",
+    "prisma:studio": "node node_modules/prisma/build/index.js studio",
     "seed": "node prisma/seed.js"
   },
   "prisma": {

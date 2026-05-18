@@ -53,7 +53,6 @@ export default function ReportsPage() {
   });
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>('all');
-  const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string>('all');
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
   const [activeReport, setActiveReport] = useState<string>('inventory');
@@ -122,7 +121,7 @@ export default function ReportsPage() {
     setDeliveryPage(1);
     setOpenBalancePage(1);
     setVatPage(1);
-  }, [dateRange, projectFilter, projectStatusFilter, inventoryCategoryFilter, deliveryStatusFilter, paymentStatusFilter]);
+  }, [dateRange, projectFilter, projectStatusFilter, deliveryStatusFilter, paymentStatusFilter]);
 
   const ordersInRange = orders.filter((o) => {
     const created = new Date(o.createdAt);
@@ -174,10 +173,7 @@ export default function ReportsPage() {
     return Math.max(target - item.qtyOnHand, 0);
   };
 
-  const filteredInventoryByCategory =
-    inventoryCategoryFilter === 'all'
-      ? inventoryByCategory
-      : inventoryByCategory.filter((cat) => cat.name === inventoryCategoryFilter);
+  const filteredInventoryByCategory = inventoryByCategory;
 
   const filteredProjects = projects
     .filter((proj) => (projectFilter === 'all' ? true : String(proj.id) === projectFilter))
@@ -644,25 +640,6 @@ export default function ReportsPage() {
 
         {/* Inventory Report */}
         <TabsContent value="inventory" className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <Select
-              value={inventoryCategoryFilter}
-              onValueChange={setInventoryCategoryFilter}
-            >
-              <SelectTrigger className="w-full sm:w-[220px]">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {inventoryByCategory.map((cat) => (
-                  <SelectItem key={cat.name} value={cat.name}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-5">

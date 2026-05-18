@@ -401,7 +401,7 @@ router.put('/:id', requireRole([...DECISION_ROLES, ...PROCUREMENT_ROLES]), async
             qtyChange: -item.quantity,
             newBalance,
             userId: req.user.userId,
-            notes: `Material request ${request.requestNumber}`,
+            notes: `Project: ${request.project?.projectName || 'Unknown'} | Material request ${request.requestNumber}`,
           },
         });
       }

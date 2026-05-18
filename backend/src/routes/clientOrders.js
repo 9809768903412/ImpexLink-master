@@ -643,7 +643,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
               qtyChange: -item.quantity,
               newBalance,
               userId: req.user.userId,
-          notes: `Order ${existing.orderNumber}`,
+              notes: `Project: ${existing.project?.projectName || 'Unknown'} | Order ${existing.orderNumber}`,
             },
           });
         }

@@ -107,6 +107,7 @@ export default function InventoryPage() {
     unitPrice: 0,
     qtyOnHand: 0,
     minStock: 20,
+    supplierId: '',
   });
   const [newItemErrors, setNewItemErrors] = useState<Record<string, string>>({});
   const [editItem, setEditItem] = useState({
@@ -123,7 +124,7 @@ export default function InventoryPage() {
   const { toast } = useToast();
   const { data: transactions, reload: reloadTransactions } = useResource<StockTransaction[]>('/transactions', []);
   const { data: categories } = useResource<{ categoryName: string }[]>('/categories', []);
-  const { data: suppliers } = useResource<Supplier[]>(canEditItemInfo ? '/suppliers' : '', [], [canEditItemInfo]);
+  const { data: suppliers } = useResource<Supplier[]>(canEditInventory ? '/suppliers' : '', [], [canEditInventory]);
   const categoryList = categories.map((cat) => cat.categoryName);
 
   const reloadInventory = async () => {
@@ -202,6 +203,7 @@ export default function InventoryPage() {
     if (!item.category) errors.category = 'Category is required.';
     if (item.unitPrice < 0) errors.unitPrice = 'Unit price must be 0 or greater.';
     if (item.qtyOnHand < 0) errors.qtyOnHand = 'Quantity must be 0 or greater.';
+    if (item.qtyOnHand > 0 && !item.supplierId) errors.supplierId = 'Supplier is required for initial stock.';
     if (item.minStock < 0) errors.minStock = 'Low stock threshold must be 0 or greater.';
     return errors;
   };
@@ -231,7 +233,7 @@ export default function InventoryPage() {
   const pageEnd = pageStart + pageSize;
   const pagedInventory = sortedInventory.slice(pageStart, pageEnd);
   const totalFilteredItems = sortedInventory.length;
-  const tableColSpan = 5;
+  const tableColSpan = canEditInventory ? 8 : 7;
 
   // Get transactions for selected item
   const itemTransactions = selectedItem
@@ -244,6 +246,14 @@ export default function InventoryPage() {
   const monthlyUsage = itemTransactions
     .filter((t) => t.type === 'issue' && Date.now() - Date.parse(t.date) <= 1000 * 60 * 60 * 24 * 30)
     .reduce((sum, t) => sum + Math.abs(t.qtyChange), 0);
+  const getStockAlert = (item: InventoryItem) => {
+    if (item.qtyOnHand <= 0) return { label: 'Out of stock', detail: `Reorder ${Math.max(item.minStock * 2, 1)}` };
+    if (item.qtyOnHand <= item.minStock) {
+      const reorderQty = Math.max(item.minStock * 2 - item.qtyOnHand, item.minStock);
+      return { label: 'Low stock', detail: `Reorder ${reorderQty}` };
+    }
+    return { label: 'Healthy', detail: `${item.qtyOnHand - item.minStock} above threshold` };
+  };
 
   const handleItemClick = (item: InventoryItem) => {
     setSelectedItem(item);
@@ -270,6 +280,7 @@ export default function InventoryPage() {
         unitPrice: newItem.unitPrice,
         qtyOnHand: newItem.qtyOnHand,
         lowStockThreshold: newItem.minStock,
+        supplierId: newItem.supplierId || undefined,
       });
       await reloadInventory();
       await reloadTransactions();
@@ -282,6 +293,7 @@ export default function InventoryPage() {
         unitPrice: 0,
         qtyOnHand: 0,
         minStock: 20,
+        supplierId: '',
       });
       setNewItemErrors({});
     } catch (err) {
@@ -394,6 +406,10 @@ export default function InventoryPage() {
     }
     if ((stockAction.type === 'issue' || stockAction.type === 'adjust') && !stockAction.notes.trim()) {
       toast({ title: 'Missing reference', description: 'Reference/notes are required.', variant: 'destructive' });
+      return;
+    }
+    if (stockAction.type === 'restock' && !stockAction.supplierId) {
+      toast({ title: 'Supplier required', description: 'Choose the supplier for this stock-in batch.', variant: 'destructive' });
       return;
     }
     const qtyChange =
@@ -537,7 +553,10 @@ export default function InventoryPage() {
                   <TableHead>Item Name</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead className="text-right">Unit Price</TableHead>
+                  <TableHead>Stock Alert</TableHead>
                   <TableHead>Status</TableHead>
+                  {canEditInventory && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -550,7 +569,9 @@ export default function InventoryPage() {
                     </TableRow>
                   ))
                 ) : pagedInventory.length > 0 ? (
-                  pagedInventory.map((item, index) => (
+                  pagedInventory.map((item) => {
+                    const stockAlert = getStockAlert(item);
+                    return (
                   <TableRow
                     key={item.id}
                     className="cursor-pointer hover:bg-muted/50"
@@ -564,9 +585,29 @@ export default function InventoryPage() {
                     <TableCell className="text-right">
                       {item.qtyOnHand.toLocaleString()} {item.unit}
                     </TableCell>
+                    <TableCell className="text-right">₱{item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{stockAlert.label}</p>
+                        <p className="text-xs text-muted-foreground">{stockAlert.detail}</p>
+                      </div>
+                    </TableCell>
                     <TableCell>{getStatusBadge(item.status)}</TableCell>
+                    {canEditInventory && (
+                      <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openStockAction('restock', item)}>
+                            Stock In
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => openStockAction('issue', item)}>
+                            Stock Out
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
-                  ))
+                    );
+                  })
                 ) : (
                   <TableRow>
                     <TableCell colSpan={tableColSpan} className="text-center text-muted-foreground py-8">
@@ -664,6 +705,45 @@ export default function InventoryPage() {
                     <p className="font-medium">{monthlyUsage} units</p>
                   </div>
                 </div>
+                <div className="overflow-hidden rounded-md border">
+                  <ScrollArea className="max-h-64">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Supplier / Reference</TableHead>
+                          <TableHead className="text-right">Qty Change</TableHead>
+                          <TableHead className="text-right">Balance</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {itemTransactionsByDate.length > 0 ? (
+                          itemTransactionsByDate.map((txn) => (
+                            <TableRow key={txn.id}>
+                              <TableCell>{new Date(txn.date).toLocaleDateString('en-PH')}</TableCell>
+                              <TableCell className="capitalize">{txn.type}</TableCell>
+                              <TableCell>
+                                <p className="font-medium">{txn.supplierName || 'Internal movement'}</p>
+                                {txn.notes && <p className="text-xs text-muted-foreground">{txn.notes}</p>}
+                              </TableCell>
+                              <TableCell className={txn.qtyChange >= 0 ? 'text-right text-success' : 'text-right text-destructive'}>
+                                {txn.qtyChange >= 0 ? '+' : ''}{txn.qtyChange}
+                              </TableCell>
+                              <TableCell className="text-right">{txn.newBalance}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                              No stock movement recorded yet.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2 justify-end">
@@ -742,20 +822,19 @@ export default function InventoryPage() {
                 </Select>
               </div>
             )}
-            {stockAction.type === 'restock' && suppliers.length > 0 && (
+            {stockAction.type === 'restock' && (
               <div>
                 <p className="text-sm font-medium mb-1">Supplier</p>
                 <Select
-                  value={stockAction.supplierId || 'none'}
+                  value={stockAction.supplierId}
                   onValueChange={(value) =>
-                    setStockAction((prev) => ({ ...prev, supplierId: value === 'none' ? '' : value }))
+                    setStockAction((prev) => ({ ...prev, supplierId: value }))
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select supplier" />
+                    <SelectValue placeholder="Select supplier for this batch" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No supplier selected</SelectItem>
                     {suppliers.map((supplier) => (
                       <SelectItem key={supplier.id} value={supplier.id}>
                         {supplier.name}
@@ -910,6 +989,32 @@ export default function InventoryPage() {
                 />
                 {newItemErrors.minStock && <p className="text-xs text-destructive mt-1">{newItemErrors.minStock}</p>}
               </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-1">Supplier for Initial Stock</p>
+              <Select
+                value={newItem.supplierId}
+                onValueChange={(value) => {
+                  const next = { ...newItem, supplierId: value };
+                  setNewItem(next);
+                  setNewItemErrors(validateItem(next));
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select supplier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {newItemErrors.supplierId && <p className="text-xs text-destructive mt-1">{newItemErrors.supplierId}</p>}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Required when creating an item with stock on hand so the first batch has a source.
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
