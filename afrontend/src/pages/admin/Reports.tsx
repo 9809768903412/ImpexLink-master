@@ -461,6 +461,142 @@ export default function ReportsPage() {
     }
   };
 
+  const exportTableCsv = (fileBase: string, headers: string[], rows: Array<Array<string | number>>) => {
+    downloadCsv(`${fileBase}-${exportDateSlug}.csv`, [
+      ['Export Period', exportDateLabel],
+      [],
+      headers,
+      ...rows.map((row) => row.map((cell) => String(cell ?? ''))),
+    ]);
+  };
+
+  const exportTablePdf = (title: string, headers: string[], rows: Array<Array<string | number>>) => {
+    const headerHtml = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('');
+    const rowsHtml = rows
+      .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
+      .join('');
+    printHtml(
+      title,
+      `<h1>${escapeHtml(title)}</h1>
+      <div class="meta">Export period: ${escapeHtml(exportDateLabel)}</div>
+      <div class="meta">Generated: ${format(new Date(), 'yyyy-MM-dd')}</div>
+      <table><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`
+    );
+  };
+
+  const tableExportButtons = (
+    fileBase: string,
+    title: string,
+    headers: string[],
+    rows: Array<Array<string | number>>
+  ) => (
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        title={`Export ${title} CSV`}
+        aria-label={`Export ${title} CSV`}
+        onClick={() => exportTableCsv(fileBase, headers, rows)}
+      >
+        <Download size={16} />
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        title={`Export ${title} PDF`}
+        aria-label={`Export ${title} PDF`}
+        onClick={() => exportTablePdf(title, headers, rows)}
+      >
+        <Download size={16} />
+      </Button>
+    </div>
+  );
+
+  const lowStockRows = lowStockItems.map((item) => [
+    item.name,
+    item.qtyOnHand,
+    item.minStock,
+    formatPesoAmount(item.qtyOnHand * item.unitPrice),
+    suggestedPoQty(item),
+  ]);
+  const topValueRows = topValueItems.map((item) => [
+    item.name,
+    item.qtyOnHand,
+    formatPesoAmount(item.qtyOnHand * item.unitPrice),
+  ]);
+  const inventoryCategoryRows = [
+    ...filteredInventoryByCategory.map((cat) => [cat.name, cat.count, formatPesoAmount(cat.value)]),
+    [
+      'TOTAL',
+      filteredInventoryByCategory.reduce((sum, c) => sum + c.count, 0),
+      formatPesoAmount(filteredInventoryByCategory.reduce((sum, c) => sum + c.value, 0)),
+    ],
+  ];
+  const projectDetailRows = filteredProjects.map((proj) => {
+    const projectOrders = ordersInRange.filter((o) => o.projectId === proj.id);
+    const value = projectOrders.reduce((sum, o) => sum + o.total, 0);
+    const lastOrder = projectLastOrderMap[String(proj.id)];
+    return [
+      proj.name,
+      proj.clientName,
+      proj.status,
+      projectOrders.length,
+      formatPesoAmount(value),
+      lastOrder ? format(lastOrder, 'yyyy-MM-dd') : '',
+    ];
+  });
+  const projectsNoOrdersRows = projectsNoOrders.map((proj) => [proj.name, proj.clientName, proj.status]);
+  const overdueDeliveryRows = overdueDeliveries.map((delivery) => [
+    delivery.drNumber,
+    delivery.clientName,
+    Math.ceil((new Date().getTime() - delivery.etaDate.getTime()) / (1000 * 60 * 60 * 24)),
+    format(delivery.etaDate, 'yyyy-MM-dd'),
+  ]);
+  const upcomingDeliveryRows = upcomingDeliveries.map((delivery) => [
+    delivery.drNumber,
+    delivery.clientName,
+    delivery.projectName || '',
+    delivery.eta ? format(new Date(delivery.eta), 'yyyy-MM-dd') : '',
+  ]);
+  const recentDeliveryRows = filteredDeliveries.map((delivery) => [
+    delivery.drNumber,
+    delivery.clientName,
+    delivery.projectName || '',
+    delivery.status,
+    delivery.eta ? format(new Date(delivery.eta), 'yyyy-MM-dd') : '',
+    delivery.receivedAt ? format(new Date(delivery.receivedAt), 'yyyy-MM-dd') : '',
+  ]);
+  const revenueTrendRows = monthlyTrend.map((row) => [row.month, row.orders, formatPesoAmount(row.revenue)]);
+  const openBalanceRows = openBalances.map((order) => [
+    order.orderNumber,
+    order.clientName,
+    formatPesoAmount(getOrderTotals(order).total),
+    order.paymentStatus,
+  ]);
+  const vatRows = [
+    ...filteredOrdersForVat.map((order) => {
+      const totals = getOrderTotals(order);
+      return [
+        order.orderNumber,
+        order.clientName,
+        formatPesoAmount(totals.net),
+        formatPesoAmount(totals.vat),
+        formatPesoAmount(totals.total),
+        order.paymentStatus,
+      ];
+    }),
+    [
+      'TOTAL',
+      '',
+      formatPesoAmount(filteredOrdersForVat.reduce((s, o) => s + getOrderTotals(o).net, 0)),
+      formatPesoAmount(filteredOrdersForVat.reduce((s, o) => s + getOrderTotals(o).vat, 0)),
+      formatPesoAmount(filteredOrdersForVat.reduce((s, o) => s + getOrderTotals(o).total, 0)),
+      '',
+    ],
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -469,26 +605,6 @@ export default function ReportsPage() {
           <p className="text-muted-foreground">Business analytics and export tools</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:justify-end">
-          <Select value={exportScope} onValueChange={setExportScope}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="Export scope" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Reports</SelectItem>
-              <SelectItem value="inventory">Inventory Report</SelectItem>
-              <SelectItem value="projects">Project Report</SelectItem>
-              <SelectItem value="delivery">Delivery Report</SelectItem>
-              <SelectItem value="financial">Financial Report</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button className="w-full sm:w-auto" variant="outline" onClick={() => handleExport('scope-csv')}>
-            <Download size={16} className="mr-2" />
-            Export CSV
-          </Button>
-          <Button className="w-full sm:w-auto" variant="outline" onClick={() => handleExport('scope-pdf')}>
-            <Download size={16} className="mr-2" />
-            Export PDF
-          </Button>
           <Popover>
             <PopoverTrigger asChild>
               <Button className="w-full sm:w-auto" variant="outline">
@@ -575,9 +691,12 @@ export default function ReportsPage() {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Low Stock Action List</CardTitle>
-              <CardDescription>Items below minimum stock level</CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle>Low Stock Action List</CardTitle>
+                <CardDescription>Items below minimum stock level</CardDescription>
+              </div>
+              {tableExportButtons('low-stock-action-list', 'Low Stock Action List', ['Item', 'Qty', 'Min', 'Value', 'Suggested PO'], lowStockRows)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -619,9 +738,12 @@ export default function ReportsPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Top Inventory Value</CardTitle>
-                <CardDescription>Highest value items on hand</CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Top Inventory Value</CardTitle>
+                  <CardDescription>Highest value items on hand</CardDescription>
+                </div>
+                {tableExportButtons('top-inventory-value', 'Top Inventory Value', ['Item', 'Qty', 'Total Value'], topValueRows)}
               </CardHeader>
               <CardContent>
                 <Table>
@@ -651,8 +773,9 @@ export default function ReportsPage() {
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
                 <CardTitle>Inventory Value by Category</CardTitle>
+                {tableExportButtons('inventory-value-by-category', 'Inventory Value by Category', ['Category', 'Items', 'Total Value'], inventoryCategoryRows)}
               </CardHeader>
               <CardContent>
                 <Table>
@@ -759,8 +882,9 @@ export default function ReportsPage() {
           </div>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
               <CardTitle>Project Details</CardTitle>
+              {tableExportButtons('project-details', 'Project Details', ['Project', 'Client', 'Status', 'Orders', 'Total Value', 'Last Order'], projectDetailRows)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -803,8 +927,9 @@ export default function ReportsPage() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
           <CardTitle>Projects With No Orders</CardTitle>
+          {tableExportButtons('projects-with-no-orders', 'Projects With No Orders', ['Project', 'Client', 'Status'], projectsNoOrdersRows)}
         </CardHeader>
         <CardContent>
           <Table>
@@ -891,9 +1016,12 @@ export default function ReportsPage() {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Overdue Deliveries</CardTitle>
-              <CardDescription>Deliveries past ETA</CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle>Overdue Deliveries</CardTitle>
+                <CardDescription>Deliveries past ETA</CardDescription>
+              </div>
+              {tableExportButtons('overdue-deliveries', 'Overdue Deliveries', ['DR #', 'Client', 'Days Late', 'ETA'], overdueDeliveryRows)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -934,8 +1062,9 @@ export default function ReportsPage() {
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
               <CardTitle>ETA Today + Tomorrow</CardTitle>
+              {tableExportButtons('eta-today-tomorrow', 'ETA Today + Tomorrow', ['DR #', 'Client', 'Project', 'ETA'], upcomingDeliveryRows)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -974,8 +1103,9 @@ export default function ReportsPage() {
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
               <CardTitle>Recent Deliveries</CardTitle>
+              {tableExportButtons('recent-deliveries', 'Recent Deliveries', ['DR #', 'Client', 'Project', 'Status', 'ETA', 'Delivered'], recentDeliveryRows)}
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row justify-between gap-3 mb-4">
@@ -1072,8 +1202,9 @@ export default function ReportsPage() {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Revenue Trend (Last 5 Months)</CardTitle>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <CardTitle>Revenue Trend</CardTitle>
+              {tableExportButtons('revenue-trend', 'Revenue Trend', ['Month', 'Orders', 'Revenue'], revenueTrendRows)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -1098,9 +1229,12 @@ export default function ReportsPage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Open Balances</CardTitle>
-              <CardDescription>Pending and verified payments</CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle>Open Balances</CardTitle>
+                <CardDescription>Pending and verified payments</CardDescription>
+              </div>
+              {tableExportButtons('open-balances', 'Open Balances', ['Order #', 'Client', 'Total', 'Status'], openBalanceRows)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -1139,9 +1273,12 @@ export default function ReportsPage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>VAT Summary</CardTitle>
-              <CardDescription>Philippine {vatLabel}% VAT breakdown</CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle>VAT Summary</CardTitle>
+                <CardDescription>Philippine {vatLabel}% VAT breakdown</CardDescription>
+              </div>
+              {tableExportButtons('vat-summary', 'VAT Summary', ['Order #', 'Client', 'VATable Sales', `VAT (${vatLabel}%)`, 'Total', 'Status'], vatRows)}
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row justify-between gap-3 mb-4">
