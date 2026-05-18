@@ -1,7 +1,10 @@
 const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
 let resendClient = null;
 let resendClientKey = null;
+let smtpTransporter = null;
+let smtpTransportKey = null;
 
 function cleanEnvValue(value) {
   return String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
@@ -31,7 +34,18 @@ function sanitizeEmailError(error) {
 }
 
 function hasEmailDeliveryConfig() {
+  const provider = getEmailProvider();
+  if (provider === 'smtp') {
+    return Boolean(getSmtpConfig().host && getSmtpConfig().user && getSmtpConfig().pass && getFromAddress());
+  }
   return Boolean(cleanEnvValue(process.env.RESEND_API_KEY) && getFromAddress());
+}
+
+function getEmailProvider() {
+  const configured = cleanEnvValue(process.env.EMAIL_PROVIDER || process.env.MAIL_PROVIDER).toLowerCase();
+  if (configured) return configured;
+  if (cleanEnvValue(process.env.SMTP_HOST)) return 'smtp';
+  return 'resend';
 }
 
 function getResendClient() {
@@ -46,27 +60,93 @@ function getResendClient() {
 }
 
 function getFromAddress() {
-  return cleanEnvValue(process.env.RESEND_FROM || process.env.SMTP_FROM);
+  return cleanEnvValue(
+    process.env.EMAIL_FROM ||
+      process.env.MAIL_FROM ||
+      process.env.SMTP_FROM ||
+      process.env.RESEND_FROM ||
+      process.env.SMTP_USER
+  );
+}
+
+function getSmtpConfig() {
+  const port = Number(cleanEnvValue(process.env.SMTP_PORT) || 465);
+  return {
+    host: cleanEnvValue(process.env.SMTP_HOST || 'smtp.hostinger.com'),
+    port,
+    secure: cleanEnvValue(process.env.SMTP_SECURE).toLowerCase() === 'false' ? false : port === 465,
+    user: cleanEnvValue(process.env.SMTP_USER),
+    pass: cleanEnvValue(process.env.SMTP_PASS || process.env.SMTP_PASSWORD),
+  };
+}
+
+function getSmtpTransporter() {
+  const config = getSmtpConfig();
+  const key = JSON.stringify({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    user: config.user,
+  });
+  if (smtpTransporter && smtpTransportKey === key) return smtpTransporter;
+  if (!config.host) throw new Error('SMTP_HOST is missing');
+  if (!config.user) throw new Error('SMTP_USER is missing');
+  if (!config.pass) throw new Error('SMTP_PASS is missing');
+  smtpTransporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 30000),
+  });
+  smtpTransportKey = key;
+  return smtpTransporter;
 }
 
 async function sendEmail({ to, subject, text, html }) {
+  const provider = getEmailProvider();
   const from = getFromAddress();
   const apiKey = cleanEnvValue(process.env.RESEND_API_KEY);
+  const smtpConfig = getSmtpConfig();
   console.log('[mailer] attempting send', {
-    provider: 'resend',
+    provider,
     to,
     from,
     subject,
-    hasApiKey: Boolean(apiKey),
-    apiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    hasResendApiKey: Boolean(apiKey),
+    resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    smtpHost: provider === 'smtp' ? smtpConfig.host : null,
+    smtpPort: provider === 'smtp' ? smtpConfig.port : null,
+    smtpSecure: provider === 'smtp' ? smtpConfig.secure : null,
+    hasSmtpUser: provider === 'smtp' ? Boolean(smtpConfig.user) : null,
+    hasSmtpPass: provider === 'smtp' ? Boolean(smtpConfig.pass) : null,
     nodeEnv: process.env.NODE_ENV || 'development',
   });
   try {
     if (!from) {
-      throw new Error('RESEND_FROM is missing. Set it to a sender on a verified Resend domain, for example Impex Engineering <otp@yourdomain.com>.');
+      throw new Error('EMAIL_FROM is missing. For Hostinger, set it to your mailbox address, for example Impex Engineering <your-mailbox@impexengineering.org>.');
     }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(from.replace(/^.*<(.+)>$/, '$1').trim())) {
-      throw new Error(`RESEND_FROM is invalid: ${from}`);
+      throw new Error(`Email from address is invalid: ${from}`);
+    }
+    if (provider === 'smtp') {
+      const transporter = getSmtpTransporter();
+      const result = await transporter.sendMail({ from, to, subject, text, html });
+      console.log('[mailer] send success', {
+        provider,
+        to,
+        from,
+        subject,
+        messageId: result?.messageId || null,
+        accepted: result?.accepted || [],
+        rejected: result?.rejected || [],
+      });
+      return result;
     }
     const client = getResendClient();
     const result = await client.emails.send({ from, to, subject, text, html });
@@ -81,6 +161,7 @@ async function sendEmail({ to, subject, text, html }) {
       throw new Error(message);
     }
     console.log('[mailer] send success', {
+      provider,
       to,
       from,
       subject,
@@ -145,16 +226,26 @@ async function sendPasswordResetEmail(to, otp) {
 }
 
 function getEmailDiagnostics() {
+  const provider = getEmailProvider();
   const apiKey = cleanEnvValue(process.env.RESEND_API_KEY);
   const from = getFromAddress();
+  const smtpConfig = getSmtpConfig();
   const resendEnvKeys = Object.keys(process.env)
     .filter((key) => key.toUpperCase().includes('RESEND'))
     .sort();
+  const smtpEnvKeys = Object.keys(process.env)
+    .filter((key) => key.toUpperCase().includes('SMTP') || key.toUpperCase().includes('EMAIL_') || key.toUpperCase().includes('MAIL_'))
+    .sort();
   return {
-    provider: 'resend',
-    ready: Boolean(apiKey && from),
+    provider,
+    ready: hasEmailDeliveryConfig(),
     hasResendApiKey: Boolean(apiKey),
     resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    smtpHost: smtpConfig.host || null,
+    smtpPort: smtpConfig.port || null,
+    smtpSecure: smtpConfig.secure,
+    smtpUser: smtpConfig.user ? smtpConfig.user.replace(/^(.{2}).*(@.*)$/, '$1***$2') : null,
+    hasSmtpPass: Boolean(smtpConfig.pass),
     hasFromAddress: Boolean(from),
     from,
     fromDomain: from ? from.replace(/^.*<(.+)>$/, '$1').trim().split('@')[1] || null : null,
@@ -162,6 +253,7 @@ function getEmailDiagnostics() {
     requireEmailOtpDelivery: process.env.REQUIRE_EMAIL_OTP_DELIVERY === 'true',
     allowDevOtp: process.env.ALLOW_DEV_OTP || null,
     resendEnvKeys,
+    smtpEnvKeys,
   };
 }
 
