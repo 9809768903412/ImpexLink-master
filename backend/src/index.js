@@ -37,6 +37,7 @@ const app = express();
 const defaultAllowedOrigins = [
   'https://impexengineering.org',
   'https://www.impexengineering.org',
+  'https://api.impexengineering.org',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
@@ -55,8 +56,28 @@ const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...configur
 function isAllowedOrigin(origin) {
   if (!origin) return true;
   const normalized = String(origin).trim().replace(/\/$/, '');
-  return allowedOrigins.includes(normalized);
+  if (allowedOrigins.includes(normalized)) return true;
+  return /^https:\/\/([a-z0-9-]+\.)?impexengineering\.org$/i.test(normalized);
 }
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      req.headers['access-control-request-headers'] || 'Authorization,Content-Type'
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  return next();
+});
 
 app.use(
   cors({
