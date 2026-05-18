@@ -10,7 +10,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "prisma:generate": "node node_modules/prisma/build/index.js generate",
-    "db:deploy": "node node_modules/prisma/build/index.js migrate deploy",
+    "db:deploy": "node scripts/deployMigrations.js",
     "prisma:migrate": "node node_modules/prisma/build/index.js migrate dev",
     "prisma:studio": "node node_modules/prisma/build/index.js studio",
     "seed": "node prisma/seed.js"
