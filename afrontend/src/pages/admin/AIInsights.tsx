@@ -103,10 +103,13 @@ export default function AIInsightsPage() {
         key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
         month: format(date, 'MMM yy'),
       };
-      DEMO_PATTERN_ITEMS.forEach((item) => {
-        row[item.name] = 0;
+      DEMO_PATTERN_ITEMS.forEach((item, itemIdx) => {
+        const seasonalLift = idx % 6 === 2 || idx % 6 === 3 ? 1.25 : idx % 6 === 4 ? 0.85 : 1;
+        const variation = (idx * 2 + itemIdx) % 7;
+        const usage = Math.round((item.baseIssue + variation) * seasonalLift);
+        row[item.name] = usage;
+        row.totalUsage = Number(row.totalUsage || 0) + usage;
       });
-      row.totalUsage = 0;
       return row;
     });
     const monthMap = new Map(months.map((month) => [String(month.key), month]));
@@ -128,21 +131,7 @@ export default function AIInsightsPage() {
       month.totalUsage = Number(month.totalUsage || 0) + usage;
     });
 
-    if (months.some((month) => Number(month.totalUsage || 0) > 0)) {
-      return months;
-    }
-
-    return months.map((month, monthIdx) => {
-      const fallback = { ...month };
-      DEMO_PATTERN_ITEMS.forEach((item, itemIdx) => {
-        const seasonalLift = monthIdx % 6 === 2 || monthIdx % 6 === 3 ? 1.25 : monthIdx % 6 === 4 ? 0.85 : 1;
-        const variation = ((monthIdx * 2 + itemIdx) % 7);
-        const usage = Math.round((item.baseIssue + variation) * seasonalLift);
-        fallback[item.name] = usage;
-        fallback.totalUsage = Number(fallback.totalUsage || 0) + usage;
-      });
-      return fallback;
-    });
+    return months;
   }, [transactions, inventory]);
 
   const patternSummary = useMemo(() => {
