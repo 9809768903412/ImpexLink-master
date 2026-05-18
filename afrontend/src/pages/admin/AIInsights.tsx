@@ -31,14 +31,13 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import {
-  LineChart,
-  Line,
+  Bar,
+  BarChart,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -148,6 +147,17 @@ export default function AIInsightsPage() {
       trendItem,
     };
   }, [warehouseRisks, reorderSuggestions, usageTrends]);
+
+  const usageComparison = useMemo(() => {
+    if (usageTrends.length === 0) return [];
+    return Object.keys(usageTrends[0])
+      .filter((key) => key !== 'week')
+      .map((itemName) => ({
+        itemName,
+        usage: usageTrends.reduce((sum, week) => sum + Number(week[itemName] || 0), 0),
+      }))
+      .sort((a, b) => b.usage - a.usage);
+  }, [usageTrends]);
 
   const filteredRisks = useMemo(() => {
     const isRisky = (risk: WarehouseRisk) => {
@@ -299,34 +309,44 @@ export default function AIInsightsPage() {
               <TrendingUp size={20} />
               Usage Pattern Trends
             </CardTitle>
-            <CardDescription>Consumption signals used to support reorder decisions</CardDescription>
+            <CardDescription>Top consumed items over the last five weeks</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={usageTrends}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="week" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {usageTrends.length > 0 &&
-                  Object.keys(usageTrends[0])
-                    .filter((key) => key !== 'week')
-                    .map((key, idx) => (
-                      <Line
-                        key={key}
-                        type="monotone"
-                        dataKey={key}
-                        stroke={['#C0392B', '#D4874A', '#2C3E50'][idx % 3]}
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                      />
-                    ))}
-              </LineChart>
-            </ResponsiveContainer>
-            <p className="text-sm text-muted-foreground text-center mt-4">
-              * These movement signals support the full-page advisory summary
-            </p>
+            {usageComparison.length > 0 ? (
+              <div className="space-y-4">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart
+                    data={usageComparison}
+                    layout="vertical"
+                    margin={{ top: 8, right: 24, left: 24, bottom: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="itemName"
+                      width={220}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <Tooltip formatter={(value) => [`${value} units`, 'Total usage']} />
+                    <Bar dataKey="usage" fill="#2563eb" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {usageComparison.map((item, idx) => (
+                    <div key={item.itemName} className="rounded-md border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Rank {idx + 1}</p>
+                      <p className="truncate text-sm font-medium">{item.itemName}</p>
+                      <p className="text-lg font-semibold">{item.usage.toLocaleString()} units</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                Usage signals will appear after stock movements are recorded.
+              </div>
+            )}
           </CardContent>
         </Card>
 
