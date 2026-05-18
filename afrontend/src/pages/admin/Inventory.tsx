@@ -27,7 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import type { InventoryItem, StockTransaction, Supplier } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -72,6 +71,7 @@ export default function InventoryPage() {
   const getDisplayId = (item: InventoryItem) =>
     `INV${String(Number.parseInt(String(item.id), 10) || 0).padStart(3, '0')}`;
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [stockAction, setStockAction] = useState<{
@@ -685,8 +685,18 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="rounded-lg border p-4 space-y-2">
-                <p className="font-semibold">Stock History</p>
+              <div className="rounded-lg border p-4 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-semibold">Stock History</p>
+                    <p className="text-sm text-muted-foreground">
+                      {itemTransactionsByDate.length} movement{itemTransactionsByDate.length === 1 ? '' : 's'} recorded
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => setIsHistoryOpen(true)}>
+                    View Stock History
+                  </Button>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Last Updated</p>
@@ -707,51 +717,6 @@ export default function InventoryPage() {
                     <p className="text-muted-foreground">Monthly Usage</p>
                     <p className="font-medium">{monthlyUsage} units</p>
                   </div>
-                </div>
-                <div className="overflow-hidden rounded-md border">
-                  <ScrollArea className="max-h-64">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Supplier / Reference</TableHead>
-                          <TableHead className="text-right">Qty Change</TableHead>
-                          <TableHead className="text-right">Balance</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {itemTransactionsByDate.length > 0 ? (
-                          itemTransactionsByDate.map((txn) => (
-                            <TableRow key={txn.id}>
-                              <TableCell>{new Date(txn.date).toLocaleDateString('en-PH')}</TableCell>
-                              <TableCell className="capitalize">{txn.type}</TableCell>
-                              <TableCell>
-                                <p className="font-medium">
-                                  {txn.supplierName
-                                    ? `Supplied by ${txn.supplierName}`
-                                    : txn.projectName
-                                    ? `Used for ${txn.projectName}`
-                                    : 'Internal movement'}
-                                </p>
-                                {txn.notes && <p className="text-xs text-muted-foreground">{txn.notes}</p>}
-                              </TableCell>
-                              <TableCell className={txn.qtyChange >= 0 ? 'text-right text-success' : 'text-right text-destructive'}>
-                                {txn.qtyChange >= 0 ? '+' : ''}{txn.qtyChange}
-                              </TableCell>
-                              <TableCell className="text-right">{txn.newBalance}</TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
-                              No stock movement recorded yet.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
                 </div>
               </div>
 
@@ -783,6 +748,87 @@ export default function InventoryPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock History Modal */}
+      <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Stock History</DialogTitle>
+            <DialogDescription>
+              {selectedItem?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+            <div className="rounded-md border p-3">
+              <p className="text-muted-foreground">Last Updated</p>
+              <p className="font-medium">
+                {lastUpdatedTxn ? new Date(lastUpdatedTxn.date).toLocaleDateString('en-PH') : '-'}
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-muted-foreground">Last Restock</p>
+              <p className="font-medium">
+                {lastRestockTxn ? new Date(lastRestockTxn.date).toLocaleDateString('en-PH') : '-'}
+              </p>
+              {lastRestockTxn?.supplierName && (
+                <p className="text-xs text-muted-foreground">{lastRestockTxn.supplierName}</p>
+              )}
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-muted-foreground">Monthly Usage</p>
+              <p className="font-medium">{monthlyUsage} units</p>
+            </div>
+          </div>
+          <div className="max-h-[60vh] overflow-auto rounded-md border">
+            <Table className="min-w-[720px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Supplier / Reference</TableHead>
+                  <TableHead className="text-right">Qty Change</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {itemTransactionsByDate.length > 0 ? (
+                  itemTransactionsByDate.map((txn) => (
+                    <TableRow key={txn.id}>
+                      <TableCell>{new Date(txn.date).toLocaleDateString('en-PH')}</TableCell>
+                      <TableCell className="capitalize">{txn.type}</TableCell>
+                      <TableCell>
+                        <p className="font-medium">
+                          {txn.supplierName
+                            ? `Supplied by ${txn.supplierName}`
+                            : txn.projectName
+                            ? `Used for ${txn.projectName}`
+                            : 'Internal movement'}
+                        </p>
+                        {txn.notes && <p className="text-xs text-muted-foreground">{txn.notes}</p>}
+                      </TableCell>
+                      <TableCell className={txn.qtyChange >= 0 ? 'text-right text-success' : 'text-right text-destructive'}>
+                        {txn.qtyChange >= 0 ? '+' : ''}{txn.qtyChange}
+                      </TableCell>
+                      <TableCell className="text-right">{txn.newBalance}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                      No stock movement recorded yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setIsHistoryOpen(false)}>
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
