@@ -51,6 +51,7 @@ export interface StockTransaction {
   project?: string;
   supplierId?: string | null;
   supplierName?: string | null;
+  projectName?: string | null;
   qtyChange: number;
   newBalance: number;
   userId: string;

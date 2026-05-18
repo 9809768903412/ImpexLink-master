@@ -456,13 +456,14 @@ async function ensureNotification({ userId, type, title, message, link, createdA
   });
 }
 
-async function ensureStockTransaction({ productId, type, qtyChange, newBalance, userId, notes, date }) {
+async function ensureStockTransaction({ productId, supplierId = null, type, qtyChange, newBalance, userId, notes, date }) {
   const existing = await prisma.stockTransaction.findFirst({ where: { notes } });
   if (existing) return existing;
   return prisma.stockTransaction.create({
     data: {
-      productId,
-      type,
+        productId,
+        supplierId,
+        type,
       qtyChange,
       newBalance,
       userId,
@@ -659,8 +660,9 @@ async function main() {
     },
   ];
 
+  const createdSuppliers = [];
   for (const supplier of suppliers) {
-    await ensureSupplier(supplier);
+    createdSuppliers.push(await ensureSupplier(supplier));
   }
 
   // === Categories ===
@@ -774,28 +776,31 @@ async function main() {
     };
   });
   const stockHistoryPlan = [
-    { itemName: 'Paint thinner', base: 180, purchase: 42, issue: 29 },
-    { itemName: 'Ceramic Tech EG', base: 96, purchase: 24, issue: 31 },
-    { itemName: 'Seal Tech AW 20 ltrs', base: 44, purchase: 12, issue: 14 },
-    { itemName: 'Baby roller cotton (white)', base: 210, purchase: 55, issue: 47 },
-    { itemName: 'Welding machine', base: 9, purchase: 2, issue: 1 },
-    { itemName: 'Cotton rags', base: 360, purchase: 85, issue: 72 },
+    { itemName: 'Paint thinner', base: 180, purchase: 42, issue: 29, supplierName: 'JHELET GENERAL MERCHANDISING' },
+    { itemName: 'Ceramic Tech EG', base: 96, purchase: 24, issue: 31, supplierName: 'Polymer Products (Phil) Inc' },
+    { itemName: 'Seal Tech AW 20 ltrs', base: 44, purchase: 12, issue: 14, supplierName: 'Polymer Products (Phil) Inc' },
+    { itemName: 'Baby roller cotton (white)', base: 210, purchase: 55, issue: 47, supplierName: 'Elite Hardware, Electrical & Industrial Supply Co (Davies)' },
+    { itemName: 'Welding machine', base: 9, purchase: 2, issue: 1, supplierName: 'GAZPAC ENTERPRISES CORPORATION' },
+    { itemName: 'Cotton rags', base: 360, purchase: 85, issue: 72, supplierName: 'JHELET GENERAL MERCHANDISING' },
   ];
+  const supplierByName = new Map(createdSuppliers.map((supplier) => [supplier.supplierName, supplier]));
 
   for (const plan of stockHistoryPlan) {
     const product = productByName.get(plan.itemName);
     if (!product) continue;
+    const supplier = supplierByName.get(plan.supplierName);
     let balance = plan.base;
     for (const month of stockHistoryMonths) {
       const purchaseQty = plan.purchase + ((month.idx + product.productId) % 5);
       balance += purchaseQty;
       await ensureStockTransaction({
         productId: product.productId,
+        supplierId: supplier?.supplierId || null,
         type: 'PURCHASE',
         qtyChange: purchaseQty,
         newBalance: balance,
         userId: historyUserId,
-        notes: `Demo ${month.label} supplier stock-in for ${plan.itemName}`,
+        notes: `Demo ${month.label} supplier stock-in for ${plan.itemName} | Supplier: ${plan.supplierName}`,
         date: new Date(month.date),
       });
 
@@ -807,7 +812,7 @@ async function main() {
         qtyChange: -issueQty,
         newBalance: balance,
         userId: historyUserId,
-        notes: `Demo ${month.label} project issue for ${plan.itemName}`,
+        notes: `Project: AI Demo Usage | Demo ${month.label} project issue for ${plan.itemName}`,
         date: new Date(Date.UTC(month.date.getUTCFullYear(), month.date.getUTCMonth(), 25, 9, 30, 0)),
       });
     }

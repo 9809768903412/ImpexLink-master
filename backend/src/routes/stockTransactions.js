@@ -66,9 +66,11 @@ router.get('/', async (req, res, next) => {
         const match = String(t.notes || '').match(/\bPO\s+#?(\d+)\b/i);
         const linked = match ? supplierByPo.get(Number(match[1])) : null;
         const noteSupplier = String(t.notes || '').match(/\bSupplier:\s*([^|;\n]+)/i);
+        const noteProject = String(t.notes || '').match(/\bProject:\s*([^|;\n]+)/i);
         return {
           supplierId: t.supplierId?.toString() || linked?.supplierId || null,
           supplierName: t.supplier?.supplierName || linked?.supplierName || (noteSupplier ? noteSupplier[1].trim() : null),
+          projectName: noteProject ? noteProject[1].trim() : null,
         };
       })(),
       id: t.transactionId.toString(),

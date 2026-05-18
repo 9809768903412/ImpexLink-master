@@ -200,6 +200,12 @@ export default function InventoryPage() {
   const validateItem = (item: typeof newItem) => {
     const errors: Record<string, string> = {};
     if (!item.name.trim()) errors.name = 'Item name is required.';
+    if (
+      item.name.trim() &&
+      inventory.some((existing) => existing.name.trim().toLowerCase() === item.name.trim().toLowerCase())
+    ) {
+      errors.name = 'An inventory item with this name already exists.';
+    }
     if (!item.category) errors.category = 'Category is required.';
     if (item.unitPrice < 0) errors.unitPrice = 'Unit price must be 0 or greater.';
     if (item.qtyOnHand < 0) errors.qtyOnHand = 'Quantity must be 0 or greater.';
@@ -210,6 +216,16 @@ export default function InventoryPage() {
   const validateEditItem = (item: typeof editItem) => {
     const errors: Record<string, string> = {};
     if (!item.name.trim()) errors.name = 'Item name is required.';
+    if (
+      item.name.trim() &&
+      inventory.some(
+        (existing) =>
+          existing.id !== item.id &&
+          existing.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+      )
+    ) {
+      errors.name = 'An inventory item with this name already exists.';
+    }
     if (!item.category) errors.category = 'Category is required.';
     if (item.unitPrice < 0) errors.unitPrice = 'Unit price must be 0 or greater.';
     if (item.unitPrice !== item.originalUnitPrice && !item.priceUpdateNote.trim()) {
@@ -724,7 +740,13 @@ export default function InventoryPage() {
                               <TableCell>{new Date(txn.date).toLocaleDateString('en-PH')}</TableCell>
                               <TableCell className="capitalize">{txn.type}</TableCell>
                               <TableCell>
-                                <p className="font-medium">{txn.supplierName || 'Internal movement'}</p>
+                                <p className="font-medium">
+                                  {txn.supplierName
+                                    ? `Supplied by ${txn.supplierName}`
+                                    : txn.projectName
+                                    ? `Used for ${txn.projectName}`
+                                    : 'Internal movement'}
+                                </p>
                                 {txn.notes && <p className="text-xs text-muted-foreground">{txn.notes}</p>}
                               </TableCell>
                               <TableCell className={txn.qtyChange >= 0 ? 'text-right text-success' : 'text-right text-destructive'}>
@@ -881,7 +903,7 @@ export default function InventoryPage() {
         <DialogContent className="max-w-lg w-[calc(100vw-1rem)] sm:w-full">
           <DialogHeader>
             <DialogTitle>Add Inventory Item</DialogTitle>
-            <DialogDescription>Fill out the details below to create a new item.</DialogDescription>
+            <DialogDescription>Add the item once, then attach its initial stock to the supplier batch it came from.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>

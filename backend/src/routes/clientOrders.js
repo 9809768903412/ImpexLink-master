@@ -394,7 +394,7 @@ router.post('/', requireRole(['ADMIN', 'SALES_AGENT', 'CLIENT']), async (req, re
             : [],
         },
       },
-      include: { items: { include: { product: { include: { category: true } } } } },
+      include: { project: true, items: { include: { product: { include: { category: true } } } } },
     });
 
     await prisma.auditLog.create({

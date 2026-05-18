@@ -244,6 +244,15 @@ export default function AIInsightsPage() {
         </Button>
       </div>
 
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="p-4 text-sm">
+          <p className="font-medium">Demo data coverage: 24 months</p>
+          <p className="text-muted-foreground">
+            Seeded stock history runs monthly from May 2024 through April 2026, with supplier stock-ins and project issues for AI trend analysis.
+          </p>
+        </CardContent>
+      </Card>
+
       {aiSummary && (
         <Card>
           <CardHeader>
