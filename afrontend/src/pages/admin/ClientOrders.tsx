@@ -61,6 +61,13 @@ const statusColors: Record<OrderStatus, string> = {
   cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
 };
 
+const paymentStatusColors: Record<string, string> = {
+  pending: 'border-amber-200 bg-amber-50 text-amber-800',
+  verified: 'border-sky-200 bg-sky-50 text-sky-800',
+  paid: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  failed: 'border-red-200 bg-red-50 text-red-800',
+};
+
 // TODO: Replace with real data
 export default function ClientOrdersPage() {
   const { user } = useAuth();
@@ -586,14 +593,8 @@ export default function ClientOrdersPage() {
                       {visibleCols.payment && (
                         <TableCell>
                           <Badge
-                            variant={order.paymentStatus === 'paid' ? 'default' : 'outline'}
-                            className={
-                              order.paymentStatus === 'paid'
-                                ? 'bg-green-600'
-                                : order.paymentStatus === 'verified'
-                                ? 'bg-blue-600 text-white'
-                                : ''
-                            }
+                            variant="outline"
+                            className={`capitalize ${paymentStatusColors[order.paymentStatus] || 'border-slate-200 bg-slate-50 text-slate-700'}`}
                           >
                             {order.paymentStatus}
                           </Badge>
