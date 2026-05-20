@@ -310,8 +310,8 @@ export default function MyOrdersPage() {
         description:
           poMatchStatus === 'genuine'
             ? matchSource === 'ocr'
-              ? 'OCR found this order code in the uploaded purchase order.'
-              : 'Your purchase order matches this order and has been recorded.'
+              ? 'OCR found this order code. Admin approval is still required.'
+              : 'Your purchase order matches this order and is waiting for admin approval.'
             : 'The uploaded purchase order code does not match this order yet.',
       });
       refreshOrders();

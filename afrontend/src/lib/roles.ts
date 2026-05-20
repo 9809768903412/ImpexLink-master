@@ -52,7 +52,7 @@ export const canViewCompanySettings = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
 
 export const canViewInventory = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'engineer', 'paint_chemist'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff'].includes(r));
 
 export const canManageInventory = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'warehouse_staff'].includes(r));

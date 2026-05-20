@@ -140,7 +140,7 @@ export default function StaffDashboard() {
   const effectiveRole = rolePriority.find((role) => roleList.includes(role)) || 'admin';
   const needsStats = ['president', 'admin'].includes(effectiveRole);
   const needsRequests = ['admin', 'project_manager', 'engineer', 'paint_chemist', 'warehouse_staff', 'president'].includes(effectiveRole);
-  const needsInventory = ['admin', 'engineer', 'paint_chemist', 'warehouse_staff'].includes(effectiveRole);
+  const needsInventory = ['admin', 'warehouse_staff'].includes(effectiveRole);
   const needsProjects = ['president', 'project_manager', 'engineer'].includes(effectiveRole);
   const needsOrders = ['president', 'admin', 'project_manager', 'sales_agent', 'engineer', 'warehouse_staff'].includes(effectiveRole);
   const needsDeliveries = ['president', 'delivery_guy'].includes(effectiveRole);

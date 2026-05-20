@@ -37,6 +37,63 @@ function normalizePoCode(value) {
   return String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
 }
 
+function orderPaymentStatusToTransactionStatus(status) {
+  const normalized = String(status || 'PENDING').toUpperCase();
+  if (normalized === 'PAID') return 'PAID';
+  if (normalized === 'VERIFIED') return 'RECEIVED';
+  if (normalized === 'FAILED') return 'CANCELLED';
+  return 'PENDING';
+}
+
+function paymentDueDateFromOrder(orderDate = new Date(), creditDays = 30) {
+  const date = new Date(orderDate);
+  date.setDate(date.getDate() + creditDays);
+  return date;
+}
+
+async function ensureClientOrderPayment(order, userId, overrides = {}) {
+  if (!order?.clientOrderId) return null;
+  const existing = await prisma.paymentTransaction.findFirst({
+    where: {
+      direction: 'CLIENT_TO_OFFICE',
+      clientOrderId: order.clientOrderId,
+    },
+  });
+  const status = overrides.status || orderPaymentStatusToTransactionStatus(order.paymentStatus);
+  const amount = Number(overrides.amount ?? order.total ?? 0);
+  const creditDays = Number(overrides.creditDays ?? existing?.creditDays ?? 30);
+  const data = {
+    method: overrides.method || existing?.method || 'CHEQUE',
+    status,
+    amount,
+    creditDays,
+    dueDate: overrides.dueDate || existing?.dueDate || paymentDueDateFromOrder(order.createdAt || new Date(), creditDays),
+    paidAt:
+      overrides.paidAt !== undefined
+        ? overrides.paidAt
+        : ['PAID', 'RECEIVED'].includes(status)
+        ? existing?.paidAt || new Date()
+        : null,
+    referenceNumber: overrides.referenceNumber !== undefined ? overrides.referenceNumber : existing?.referenceNumber || null,
+    notes: overrides.notes !== undefined ? overrides.notes : existing?.notes || 'Created from client order flow',
+    clientId: order.clientId || existing?.clientId || null,
+    clientOrderId: order.clientOrderId,
+    createdById: existing?.createdById || userId || order.createdBy || null,
+  };
+  if (existing) {
+    return prisma.paymentTransaction.update({
+      where: { paymentId: existing.paymentId },
+      data,
+    });
+  }
+  return prisma.paymentTransaction.create({
+    data: {
+      direction: 'CLIENT_TO_OFFICE',
+      ...data,
+    },
+  });
+}
+
 function canTransitionOrder(req, currentStatus, requestedStatus) {
   if (!requestedStatus || requestedStatus === currentStatus) return true;
   if (hasRole(req, 'ADMIN')) return true;
@@ -258,14 +315,6 @@ async function createDeliveryBatchesForOrder(order, userId, status = 'PENDING') 
 
 router.get('/', async (req, res, next) => {
   try {
-    await prisma.clientOrder.updateMany({
-      where: {
-        deletedAt: null,
-        paymentStatus: 'PENDING',
-        chequeVerification: 'genuine',
-      },
-      data: { paymentStatus: 'VERIFIED' },
-    });
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
     const status = req.query.status ? String(req.query.status).toUpperCase() : '';
@@ -413,6 +462,16 @@ router.post('/', requireRole(['ADMIN', 'SALES_AGENT', 'CLIENT']), async (req, re
       },
     });
 
+    await ensureClientOrderPayment(order, req.user.userId);
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'CREATE',
+        target: 'Payment',
+        details: `Created client receivable for order ${order.orderNumber}`,
+      },
+    });
+
     // Notify admins of new order
     const admins = await prisma.user.findMany({
       where: { role: { roleName: 'ADMIN' }, deletedAt: null },
@@ -524,44 +583,7 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
       if (!canAccessClientOwnedRecord(access, order)) {
         return res.status(403).json({ error: 'Forbidden' });
       }
-      if (!req.body.paymentStatus) {
-        return res.status(400).json({ error: 'Payment status is required' });
-      }
-      const payment = req.body.paymentStatus.toUpperCase();
-      if (!['PENDING', 'VERIFIED', 'PAID', 'FAILED'].includes(payment)) {
-        return res.status(400).json({ error: 'Invalid payment status' });
-      }
-      const updated = await prisma.clientOrder.update({
-        where: { clientOrderId: Number(req.params.id) },
-        data: { paymentStatus: payment },
-      });
-
-      // Notify admins about payment update
-      const admins = await prisma.user.findMany({
-        where: { role: { roleName: 'ADMIN' }, deletedAt: null },
-      });
-      if (admins.length > 0) {
-        await prisma.notification.createMany({
-          data: admins.map((admin) => ({
-            userId: admin.userId,
-            type: 'PAYMENT_VERIFIED',
-            title: 'Payment status updated',
-            message: `Client updated payment status for ${updated.orderNumber} to ${payment.toLowerCase()}.`,
-            link: '/admin/orders',
-          })),
-        });
-      }
-
-      await prisma.auditLog.create({
-        data: {
-          userId: req.user.userId,
-          action: 'UPDATE',
-          target: 'ClientOrder',
-          details: `Client updated payment status for ${updated.orderNumber} to ${payment}`,
-        },
-      });
-
-      return res.json(updated);
+      return res.status(403).json({ error: 'Clients cannot approve or override order/payment status. Please upload payment proof instead.' });
     }
 
     if (hasRole(req, 'SALES_AGENT') && !hasRole(req, 'ADMIN')) {
@@ -620,6 +642,13 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
         assignedSalesAgentId,
       },
     });
+
+    if (req.body.paymentStatus) {
+      await ensureClientOrderPayment(
+        { ...existing, paymentStatus: req.body.paymentStatus.toUpperCase() },
+        req.user.userId,
+      );
+    }
 
     const nextStatus = (status || existing.status).toUpperCase();
     const shouldDeduct = ['APPROVED', 'PROCESSING'].includes(nextStatus);
@@ -787,9 +816,17 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
       where: { clientOrderId: Number(req.params.id) },
       data: {
         paymentProofUrl,
-        paymentStatus: isMatched ? 'VERIFIED' : 'PENDING',
+        paymentStatus: 'PENDING',
         chequeVerification: isMatched ? 'genuine' : 'fraud',
       },
+    });
+
+    await ensureClientOrderPayment(updated, req.user.userId, {
+      status: 'PENDING',
+      referenceNumber: poCode,
+      notes: isMatched
+        ? `Client uploaded matching purchase order ${poCode}; awaiting admin payment approval.`
+        : `Client uploaded non-matching purchase order ${poCode}; review required.`,
     });
 
     const admins = await prisma.user.findMany({
@@ -802,7 +839,7 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
           type: 'PAYMENT_VERIFIED',
           title: isMatched ? 'Purchase order matched' : 'Purchase order mismatch detected',
           message: isMatched
-            ? `Client uploaded a matching purchase order for ${updated.orderNumber}.`
+            ? `Client uploaded a matching purchase order for ${updated.orderNumber}. Admin approval is required.`
             : `Client uploaded a purchase order that did not match ${updated.orderNumber}.`,
           link: '/admin/orders',
         })),

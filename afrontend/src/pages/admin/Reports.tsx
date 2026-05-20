@@ -56,6 +56,10 @@ export default function ReportsPage() {
     from: startOfDay(new Date(2025, 0, 1)),
     to: endOfDay(new Date()),
   });
+  const [draftDateRange, setDraftDateRange] = useState<{ from?: Date; to?: Date }>({
+    from: startOfDay(new Date(2025, 0, 1)),
+    to: endOfDay(new Date()),
+  });
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>('all');
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all');
@@ -616,10 +620,13 @@ export default function ReportsPage() {
             <PopoverContent className="w-auto p-0" align="end">
               <Calendar
                 mode="range"
-                selected={{ from: dateRange.from, to: dateRange.to }}
+                selected={draftDateRange}
                 onSelect={(range) => {
                   if (range?.from) {
-                    setDateRange(normalizeRange(range.from, range.to));
+                    setDraftDateRange(range.to ? normalizeRange(range.from, range.to) : { from: startOfDay(range.from), to: undefined });
+                    if (range.to) {
+                      setDateRange(normalizeRange(range.from, range.to));
+                    }
                   }
                 }}
               />

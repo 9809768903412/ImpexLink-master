@@ -26,6 +26,59 @@ function dueDateFromCreditDays(creditDays) {
   return date;
 }
 
+function transactionStatusToOrderPaymentStatus(status) {
+  const normalized = normalize(status);
+  if (normalized === 'PAID') return 'PAID';
+  if (normalized === 'RECEIVED') return 'VERIFIED';
+  if (normalized === 'CANCELLED') return 'FAILED';
+  return 'PENDING';
+}
+
+function transactionStatusToSupplierOrderStatus(status, currentStatus) {
+  const normalized = normalize(status);
+  if (normalized === 'PAID') return 'PAID';
+  if (normalized === 'RECEIVED') return 'RECEIVED';
+  return currentStatus || undefined;
+}
+
+async function syncLinkedRecordStatus(payment, userId) {
+  if (!payment) return;
+  if (payment.direction === 'CLIENT_TO_OFFICE' && payment.clientOrderId) {
+    const paymentStatus = transactionStatusToOrderPaymentStatus(payment.status);
+    const order = await prisma.clientOrder.update({
+      where: { clientOrderId: payment.clientOrderId },
+      data: { paymentStatus },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'UPDATE',
+        target: 'ClientOrder',
+        details: `Synced payment status for ${order.orderNumber} to ${paymentStatus}`,
+      },
+    });
+  }
+  if (payment.direction === 'OFFICE_TO_SUPPLIER' && payment.supplierOrderId) {
+    const existing = await prisma.supplierOrder.findUnique({ where: { orderId: payment.supplierOrderId } });
+    if (!existing) return;
+    const status = transactionStatusToSupplierOrderStatus(payment.status, existing.status);
+    if (status && status !== existing.status) {
+      await prisma.supplierOrder.update({
+        where: { orderId: payment.supplierOrderId },
+        data: { status },
+      });
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'UPDATE',
+          target: 'PurchaseOrder',
+          details: `Synced payment status for PO ${payment.supplierOrderId} to ${status}`,
+        },
+      });
+    }
+  }
+}
+
 function mapPayment(payment) {
   return {
     id: payment.paymentId.toString(),
@@ -176,32 +229,53 @@ router.post('/', async (req, res, next) => {
     if (clientOrderId && !isPositiveInt(clientOrderId)) return res.status(400).json({ error: 'Invalid client order' });
     if (supplierOrderId && !isPositiveInt(supplierOrderId)) return res.status(400).json({ error: 'Invalid supplier order' });
 
-    const payment = await prisma.paymentTransaction.create({
-      data: {
-        direction,
-        method,
-        status,
-        amount: Number(req.body.amount || 0),
-        creditDays,
-        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : dueDateFromCreditDays(creditDays),
-        paidAt: ['PAID', 'RECEIVED'].includes(status) ? new Date() : null,
-        referenceNumber: req.body.referenceNumber || null,
-        notes: req.body.notes || null,
-        clientId,
-        clientOrderId,
-        supplierId,
-        supplierOrderId,
-        createdById: req.user.userId,
-      },
-      include: includePaymentRelations(),
-    });
+    const existing =
+      (direction === 'CLIENT_TO_OFFICE' && clientOrderId)
+        ? await prisma.paymentTransaction.findFirst({ where: { direction, clientOrderId } })
+        : (direction === 'OFFICE_TO_SUPPLIER' && supplierOrderId)
+        ? await prisma.paymentTransaction.findFirst({ where: { direction, supplierOrderId } })
+        : null;
+    const effectiveStatus =
+      hasRole(req, 'CLIENT') && existing && ['RECEIVED', 'PAID'].includes(existing.status)
+        ? existing.status
+        : status;
+    const paymentData = {
+      method,
+      status: effectiveStatus,
+      amount: Number(req.body.amount || 0),
+      creditDays,
+      dueDate: req.body.dueDate ? new Date(req.body.dueDate) : dueDateFromCreditDays(creditDays),
+      paidAt: ['PAID', 'RECEIVED'].includes(effectiveStatus) ? existing?.paidAt || new Date() : null,
+      referenceNumber: req.body.referenceNumber || null,
+      notes: req.body.notes || null,
+      clientId,
+      clientOrderId,
+      supplierId,
+      supplierOrderId,
+      createdById: existing?.createdById || req.user.userId,
+    };
+    const payment = existing
+      ? await prisma.paymentTransaction.update({
+          where: { paymentId: existing.paymentId },
+          data: paymentData,
+          include: includePaymentRelations(),
+        })
+      : await prisma.paymentTransaction.create({
+          data: {
+            direction,
+            ...paymentData,
+          },
+          include: includePaymentRelations(),
+        });
+
+    await syncLinkedRecordStatus(payment, req.user.userId);
 
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: 'CREATE',
+        action: existing ? 'UPDATE' : 'CREATE',
         target: 'Payment',
-        details: `Created ${direction} payment ${payment.paymentId}`,
+        details: `${existing ? 'Updated' : 'Created'} ${direction} payment ${payment.paymentId}`,
       },
     });
 
@@ -213,13 +287,25 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', requireRole(['ADMIN', 'PRESIDENT']), async (req, res, next) => {
   try {
+    const existing = await prisma.paymentTransaction.findUnique({
+      where: { paymentId: Number(req.params.id) },
+    });
+    if (!existing) return res.status(404).json({ error: 'Payment not found' });
     const status = req.body.status ? normalize(req.body.status) : undefined;
     if (status && !STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid payment status' });
+    const method = req.body.method ? normalize(req.body.method) : undefined;
+    const direction = normalize(existing.direction);
+    if (method && direction === 'CLIENT_TO_OFFICE' && !CLIENT_METHODS.includes(method)) {
+      return res.status(400).json({ error: 'Client payments must use Cheque or Auto Deposit.' });
+    }
+    if (method && direction === 'OFFICE_TO_SUPPLIER' && !SUPPLIER_METHODS.includes(method)) {
+      return res.status(400).json({ error: 'Invalid supplier payment method.' });
+    }
     const payment = await prisma.paymentTransaction.update({
       where: { paymentId: Number(req.params.id) },
       data: {
         status,
-        method: req.body.method ? normalize(req.body.method) : undefined,
+        method,
         amount: req.body.amount !== undefined ? Number(req.body.amount) : undefined,
         creditDays: req.body.creditDays !== undefined ? Number(req.body.creditDays) : undefined,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
@@ -229,6 +315,7 @@ router.put('/:id', requireRole(['ADMIN', 'PRESIDENT']), async (req, res, next) =
       },
       include: includePaymentRelations(),
     });
+    await syncLinkedRecordStatus(payment, req.user.userId);
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,

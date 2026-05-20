@@ -7,6 +7,73 @@ const { isPositiveInt, isNonNegativeNumber, isNonEmptyString } = require('../uti
 const router = express.Router();
 router.use(requireAuth);
 
+function normalizeSupplierTerms(terms) {
+  const normalized = String(terms || 'Net 30').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (normalized.includes('15')) return { method: 'NET_15', creditDays: 15 };
+  if (normalized.includes('60')) return { method: 'NET_60', creditDays: 60 };
+  if (normalized.includes('CASH')) return { method: 'CASH', creditDays: 0 };
+  if (normalized.includes('GCASH')) return { method: 'GCASH', creditDays: 0 };
+  if (normalized.includes('CHEQUE') || normalized.includes('CHECK')) return { method: 'CHEQUE', creditDays: 0 };
+  return { method: 'NET_30', creditDays: 30 };
+}
+
+function paymentStatusFromPoStatus(status) {
+  const normalized = String(status || 'PENDING').toUpperCase();
+  if (normalized === 'PAID') return 'PAID';
+  if (normalized === 'RECEIVED') return 'RECEIVED';
+  if (normalized === 'DRAFT') return 'PENDING';
+  return 'PENDING';
+}
+
+function dueDateFromTerms(orderDate = new Date(), creditDays = 30) {
+  const date = new Date(orderDate);
+  date.setDate(date.getDate() + Number(creditDays || 0));
+  return date;
+}
+
+async function ensureSupplierOrderPayment(order, userId, overrides = {}) {
+  if (!order?.orderId) return null;
+  const existing = await prisma.paymentTransaction.findFirst({
+    where: {
+      direction: 'OFFICE_TO_SUPPLIER',
+      supplierOrderId: order.orderId,
+    },
+  });
+  const terms = normalizeSupplierTerms(order.terms || existing?.method);
+  const status = overrides.status || paymentStatusFromPoStatus(order.status);
+  const creditDays = Number(overrides.creditDays ?? existing?.creditDays ?? terms.creditDays);
+  const data = {
+    method: overrides.method || existing?.method || terms.method,
+    status,
+    amount: Number(overrides.amount ?? order.total ?? 0),
+    creditDays,
+    dueDate: overrides.dueDate || existing?.dueDate || dueDateFromTerms(order.orderDate || new Date(), creditDays),
+    paidAt:
+      overrides.paidAt !== undefined
+        ? overrides.paidAt
+        : status === 'PAID'
+        ? existing?.paidAt || new Date()
+        : null,
+    referenceNumber: overrides.referenceNumber !== undefined ? overrides.referenceNumber : existing?.referenceNumber || null,
+    notes: overrides.notes !== undefined ? overrides.notes : existing?.notes || 'Created from purchase order flow',
+    supplierId: order.supplierId || existing?.supplierId || null,
+    supplierOrderId: order.orderId,
+    createdById: existing?.createdById || userId || null,
+  };
+  if (existing) {
+    return prisma.paymentTransaction.update({
+      where: { paymentId: existing.paymentId },
+      data,
+    });
+  }
+  return prisma.paymentTransaction.create({
+    data: {
+      direction: 'OFFICE_TO_SUPPLIER',
+      ...data,
+    },
+  });
+}
+
 router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
@@ -128,6 +195,16 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
       },
     });
 
+    await ensureSupplierOrderPayment(order, req.user.userId);
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'CREATE',
+        target: 'Payment',
+        details: `Created supplier payable for PO ${order.orderId}`,
+      },
+    });
+
     res.status(201).json(order);
   } catch (err) {
     next(err);
@@ -165,6 +242,16 @@ router.post('/auto', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res,
       },
     });
 
+    await ensureSupplierOrderPayment(order, req.user.userId);
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'CREATE',
+        target: 'Payment',
+        details: `Created supplier payable for auto PO ${order.orderId}`,
+      },
+    });
+
     res.status(201).json(order);
   } catch (err) {
     next(err);
@@ -197,6 +284,8 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
         approvedById: req.body.approvedById ? Number(req.body.approvedById) : undefined,
       },
     });
+
+    await ensureSupplierOrderPayment(order, req.user.userId);
 
     const nextStatus = (req.body.status || order.status || '').toUpperCase();
     if (nextStatus === 'RECEIVED' && existing.items?.length) {
