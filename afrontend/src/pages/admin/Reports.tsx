@@ -18,9 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Download, Calendar as CalendarIcon, TrendingUp, TrendingDown, Package, Truck, AlertTriangle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Download, TrendingUp, TrendingDown, Package, Truck, AlertTriangle } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import type { InventoryItem, Order, Delivery, Project, StockTransaction } from '@/types';
 import { printHtml } from '@/utils/print';
@@ -44,22 +43,25 @@ const escapeHtml = (value: unknown) =>
     .replace(/'/g, '&#039;');
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
 const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-const normalizeRange = (from: Date, to?: Date) => {
-  const start = startOfDay(from);
-  const end = endOfDay(to ?? from);
-  return start <= end ? { from: start, to: end } : { from: startOfDay(to ?? from), to: endOfDay(from) };
+const toDateInputValue = (date: Date) => format(date, 'yyyy-MM-dd');
+const parseDateInput = (value: string, boundary: 'start' | 'end') => {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  return boundary === 'start' ? startOfDay(date) : endOfDay(date);
 };
 
 // TODO: Replace with real data from Lovable Cloud database
 export default function ReportsPage() {
+  const defaultFrom = startOfDay(new Date(2025, 0, 1));
+  const defaultTo = endOfDay(new Date());
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: startOfDay(new Date(2025, 0, 1)),
-    to: endOfDay(new Date()),
+    from: defaultFrom,
+    to: defaultTo,
   });
-  const [draftDateRange, setDraftDateRange] = useState<{ from?: Date; to?: Date }>({
-    from: startOfDay(new Date(2025, 0, 1)),
-    to: endOfDay(new Date()),
-  });
+  const [dateFromInput, setDateFromInput] = useState(toDateInputValue(defaultFrom));
+  const [dateToInput, setDateToInput] = useState(toDateInputValue(defaultTo));
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>('all');
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all');
@@ -131,6 +133,24 @@ export default function ReportsPage() {
     setOpenBalancePage(1);
     setVatPage(1);
   }, [dateRange, projectFilter, projectStatusFilter, deliveryStatusFilter, paymentStatusFilter]);
+
+  const parsedFromInput = parseDateInput(dateFromInput, 'start');
+  const parsedToInput = parseDateInput(dateToInput, 'end');
+  const dateRangeError =
+    parsedFromInput && parsedToInput && parsedFromInput > parsedToInput
+      ? 'From date cannot be after To date.'
+      : '';
+
+  useEffect(() => {
+    const from = parseDateInput(dateFromInput, 'start');
+    const to = parseDateInput(dateToInput, 'end');
+    if (!from || !to || from > to) return;
+    setDateRange((current) =>
+      current.from.getTime() === from.getTime() && current.to.getTime() === to.getTime()
+        ? current
+        : { from, to }
+    );
+  }, [dateFromInput, dateToInput]);
 
   const ordersInRange = orders.filter((o) => {
     const created = new Date(o.createdAt);
@@ -609,29 +629,36 @@ export default function ReportsPage() {
           <h2 className="text-2xl font-bold text-foreground">Reports</h2>
           <p className="text-muted-foreground">Business analytics and export tools</p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:w-auto xl:justify-end">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button className="w-full sm:w-auto" variant="outline">
-                <CalendarIcon size={16} className="mr-2" />
-                Export Period: {exportDateLabel}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="range"
-                selected={draftDateRange}
-                onSelect={(range) => {
-                  if (range?.from) {
-                    setDraftDateRange(range.to ? normalizeRange(range.from, range.to) : { from: startOfDay(range.from), to: undefined });
-                    if (range.to) {
-                      setDateRange(normalizeRange(range.from, range.to));
-                    }
-                  }
-                }}
-              />
-            </PopoverContent>
-          </Popover>
+        <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-[420px]">
+          <div className="space-y-1">
+            <label htmlFor="report-date-from" className="text-xs font-medium text-muted-foreground">
+              From
+            </label>
+            <Input
+              id="report-date-from"
+              type="date"
+              value={dateFromInput}
+              max={dateToInput || undefined}
+              onChange={(event) => setDateFromInput(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="report-date-to" className="text-xs font-medium text-muted-foreground">
+              To
+            </label>
+            <Input
+              id="report-date-to"
+              type="date"
+              value={dateToInput}
+              min={dateFromInput || undefined}
+              onChange={(event) => setDateToInput(event.target.value)}
+            />
+          </div>
+          {dateRangeError ? (
+            <p className="sm:col-span-2 text-xs text-destructive">{dateRangeError}</p>
+          ) : (
+            <p className="sm:col-span-2 text-xs text-muted-foreground">Export Period: {exportDateLabel}</p>
+          )}
         </div>
       </div>
 
