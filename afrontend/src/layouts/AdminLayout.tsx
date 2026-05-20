@@ -91,11 +91,14 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : ['project_manager'];
+  const canPollNotifications = canViewNotifications(roleList);
+  const canPollMessages = canViewMessages(roleList);
   const notificationParams = useMemo(() => ({ viewer: user?.id ?? 'anonymous' }), [user?.id]);
   const threadParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
 
-  const { data: notificationsRaw, reload: reloadNotifications } = useResource<any>('/notifications', [], [user?.id], 15_000, notificationParams);
-  const { data: threadsRaw, reload: reloadThreads } = useResource<any>('/messages/threads', [], [user?.id], 5_000, threadParams);
+  const { data: notificationsRaw, reload: reloadNotifications } = useResource<any>(canPollNotifications ? '/notifications' : '', [], [user?.id, canPollNotifications], 15_000, notificationParams);
+  const { data: threadsRaw, reload: reloadThreads } = useResource<any>(canPollMessages ? '/messages/threads' : '', [], [user?.id, canPollMessages], 5_000, threadParams);
   const notifications: Notification[] = Array.isArray(notificationsRaw)
     ? notificationsRaw
     : Array.isArray(notificationsRaw?.data)
@@ -119,8 +122,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   useEffect(() => {
     const refreshBadges = () => {
-      reloadNotifications();
-      reloadThreads();
+      if (canPollNotifications) reloadNotifications();
+      if (canPollMessages) reloadThreads();
     };
     const interval = window.setInterval(refreshBadges, 5_000);
     window.addEventListener('focus', refreshBadges);
@@ -128,7 +131,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       window.clearInterval(interval);
       window.removeEventListener('focus', refreshBadges);
     };
-  }, [reloadNotifications, reloadThreads]);
+  }, [canPollMessages, canPollNotifications, reloadNotifications, reloadThreads]);
 
   useEffect(() => {
     if (!companyInfo) return;
@@ -146,7 +149,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     return current?.label || 'Dashboard';
   };
 
-  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : ['project_manager'];
   const visibleNavItems = navItems.filter((item) => roleList.some((r) => item.roles.includes(r)));
 
   return (

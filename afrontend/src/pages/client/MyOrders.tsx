@@ -153,9 +153,15 @@ export default function MyOrdersPage() {
       tone: 'bg-blue-600',
     },
     {
-      label: 'Shipped',
-      date: ['ready-for-delivery', 'delivered'].includes(order.status) ? order.updatedAt : null,
-      active: ['ready-for-delivery', 'delivered'].includes(order.status),
+      label: 'Delivery Pending',
+      date: delivery ? delivery.issuedAt || order.updatedAt : null,
+      active: Boolean(delivery),
+      tone: 'bg-amber-500',
+    },
+    {
+      label: 'Delivery Started',
+      date: ['ready-for-delivery', 'delivered'].includes(order.status) || delivery?.status === 'in-transit' ? order.updatedAt : null,
+      active: ['ready-for-delivery', 'delivered'].includes(order.status) || delivery?.status === 'in-transit' || delivery?.status === 'delivered',
       tone: 'bg-blue-600',
     },
     {
@@ -716,17 +722,18 @@ export default function MyOrdersPage() {
                       className={cn(
                         'absolute left-0 top-0 h-2 rounded-full transition-all',
                         selectedOrder.status === 'pending' && 'bg-warning w-[25%]',
-                        selectedOrder.status === 'approved' && 'bg-info w-[35%]',
+                        selectedOrder.status === 'approved' && 'bg-info w-[40%]',
                         selectedOrder.status === 'processing' && 'bg-info w-[50%]',
                         selectedOrder.status === 'ready-for-delivery' && 'bg-secondary w-[75%]',
                         selectedOrder.status === 'delivered' && 'bg-success w-full'
                       )}
                     />
                   </div>
-                  <div className="grid grid-cols-4 text-xs text-muted-foreground">
+                  <div className="grid grid-cols-5 text-xs text-muted-foreground">
                     <span className={selectedOrder.status === 'pending' ? 'font-medium text-foreground' : ''}>Pending</span>
-                    <span className={selectedOrder.status === 'processing' ? 'font-medium text-foreground' : ''}>Processing</span>
-                    <span className={selectedOrder.status === 'ready-for-delivery' ? 'font-medium text-foreground' : ''}>Ready</span>
+                    <span className={selectedOrder.status === 'approved' ? 'font-medium text-foreground' : ''}>Approved</span>
+                    <span className={selectedDelivery?.status === 'pending' ? 'font-medium text-foreground' : ''}>Delivery Pending</span>
+                    <span className={selectedOrder.status === 'ready-for-delivery' || selectedDelivery?.status === 'in-transit' ? 'font-medium text-foreground' : ''}>In Transit</span>
                     <span className={selectedOrder.status === 'delivered' ? 'font-medium text-foreground' : ''}>Delivered</span>
                   </div>
                   <p className="text-xs text-muted-foreground">

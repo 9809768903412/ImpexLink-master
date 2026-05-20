@@ -247,7 +247,7 @@ export default function LiveTrackingDialog({
                   <div className="flex flex-wrap gap-2 justify-end">
                     {delivery.status === 'pending' ? (
                       <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => triggerStatus('in-transit')}>
-                        Mark as In Transit
+                        Begin Delivery
                       </Button>
                     ) : null}
                     {delivery.status === 'in-transit' || delivery.status === 'delayed' ? (

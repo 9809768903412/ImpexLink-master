@@ -82,10 +82,10 @@ export const canViewPurchaseOrders = (role?: RoleInput) => hasRole(role, 'admin'
 export const canViewSuppliers = (role?: RoleInput) => hasRole(role, 'admin');
 
 export const canViewLogistics = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'driver'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'driver', 'delivery_guy'].includes(r));
 
 export const canManageLogistics = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'driver'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'driver', 'delivery_guy'].includes(r));
 
 export const canViewReports = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));

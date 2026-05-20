@@ -64,6 +64,26 @@ const statusIcons: Record<DeliveryStatus, React.ReactNode> = {
 };
 const RECEIVER_OPTIONS = ['Sir Jason', 'Project In-charge', 'Safety Officer', 'Site Engineer'];
 
+function getDeliveryTimeline(delivery: Delivery) {
+  return [
+    {
+      label: 'Pending',
+      detail: 'Ready in Logistics',
+      active: ['pending', 'in-transit', 'delayed', 'delivered', 'return-pending', 'returned', 'return-rejected'].includes(delivery.status),
+    },
+    {
+      label: 'In Transit',
+      detail: 'Delivery has begun',
+      active: ['in-transit', 'delayed', 'delivered', 'return-pending', 'returned', 'return-rejected'].includes(delivery.status),
+    },
+    {
+      label: 'Delivered',
+      detail: 'Received on site',
+      active: ['delivered', 'return-pending', 'returned', 'return-rejected'].includes(delivery.status),
+    },
+  ];
+}
+
 // TODO: Replace with real data 
 export default function LogisticsPage() {
   const { user } = useAuth();
@@ -770,6 +790,21 @@ export default function LogisticsPage() {
               </div>
             </div>
 
+              <div className="rounded-lg border p-4">
+                <h4 className="font-semibold mb-3">Delivery Timeline</h4>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {getDeliveryTimeline(selectedDelivery).map((step) => (
+                    <div key={step.label} className="flex items-start gap-3">
+                      <span className={`mt-1 h-3 w-3 rounded-full ${step.active ? 'bg-primary' : 'bg-muted'}`} />
+                      <div>
+                        <p className={step.active ? 'font-medium text-foreground' : 'font-medium text-muted-foreground'}>{step.label}</p>
+                        <p className="text-xs text-muted-foreground">{step.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {isAdmin && (
                 <div className="mt-4 rounded-lg border p-3">
                   <p className="text-sm font-medium mb-2">Recent Activity</p>
@@ -907,11 +942,11 @@ export default function LogisticsPage() {
                 </Button>
                 {canManage && selectedDelivery.status === 'pending' && (
                   <Button
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => handleUpdateStatus(selectedDelivery.id, 'in-transit')}
                   >
-                    <Truck size={16} className="mr-1" />
-                    Dispatch
+                    <Navigation size={16} className="mr-1" />
+                    Begin Delivery
                   </Button>
                 )}
                 {canManage && selectedDelivery.status === 'in-transit' && (

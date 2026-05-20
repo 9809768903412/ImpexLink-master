@@ -279,7 +279,7 @@ async function createDeliveryBatchesForOrder(order, userId, status = 'PENDING') 
   const plan = calculateDeliveryPlan(order.items || []);
   const drSuffix = order.orderNumber?.replace(/^ORD-/, '') || String(Date.now());
   const defaultEta = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  const deliveryStatus = status === 'SHIPPED' ? 'IN_TRANSIT' : 'PENDING';
+  const deliveryStatus = status === 'DELIVERED' ? 'DELIVERED' : 'PENDING';
 
   for (let batch = 1; batch <= plan.batchCount; batch += 1) {
     const method = plan.method === 'THIRD_PARTY' ? 'LALAMOVE' : plan.method;
@@ -655,7 +655,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 
     const nextStatus = (status || existing.status).toUpperCase();
     const shouldDeduct = ['APPROVED', 'PROCESSING'].includes(nextStatus);
-    const shouldCreateDelivery = ['SHIPPED', 'DELIVERED'].includes(nextStatus);
+    const shouldCreateDelivery = ['APPROVED', 'PROCESSING', 'SHIPPED', 'DELIVERED'].includes(nextStatus);
     if (shouldDeduct) {
       const existingIssue = await prisma.stockTransaction.findFirst({
         where: {
@@ -716,12 +716,6 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
           await prisma.delivery.update({
             where: { deliveryId: existingDelivery.deliveryId },
             data: { status: 'PENDING' },
-          });
-        }
-        if (nextStatus === 'SHIPPED' && existingDelivery.status !== 'IN_TRANSIT') {
-          await prisma.delivery.update({
-            where: { deliveryId: existingDelivery.deliveryId },
-            data: { status: 'IN_TRANSIT' },
           });
         }
         if (nextStatus === 'DELIVERED' && existingDelivery.status !== 'DELIVERED') {

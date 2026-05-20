@@ -218,7 +218,7 @@ function mapDelivery(d) {
   };
 }
 
-router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), async (req, res, next) => {
+router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
@@ -349,7 +349,7 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY']), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
     if (req.body.status) {
@@ -386,8 +386,11 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), async (r
       if (!allowed) {
         return res.status(400).json({ error: `Invalid status transition: ${currentStatus} -> ${requestedStatus}` });
       }
-      if (requestedStatus === 'IN_TRANSIT' && existing.clientOrder?.status !== 'SHIPPED') {
-        return res.status(400).json({ error: 'Order must be ready for delivery before dispatching.' });
+      if (
+        requestedStatus === 'IN_TRANSIT' &&
+        !['APPROVED', 'PROCESSING', 'SHIPPED'].includes(existing.clientOrder?.status)
+      ) {
+        return res.status(400).json({ error: 'Order must be approved before delivery can begin.' });
       }
       if (requestedStatus === 'DELIVERED' && !req.body.receivedBy) {
         return res.status(400).json({ error: 'Received by is required' });
@@ -487,6 +490,8 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), async (r
         details:
           updatedStatus === 'RETURN_REJECTED'
             ? `Return rejected for ${delivery.drNumber}`
+            : updatedStatus === 'IN_TRANSIT'
+            ? `Delivery begun for ${delivery.drNumber}`
             : updatedStatus === 'DELAYED'
             ? `Delivery delayed for ${delivery.drNumber}: ${req.body.notes || 'No reason provided'}`
             : `Updated delivery ${delivery.drNumber}`,
@@ -501,6 +506,8 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), async (r
           const message =
             updatedStatus === 'RETURN_REJECTED'
               ? `Return request rejected for ${delivery.drNumber}. Reason: ${req.body.returnRejectionReason || 'Not provided'}.`
+              : updatedStatus === 'IN_TRANSIT'
+              ? `Delivery ${delivery.drNumber} has begun and is now in transit.`
               : updatedStatus === 'DELAYED'
               ? `Delivery ${delivery.drNumber} is delayed. Reason: ${req.body.notes || 'Not provided'}. Updated ETA: ${
                   delivery.eta ? new Date(delivery.eta).toLocaleString('en-PH') : 'To be scheduled'
@@ -634,7 +641,7 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
 });
 
 
-router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), uploadProof.single('proof'), async (req, res, next) => {
+router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY']), uploadProof.single('proof'), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
     const existing = await prisma.delivery.findUnique({

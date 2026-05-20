@@ -60,7 +60,7 @@ const ADMIN_DASHBOARD_ROLES = ADMIN_AREA_ROLES.filter((role) => !['warehouse_sta
 
 function defaultPathForRoles(roleList: string[]) {
   if (roleList.includes('client')) return '/client';
-  if (roleList.includes('driver')) return '/logistics';
+  if (roleList.includes('driver') || roleList.includes('delivery_guy')) return '/logistics';
   if (roleList.includes('warehouse_staff')) return '/admin/inventory';
   if (roleList.includes('paint_chemist')) return '/admin/inventory';
   return '/admin';
@@ -72,7 +72,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
-  const logisticsOnly = roleList.some((role) => ['driver'].includes(role));
+  const logisticsOnly = roleList.some((role) => ['driver', 'delivery_guy'].includes(role));
   if (logisticsOnly && location.pathname.startsWith('/admin') && location.pathname !== '/admin/settings') {
     return <Navigate to="/logistics" replace />;
   }
@@ -91,7 +91,7 @@ function RoleBasedRedirect() {
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
-  if (roleList.some((role) => ['driver'].includes(role))) return <Navigate to="/logistics" replace />;
+  if (roleList.some((role) => ['driver', 'delivery_guy'].includes(role))) return <Navigate to="/logistics" replace />;
   return <Navigate to={defaultPathForRoles(roleList)} replace />;
 }
 
@@ -121,7 +121,7 @@ function AppRoutes() {
       <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={ADMIN_AREA_ROLES.filter(canAccessSettings)}><AdminLayout><SettingsPage /></AdminLayout></ProtectedRoute>} />
 
       {/* Delivery Guy Route */}
-      <Route path="/logistics" element={<ProtectedRoute allowedRoles={['driver']}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/logistics" element={<ProtectedRoute allowedRoles={['driver', 'delivery_guy']}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
       
       {/* Client Routes */}
       <Route path="/client" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientDashboard /></ClientLayout></ProtectedRoute>} />
