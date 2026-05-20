@@ -91,7 +91,15 @@ router.post('/', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    await prisma.auditLog.delete({ where: { logId: Number(req.params.id) } });
+    const deleted = await prisma.auditLog.delete({ where: { logId: Number(req.params.id) } });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'DELETE',
+        target: 'AuditLog',
+        details: `Deleted audit log ${deleted.logId} (${deleted.action} ${deleted.target})`,
+      },
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);

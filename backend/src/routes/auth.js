@@ -244,6 +244,15 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
       });
     }
 
+    await prisma.auditLog.create({
+      data: {
+        userId: null,
+        action: existingPending ? 'UPDATE' : 'CREATE',
+        target: 'Registration',
+        details: `${existingPending ? 'Updated' : 'Created'} pending registration for ${email}`,
+      },
+    });
+
     let emailSent = true;
     let devOtp = null;
     let emailError = null;
@@ -316,6 +325,14 @@ router.post('/login', async (req, res, next) => {
       await prisma.user.update({
         where: { userId: user.userId },
         data: { otpCodeHash: otpHash, otpExpiresAt: expiresAt },
+      });
+      await prisma.auditLog.create({
+        data: {
+          userId: user.userId,
+          action: 'VERIFY',
+          target: 'Auth',
+          details: `Generated login OTP for ${user.email}`,
+        },
       });
       let emailSent = true;
       let devOtp = null;
@@ -393,6 +410,14 @@ router.post('/resend-otp', async (req, res, next) => {
       where: { userId: user.userId },
       data: { otpCodeHash: otpHash, otpExpiresAt: expiresAt },
     });
+    await prisma.auditLog.create({
+      data: {
+        userId: user.userId,
+        action: 'VERIFY',
+        target: 'Auth',
+        details: `Resent login OTP for ${user.email}`,
+      },
+    });
 
     let emailSent = true;
     let devOtp = null;
@@ -442,6 +467,14 @@ router.post('/verify-email', async (req, res, next) => {
       await prisma.user.update({
         where: { userId: user.userId },
         data: { emailVerified: true, verificationCodeHash: null, verificationExpiresAt: null },
+      });
+      await prisma.auditLog.create({
+        data: {
+          userId: user.userId,
+          action: 'VERIFY',
+          target: 'Auth',
+          details: `Verified email for ${user.email}`,
+        },
       });
       return res.json({ ok: true });
     }
@@ -521,6 +554,14 @@ router.post('/resend-verification', async (req, res, next) => {
         where: { userId: user.userId },
         data: { verificationCodeHash, verificationExpiresAt },
       });
+      await prisma.auditLog.create({
+        data: {
+          userId: user.userId,
+          action: 'VERIFY',
+          target: 'Auth',
+          details: `Regenerated email verification code for ${user.email}`,
+        },
+      });
       let emailSent = true;
       let devOtp = null;
       let emailError = null;
@@ -554,6 +595,14 @@ router.post('/resend-verification', async (req, res, next) => {
     await prisma.pendingRegistration.update({
       where: { email },
       data: { verificationCodeHash, verificationExpiresAt },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: null,
+        action: 'VERIFY',
+        target: 'Registration',
+        details: `Regenerated pending registration verification code for ${email}`,
+      },
     });
     let emailSent = true;
     let devOtp = null;
@@ -599,6 +648,14 @@ router.post('/request-password-reset', async (req, res, next) => {
       where: { userId: user.userId },
       data: { resetCodeHash, resetExpiresAt },
     });
+    await prisma.auditLog.create({
+      data: {
+        userId: user.userId,
+        action: 'VERIFY',
+        target: 'Auth',
+        details: `Requested password reset for ${user.email}`,
+      },
+    });
     let emailSent = true;
     let devOtp = null;
     try {
@@ -642,6 +699,14 @@ router.post('/reset-password', async (req, res, next) => {
       where: { userId: user.userId },
       data: { passwordHash, resetCodeHash: null, resetExpiresAt: null },
     });
+    await prisma.auditLog.create({
+      data: {
+        userId: user.userId,
+        action: 'UPDATE',
+        target: 'Auth',
+        details: `Reset password for ${user.email}`,
+      },
+    });
     return res.json({ ok: true });
   } catch (err) {
     return next(err);
@@ -673,6 +738,14 @@ router.post('/verify-otp', async (req, res, next) => {
     await prisma.user.update({
       where: { userId: user.userId },
       data: { otpCodeHash: null, otpExpiresAt: null },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: user.userId,
+        action: 'LOGIN',
+        target: 'Auth',
+        details: `User ${user.email} logged in with OTP`,
+      },
     });
 
     const client = await ensureClientForUser(user);

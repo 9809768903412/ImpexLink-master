@@ -84,6 +84,14 @@ router.put('/:id', async (req, res, next) => {
       where: { notificationId: Number(req.params.id) },
       data: { read: Boolean(req.body.read) },
     });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'UPDATE',
+        target: 'Notification',
+        details: `${notification.read ? 'Marked read' : 'Marked unread'} notification ${notification.notificationId}`,
+      },
+    });
     res.json(notification);
   } catch (err) {
     next(err);
@@ -92,7 +100,15 @@ router.put('/:id', async (req, res, next) => {
 
 router.post('/mark-all-read', async (_req, res, next) => {
   try {
-    await prisma.notification.updateMany({ where: { userId: _req.user.userId }, data: { read: true } });
+    const result = await prisma.notification.updateMany({ where: { userId: _req.user.userId }, data: { read: true } });
+    await prisma.auditLog.create({
+      data: {
+        userId: _req.user.userId,
+        action: 'UPDATE',
+        target: 'Notification',
+        details: `Marked ${result.count} notifications as read`,
+      },
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -101,7 +117,15 @@ router.post('/mark-all-read', async (_req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    await prisma.notification.delete({ where: { notificationId: Number(req.params.id) } });
+    const notification = await prisma.notification.delete({ where: { notificationId: Number(req.params.id) } });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'DELETE',
+        target: 'Notification',
+        details: `Deleted notification ${notification.notificationId}`,
+      },
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -110,7 +134,15 @@ router.delete('/:id', async (req, res, next) => {
 
 router.delete('/', async (_req, res, next) => {
   try {
-    await prisma.notification.deleteMany({ where: { userId: _req.user.userId } });
+    const result = await prisma.notification.deleteMany({ where: { userId: _req.user.userId } });
+    await prisma.auditLog.create({
+      data: {
+        userId: _req.user.userId,
+        action: 'DELETE',
+        target: 'Notification',
+        details: `Deleted ${result.count} notifications`,
+      },
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);

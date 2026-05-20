@@ -298,10 +298,23 @@ router.get('/threads/:id/messages', async (req, res, next) => {
       orderBy: { createdAt: 'asc' },
       take: 500,
     });
+    const participantBeforeRead = await prisma.chatParticipant.findUnique({
+      where: { threadId_userId: { threadId, userId: req.user.userId } },
+    });
     await prisma.chatParticipant.update({
       where: { threadId_userId: { threadId, userId: req.user.userId } },
       data: { unreadCount: 0, lastReadAt: new Date() },
     });
+    if ((participantBeforeRead?.unreadCount || 0) > 0) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.userId,
+          action: 'VIEW',
+          target: 'MessageThread',
+          details: `Read ${participantBeforeRead.unreadCount} message(s) in thread ${threadId}`,
+        },
+      });
+    }
     res.json(messages.map(mapMessage));
   } catch (err) {
     next(err);

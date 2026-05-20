@@ -483,7 +483,7 @@ router.post('/:id/receive', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (re
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: 'RECEIVE',
+        action: 'UPDATE',
         target: 'PurchaseOrder',
         details: `${fullyReceived ? 'Fully' : 'Partially'} received PO ${orderId}${notes ? `: ${notes}` : ''}`,
       },
@@ -523,6 +523,14 @@ router.post('/:id/delay-impact', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), asyn
           .join('\n'),
       },
     });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'UPDATE',
+        target: 'PurchaseOrder',
+        details: `Recorded supplier delay for PO ${orderId}: ${reason}. Notified ${notifyCount} affected order(s).`,
+      },
+    });
     res.json({ ok: true, notified: notifyCount });
   } catch (err) {
     next(err);
@@ -560,7 +568,7 @@ router.put('/:id/restore', requireRole(['ADMIN']), async (req, res, next) => {
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: 'RESTORE',
+        action: 'UPDATE',
         target: 'SupplierOrder',
         details: `Restored PO ${orderId}`,
       },

@@ -20,6 +20,14 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const { categoryName } = req.body;
     const category = await prisma.productCategory.create({ data: { categoryName } });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'CREATE',
+        target: 'ProductCategory',
+        details: `Created category ${category.categoryName}`,
+      },
+    });
     res.status(201).json(category);
   } catch (err) {
     next(err);
@@ -44,6 +52,14 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
       where: { categoryId: Number(req.params.id) },
       data: { categoryName: req.body.categoryName },
     });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'UPDATE',
+        target: 'ProductCategory',
+        details: `Updated category ${category.categoryName}`,
+      },
+    });
     res.json(category);
   } catch (err) {
     next(err);
@@ -52,9 +68,17 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 
 router.delete('/:id', requireRole(['ADMIN']), async (req, res, next) => {
   try {
-    await prisma.productCategory.update({
+    const category = await prisma.productCategory.update({
       where: { categoryId: Number(req.params.id) },
       data: { deletedAt: new Date() },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'DELETE',
+        target: 'ProductCategory',
+        details: `Deleted category ${category.categoryName}`,
+      },
     });
     res.json({ ok: true });
   } catch (err) {

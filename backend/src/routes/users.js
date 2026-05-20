@@ -178,6 +178,15 @@ router.post('/', requireAdmin, async (req, res, next) => {
       });
     }
 
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'CREATE',
+        target: 'User',
+        details: `Admin created user ${user.email} as ${roleRecord.roleName}`,
+      },
+    });
+
     res.status(201).json({
       id: user.userId.toString(),
       name: user.fullName,
@@ -475,6 +484,14 @@ router.put('/me/notifications', async (req, res, next) => {
       where: { userId: req.user.userId },
       data: { notificationPrefs: req.body },
     });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'UPDATE',
+        target: 'User',
+        details: 'Updated notification preferences',
+      },
+    });
     res.json({ ok: true, preferences: req.body });
   } catch (err) {
     next(err);
@@ -498,6 +515,14 @@ router.put('/me/password', async (req, res, next) => {
     await prisma.user.update({
       where: { userId: req.user.userId },
       data: { passwordHash },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'UPDATE',
+        target: 'User',
+        details: 'Updated account password',
+      },
     });
     res.json({ ok: true });
   } catch (err) {

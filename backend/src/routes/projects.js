@@ -484,7 +484,7 @@ router.put('/:id/restore', requireRole(['ADMIN']), async (req, res, next) => {
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: 'RESTORE',
+        action: 'UPDATE',
         target: 'Project',
         details: `Restored project ${projectId}`,
       },

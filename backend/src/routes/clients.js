@@ -174,7 +174,7 @@ router.post('/merge', requireRole(['ADMIN']), async (req, res, next) => {
       await tx.auditLog.create({
         data: {
           userId: req.user.userId,
-          action: 'MERGE',
+          action: 'UPDATE',
           target: 'Client',
           details: `Merged client ${source.clientName} (${sourceClientId}) into ${target.clientName} (${targetClientId})${reason ? `. Reason: ${reason}` : ''}`,
         },
