@@ -542,7 +542,7 @@ router.put('/:id/assignment', requireRole(['ADMIN']), async (req, res, next) => 
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: 'ASSIGN',
+        action: 'UPDATE',
         target: 'ClientOrderAssignment',
         details: `Updated sales agent assignment for ${responseOrder.orderNumber}`,
       },

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
@@ -38,10 +38,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useResource } from '@/hooks/use-resource';
-import type { Notification } from '@/types';
+import type { ChatThread, Notification } from '@/types';
 import {
   ADMIN_AREA_ROLES,
   ROLE_LABELS,
@@ -92,8 +91,21 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const notificationParams = useMemo(() => ({ viewer: user?.id ?? 'anonymous' }), [user?.id]);
+  const threadParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
 
-  const { data: notifications } = useResource<Notification[]>('/notifications', []);
+  const { data: notificationsRaw, reload: reloadNotifications } = useResource<any>('/notifications', [], [user?.id], 15_000, notificationParams);
+  const { data: threadsRaw, reload: reloadThreads } = useResource<any>('/messages/threads', [], [user?.id], 5_000, threadParams);
+  const notifications: Notification[] = Array.isArray(notificationsRaw)
+    ? notificationsRaw
+    : Array.isArray(notificationsRaw?.data)
+      ? notificationsRaw.data
+      : [];
+  const threads: ChatThread[] = Array.isArray(threadsRaw)
+    ? threadsRaw
+    : Array.isArray(threadsRaw?.data)
+      ? threadsRaw.data
+      : [];
   const { data: companyInfo } = useResource('/company', {
     name: 'Impex Engineering and Industrial Supply',
     address: '6959 Washington St., Pio Del Pilar, Makati City',
@@ -103,6 +115,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     website: 'www.impex.ph',
   });
   const unreadNotifications = notifications.filter((n) => !n.read).length;
+  const unreadMessages = threads.reduce((total, thread) => total + Number(thread.unreadCount || 0), 0);
+
+  useEffect(() => {
+    const refreshBadges = () => {
+      reloadNotifications();
+      reloadThreads();
+    };
+    const interval = window.setInterval(refreshBadges, 5_000);
+    window.addEventListener('focus', refreshBadges);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshBadges);
+    };
+  }, [reloadNotifications, reloadThreads]);
 
   useEffect(() => {
     if (!companyInfo) return;
@@ -204,7 +230,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         {unreadNotifications}
                       </Badge>
                     )}
+                    {!sidebarCollapsed && item.label === 'Messages' && unreadMessages > 0 && (
+                      <Badge className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5">
+                        {unreadMessages}
+                      </Badge>
+                    )}
                     {sidebarCollapsed && item.label === 'Notifications' && unreadNotifications > 0 && (
+                      <span className="absolute top-2 right-2 h-2 w-2 bg-primary rounded-full" />
+                    )}
+                    {sidebarCollapsed && item.label === 'Messages' && unreadMessages > 0 && (
                       <span className="absolute top-2 right-2 h-2 w-2 bg-primary rounded-full" />
                     )}
                   </NavLink>

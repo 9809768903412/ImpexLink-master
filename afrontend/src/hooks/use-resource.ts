@@ -60,12 +60,14 @@ export function useResource<T>(
     fetchData();
   }, [fetchData, ...deps]);
 
+  const reload = useCallback(() => fetchData(true), [fetchData]);
+
   return {
     data,
     setData,
     loading,
     error,
     lastUpdated,
-    reload: () => fetchData(true),
+    reload,
   };
 }

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useResource } from '@/hooks/use-resource';
-import type { Client, Notification } from '@/types';
+import type { ChatThread, Client, Notification } from '@/types';
 
 interface ClientLayoutProps {
   children: ReactNode;
@@ -53,18 +53,32 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [supportOpen, setSupportOpen] = useState(false);
+  const notificationParams = useMemo(() => ({ viewer: user?.id ?? 'anonymous' }), [user?.id]);
+  const threadParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
 
-  const { data: notificationsRaw } = useResource<any>(
+  const { data: notificationsRaw, reload: reloadNotifications } = useResource<any>(
     '/notifications',
     [],
     [user?.id],
     15_000,
-    { viewer: user?.id ?? 'anonymous' }
+    notificationParams
+  );
+  const { data: threadsRaw, reload: reloadThreads } = useResource<any>(
+    '/messages/threads',
+    [],
+    [user?.id],
+    5_000,
+    threadParams
   );
   const notifications: Notification[] = Array.isArray(notificationsRaw)
     ? notificationsRaw
     : Array.isArray(notificationsRaw?.data)
       ? notificationsRaw.data
+      : [];
+  const threads: ChatThread[] = Array.isArray(threadsRaw)
+    ? threadsRaw
+    : Array.isArray(threadsRaw?.data)
+      ? threadsRaw.data
       : [];
   const { data: clients } = useResource<Client[]>('/clients', [], [user?.id], 15_000);
   const { data: companyInfo } = useResource('/company', {
@@ -76,10 +90,24 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
     website: 'www.impex.ph',
   });
   const unreadNotifications = notifications.filter((n) => !n.read).length;
+  const unreadMessages = threads.reduce((total, thread) => total + Number(thread.unreadCount || 0), 0);
   const displayCompanyName =
     clients.find((client) => client.id === user?.clientId)?.name ||
     clients[0]?.name ||
     user?.companyName;
+
+  useEffect(() => {
+    const refreshBadges = () => {
+      reloadNotifications();
+      reloadThreads();
+    };
+    const interval = window.setInterval(refreshBadges, 5_000);
+    window.addEventListener('focus', refreshBadges);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshBadges);
+    };
+  }, [reloadNotifications, reloadThreads]);
 
   useEffect(() => {
     if (!companyInfo) return;
@@ -124,6 +152,11 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
                 {item.label === 'Notifications' && unreadNotifications > 0 && (
                   <Badge className="ml-1 bg-secondary text-secondary-foreground text-xs px-1.5 py-0">
                     {unreadNotifications}
+                  </Badge>
+                )}
+                {item.label === 'Messages' && unreadMessages > 0 && (
+                  <Badge className="ml-1 bg-secondary text-secondary-foreground text-xs px-1.5 py-0">
+                    {unreadMessages}
                   </Badge>
                 )}
               </NavLink>
@@ -197,6 +230,9 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
                       <span>{item.label}</span>
                       {item.label === 'Notifications' && unreadNotifications > 0 && (
                         <Badge className="ml-auto">{unreadNotifications}</Badge>
+                      )}
+                      {item.label === 'Messages' && unreadMessages > 0 && (
+                        <Badge className="ml-auto">{unreadMessages}</Badge>
                       )}
                     </NavLink>
                   ))}

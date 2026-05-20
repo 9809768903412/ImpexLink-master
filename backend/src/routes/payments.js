@@ -22,8 +22,15 @@ function normalize(value) {
 
 function dueDateFromCreditDays(creditDays) {
   const date = new Date();
-  date.setDate(date.getDate() + Number(creditDays || 30));
+  date.setDate(date.getDate() + Number(creditDays ?? 30));
   return date;
+}
+
+function defaultCreditDaysForMethod(method) {
+  if (method === 'NET_15') return 15;
+  if (method === 'NET_30') return 30;
+  if (method === 'NET_60') return 60;
+  return 0;
 }
 
 function transactionStatusToOrderPaymentStatus(status) {
@@ -195,7 +202,10 @@ router.post('/', async (req, res, next) => {
     const direction = normalize(req.body.direction || 'CLIENT_TO_OFFICE');
     const method = normalize(req.body.method);
     const status = normalize(req.body.status || 'PENDING');
-    const creditDays = Number(req.body.creditDays || (method === 'NET_15' ? 15 : method === 'NET_60' ? 60 : 30));
+    const creditDays =
+      req.body.creditDays !== undefined && req.body.creditDays !== null && req.body.creditDays !== ''
+        ? Number(req.body.creditDays)
+        : defaultCreditDaysForMethod(method);
     if (!['CLIENT_TO_OFFICE', 'OFFICE_TO_SUPPLIER'].includes(direction)) {
       return res.status(400).json({ error: 'Invalid payment direction' });
     }

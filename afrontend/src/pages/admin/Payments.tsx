@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { CreditCard, Plus, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, Plus, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,12 +37,22 @@ import PaginationNav from '@/components/PaginationNav';
 import { toPublicFileUrl } from '@/lib/files';
 
 const statusClass: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  received: 'bg-blue-100 text-blue-800',
-  paid: 'bg-green-100 text-green-800',
-  overdue: 'bg-red-100 text-red-800',
-  cancelled: 'bg-slate-100 text-slate-700',
+  pending: 'border-amber-200 bg-amber-50 text-amber-800',
+  received: 'border-sky-200 bg-sky-50 text-sky-800',
+  paid: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  overdue: 'border-red-200 bg-red-50 text-red-800',
+  failed: 'border-red-200 bg-red-50 text-red-800',
+  cancelled: 'border-slate-200 bg-slate-100 text-slate-700',
 };
+
+const selectorPageSize = 8;
+
+function creditDaysForMethod(method: string) {
+  if (method === 'NET_15') return '15';
+  if (method === 'NET_30') return '30';
+  if (method === 'NET_60') return '60';
+  return '0';
+}
 
 function methodLabel(value: string) {
   return value.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -58,6 +68,8 @@ export default function PaymentsPage() {
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
+  const [orderPickerPage, setOrderPickerPage] = useState(1);
+  const [poPickerPage, setPoPickerPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     direction: 'CLIENT_TO_OFFICE',
@@ -98,6 +110,16 @@ export default function PaymentsPage() {
   useEffect(() => setPage(1), [search, status]);
 
   const paged = useMemo(() => payments.slice((page - 1) * pageSize, page * pageSize), [payments, page, pageSize]);
+  const orderPickerTotalPages = Math.max(Math.ceil(orders.length / selectorPageSize), 1);
+  const poPickerTotalPages = Math.max(Math.ceil(purchaseOrders.length / selectorPageSize), 1);
+  const visibleOrders = useMemo(
+    () => orders.slice((orderPickerPage - 1) * selectorPageSize, orderPickerPage * selectorPageSize),
+    [orders, orderPickerPage]
+  );
+  const visiblePurchaseOrders = useMemo(
+    () => purchaseOrders.slice((poPickerPage - 1) * selectorPageSize, poPickerPage * selectorPageSize),
+    [purchaseOrders, poPickerPage]
+  );
 
   const savePayment = async () => {
     if (!form.amount || Number(form.amount) <= 0) {
@@ -127,6 +149,8 @@ export default function PaymentsPage() {
         referenceNumber: '',
         notes: '',
       });
+      setOrderPickerPage(1);
+      setPoPickerPage(1);
       fetchPayments();
     } catch (error: any) {
       toast({
@@ -254,7 +278,18 @@ export default function PaymentsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label>Flow</Label>
-              <Select value={form.direction} onValueChange={(value) => setForm((prev) => ({ ...prev, direction: value, method: value === 'CLIENT_TO_OFFICE' ? 'CHEQUE' : 'NET_30' }))}>
+              <Select value={form.direction} onValueChange={(value) => setForm((prev) => {
+                const nextMethod = value === 'CLIENT_TO_OFFICE' ? 'CHEQUE' : 'NET_30';
+                return {
+                  ...prev,
+                  direction: value,
+                  method: nextMethod,
+                  creditDays: value === 'CLIENT_TO_OFFICE' ? '0' : creditDaysForMethod(nextMethod),
+                  clientOrderId: '',
+                  supplierOrderId: '',
+                  supplierId: '',
+                };
+              })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="CLIENT_TO_OFFICE">Client to Office</SelectItem>
@@ -264,7 +299,7 @@ export default function PaymentsPage() {
             </div>
             <div>
               <Label>Method</Label>
-              <Select value={form.method} onValueChange={(value) => setForm((prev) => ({ ...prev, method: value, creditDays: value === 'NET_15' ? '15' : value === 'NET_60' ? '60' : prev.creditDays }))}>
+              <Select value={form.method} onValueChange={(value) => setForm((prev) => ({ ...prev, method: value, creditDays: prev.direction === 'OFFICE_TO_SUPPLIER' ? creditDaysForMethod(value) : '0' }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {form.direction === 'CLIENT_TO_OFFICE' ? (
@@ -284,6 +319,11 @@ export default function PaymentsPage() {
                   )}
                 </SelectContent>
               </Select>
+              {form.direction === 'OFFICE_TO_SUPPLIER' ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Net 15, Net 30, and Net 60 set the supplier payable due date automatically.
+                </p>
+              ) : null}
             </div>
             {form.direction === 'CLIENT_TO_OFFICE' ? (
               <div className="sm:col-span-2">
@@ -293,7 +333,22 @@ export default function PaymentsPage() {
                   setForm((prev) => ({ ...prev, clientOrderId: value, amount: order ? String(order.total) : prev.amount }));
                 }}>
                   <SelectTrigger><SelectValue placeholder="Optional order link" /></SelectTrigger>
-                  <SelectContent>{orders.map((order) => <SelectItem key={order.id} value={order.id}>{order.orderNumber} - {order.clientName}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    {visibleOrders.map((order) => <SelectItem key={order.id} value={order.id}>{order.orderNumber} - {order.clientName}</SelectItem>)}
+                    {orders.length > selectorPageSize && (
+                      <div className="flex items-center justify-between border-t px-2 py-1.5 text-xs text-muted-foreground">
+                        <span>Page {orderPickerPage} of {orderPickerTotalPages}</span>
+                        <div className="flex gap-1">
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={orderPickerPage <= 1} onClick={(event) => { event.preventDefault(); setOrderPickerPage((current) => Math.max(current - 1, 1)); }}>
+                            <ChevronLeft size={14} />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={orderPickerPage >= orderPickerTotalPages} onClick={(event) => { event.preventDefault(); setOrderPickerPage((current) => Math.min(current + 1, orderPickerTotalPages)); }}>
+                            <ChevronRight size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </SelectContent>
                 </Select>
               </div>
             ) : (
@@ -312,7 +367,22 @@ export default function PaymentsPage() {
                     setForm((prev) => ({ ...prev, supplierOrderId: value, amount: po ? String(po.total) : prev.amount }));
                   }}>
                     <SelectTrigger><SelectValue placeholder="Optional PO link" /></SelectTrigger>
-                    <SelectContent>{purchaseOrders.map((po) => <SelectItem key={po.id} value={po.id}>{po.poNumber} - {po.supplierName}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      {visiblePurchaseOrders.map((po) => <SelectItem key={po.id} value={po.id}>{po.poNumber} - {po.supplierName}</SelectItem>)}
+                      {purchaseOrders.length > selectorPageSize && (
+                        <div className="flex items-center justify-between border-t px-2 py-1.5 text-xs text-muted-foreground">
+                          <span>Page {poPickerPage} of {poPickerTotalPages}</span>
+                          <div className="flex gap-1">
+                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={poPickerPage <= 1} onClick={(event) => { event.preventDefault(); setPoPickerPage((current) => Math.max(current - 1, 1)); }}>
+                              <ChevronLeft size={14} />
+                            </Button>
+                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={poPickerPage >= poPickerTotalPages} onClick={(event) => { event.preventDefault(); setPoPickerPage((current) => Math.min(current + 1, poPickerTotalPages)); }}>
+                              <ChevronRight size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </SelectContent>
                   </Select>
                 </div>
               </>
@@ -322,7 +392,7 @@ export default function PaymentsPage() {
               <Input type="number" min="0" value={form.amount} onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))} />
             </div>
             <div>
-              <Label>Credit Days</Label>
+              <Label>{form.direction === 'OFFICE_TO_SUPPLIER' ? 'Supplier Terms / Credit Days' : 'Credit Days'}</Label>
               <Input type="number" min="0" value={form.creditDays} onChange={(event) => setForm((prev) => ({ ...prev, creditDays: event.target.value }))} />
             </div>
             <div>

@@ -256,7 +256,21 @@ export default function LogisticsPage() {
     const updatedDelivery = updatedDeliveries.find((d) => d.id === delId);
     if (updatedDelivery) {
       syncSelectedDelivery(updatedDelivery);
-      const payload: Partial<Delivery> & { returnRejectionReason?: string } = { ...updatedDelivery };
+      const payload: Partial<Delivery> & { returnRejectionReason?: string } = {
+        status: newStatus,
+        receivedBy: updatedDelivery.receivedBy,
+        receiverName: updatedDelivery.receiverName,
+        receiverAddress: updatedDelivery.receiverAddress,
+        receiverContactNumber: updatedDelivery.receiverContactNumber,
+        receivedAt: updatedDelivery.receivedAt,
+        notes: updatedDelivery.notes,
+        eta: updatedDelivery.eta,
+        proofOfDelivery: updatedDelivery.proofOfDelivery,
+        deliveryMethod: updatedDelivery.deliveryMethod,
+        loadKg: updatedDelivery.loadKg,
+        thirdPartyProvider: updatedDelivery.thirdPartyProvider,
+        thirdPartyReference: updatedDelivery.thirdPartyReference,
+      };
       if (newStatus === 'return-rejected') {
         payload.returnRejectionReason = returnRejectReason;
       }
