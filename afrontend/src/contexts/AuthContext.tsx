@@ -21,7 +21,7 @@ interface AuthContextType {
     role: UserRole,
     companyName?: string,
     proofDoc?: File | null
-  ) => Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean; message?: string; devOtp?: string | null; error?: string }>;
+  ) => Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean; message?: string; devOtp?: string | null; error?: string; emailSent?: boolean; emailError?: { message?: string; code?: string; statusCode?: number } }>;
   verifyEmail: (email: string, otp: string) => Promise<boolean>;
   updateUser: (updates: Partial<User>) => void;
   refreshUser: () => Promise<void>;
@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: UserRole,
       companyName?: string,
       proofDoc?: File | null
-    ): Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean; message?: string; devOtp?: string | null; error?: string }> => {
+    ): Promise<{ ok: boolean; pending?: boolean; requiresVerification?: boolean; message?: string; devOtp?: string | null; error?: string; emailSent?: boolean; emailError?: { message?: string; code?: string; statusCode?: number } }> => {
       try {
         const data = await apiRegister({ name, email, password, phone, role, companyName, proofDoc });
         if (data.token) {
@@ -133,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             requiresVerification: Boolean(data.requiresVerification),
             message: data.message,
             devOtp: data.devOtp ?? null,
+            emailSent: data.emailSent,
+            emailError: data.emailError,
           };
         }
         return { ok: false, error: data.message || 'Registration failed' };

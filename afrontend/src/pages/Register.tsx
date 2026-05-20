@@ -108,7 +108,11 @@ export default function Register() {
       if (result.ok && result.pending) {
         toast({
           title: 'Registration submitted',
-          description: result.message || 'Check your email for a verification code.',
+          description:
+            result.emailSent === false
+              ? result.emailError?.message || result.message || 'The account was saved, but email delivery failed.'
+              : result.message || 'Check your email for a verification code.',
+          variant: result.emailSent === false && !result.devOtp ? 'destructive' : undefined,
         });
         if (result.devOtp) {
           toast({
@@ -187,8 +191,9 @@ export default function Register() {
       toast({
         title: 'Code resent',
         description: res?.emailSent === false
-          ? 'Email delivery failed. Use the code shown below.'
-          : 'Please check your email for the verification code.',
+          ? res?.emailError?.message || res?.message || 'Email delivery failed. Use the code shown below.'
+          : res?.message || 'Please check your email for the verification code.',
+        variant: res?.emailSent === false && !(res as any)?.devOtp ? 'destructive' : undefined,
       });
       if ((res as any)?.devOtp) {
         toast({

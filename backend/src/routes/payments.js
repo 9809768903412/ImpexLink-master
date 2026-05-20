@@ -95,6 +95,7 @@ function mapPayment(payment) {
     clientName: payment.client?.clientName || null,
     clientOrderId: payment.clientOrderId?.toString() || null,
     clientOrderNumber: payment.clientOrder?.orderNumber || null,
+    proofUrl: payment.clientOrder?.paymentProofUrl || null,
     supplierId: payment.supplierId?.toString() || null,
     supplierName: payment.supplier?.supplierName || null,
     supplierOrderId: payment.supplierOrderId?.toString() || null,

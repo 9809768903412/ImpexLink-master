@@ -88,6 +88,7 @@ export default function LogisticsPage() {
   const [receiverAddress, setReceiverAddress] = useState('');
   const [receiverContactNumber, setReceiverContactNumber] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState('');
+  const [deliveryEta, setDeliveryEta] = useState('');
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [isRejectReturnOpen, setIsRejectReturnOpen] = useState(false);
   const [returnRejectReason, setReturnRejectReason] = useState('');
@@ -185,10 +186,11 @@ export default function LogisticsPage() {
   const handleUpdateStatus = async (
     delId: string,
     newStatus: DeliveryStatus,
-    meta?: { receivedBy?: string; notes?: string }
+    meta?: { receivedBy?: string; notes?: string; eta?: string }
   ) => {
     const receivedByValue = meta?.receivedBy ?? receivedBy;
     const notesValue = meta?.notes ?? deliveryNotes;
+    const etaValue = meta?.eta ?? deliveryEta;
     if (newStatus === 'delivered' && !receivedByValue.trim()) {
       toast({
         title: 'Missing receiver',
@@ -201,6 +203,14 @@ export default function LogisticsPage() {
       toast({
         title: 'Missing notes',
         description: 'Please provide delivery notes before continuing.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (newStatus === 'delayed' && !etaValue) {
+      toast({
+        title: 'Missing updated ETA',
+        description: 'Please enter the new expected delivery time before reporting a delay.',
         variant: 'destructive',
       });
       return;
@@ -229,6 +239,7 @@ export default function LogisticsPage() {
         }
         if (newStatus === 'delayed') {
           updates.notes = notesValue;
+          updates.eta = new Date(etaValue).toISOString();
         }
         if (newStatus === 'return-rejected') {
           updates.returnRejectionReason = returnRejectReason;
@@ -354,6 +365,7 @@ export default function LogisticsPage() {
   const handleProcessReturn = (delivery: Delivery) => {
     setSelectedDelivery(delivery);
     setDeliveryNotes(delivery.notes || '');
+    setDeliveryEta(delivery.eta ? new Date(delivery.eta).toISOString().slice(0, 16) : '');
     setIsReturnOpen(true);
   };
 
@@ -363,6 +375,7 @@ export default function LogisticsPage() {
     setReceiverAddress(delivery.receiverAddress || '');
     setReceiverContactNumber(delivery.receiverContactNumber || '');
     setDeliveryNotes(delivery.notes || '');
+    setDeliveryEta(delivery.eta ? new Date(delivery.eta).toISOString().slice(0, 16) : '');
   };
 
   const handleRejectReturn = (delivery: Delivery) => {
@@ -734,6 +747,14 @@ export default function LogisticsPage() {
                     value={deliveryNotes}
                     onChange={(e) => setDeliveryNotes(e.target.value)}
                   />
+                  <div>
+                    <Label>Updated ETA</Label>
+                    <Input
+                      type="datetime-local"
+                      value={deliveryEta}
+                      onChange={(e) => setDeliveryEta(e.target.value)}
+                    />
+                  </div>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" asChild>
                       <label htmlFor="detail-pod-upload" className="cursor-pointer">

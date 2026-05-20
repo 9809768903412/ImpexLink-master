@@ -523,14 +523,27 @@ router.post('/resend-verification', async (req, res, next) => {
       });
       let emailSent = true;
       let devOtp = null;
+      let emailError = null;
       try {
         await sendVerificationEmail(email, verificationCode);
       } catch (err) {
         emailSent = false;
+        emailError = sanitizeEmailError(err);
         devOtp = canUseOtpFallback() ? verificationCode : null;
         console.error('Verification email failed:', err.message || err);
       }
-      return res.json({ ok: true, emailSent, devOtp });
+      return res.json({
+        ok: true,
+        emailSent,
+        devOtp,
+        emailDiagnostics: emailSent ? undefined : getEmailDiagnostics(),
+        emailError: emailSent ? undefined : emailError,
+        message: emailSent
+          ? 'Please check your email for the verification code.'
+          : devOtp
+            ? 'Email delivery failed. Use the verification code shown below.'
+            : 'Verification code was regenerated, but email delivery failed. Ask an admin to check /api/test-email/diagnostics.',
+      });
     }
 
     const pending = await prisma.pendingRegistration.findUnique({ where: { email } });
@@ -544,14 +557,27 @@ router.post('/resend-verification', async (req, res, next) => {
     });
     let emailSent = true;
     let devOtp = null;
+    let emailError = null;
     try {
       await sendVerificationEmail(email, verificationCode);
     } catch (err) {
       emailSent = false;
+      emailError = sanitizeEmailError(err);
       devOtp = canUseOtpFallback() ? verificationCode : null;
       console.error('Verification email failed:', err.message || err);
     }
-    return res.json({ ok: true, emailSent, devOtp });
+    return res.json({
+      ok: true,
+      emailSent,
+      devOtp,
+      emailDiagnostics: emailSent ? undefined : getEmailDiagnostics(),
+      emailError: emailSent ? undefined : emailError,
+      message: emailSent
+        ? 'Please check your email for the verification code.'
+        : devOtp
+          ? 'Email delivery failed. Use the verification code shown below.'
+          : 'Verification code was regenerated, but email delivery failed. Ask an admin to check /api/test-email/diagnostics.',
+    });
   } catch (err) {
     return next(err);
   }

@@ -27,13 +27,14 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { CreditCard, Search } from 'lucide-react';
+import { CreditCard, Search, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/api/client';
 import type { Order, PaymentTransaction } from '@/types';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { toast } from '@/hooks/use-toast';
 import { formatPesoAmount } from '@/lib/currency';
+import { toPublicFileUrl } from '@/lib/files';
 
 export default function ClientPaymentHistoryPage() {
   const { user } = useAuth();
@@ -41,6 +42,7 @@ export default function ClientPaymentHistoryPage() {
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [form, setForm] = useState({
     clientOrderId: '',
     method: 'CHEQUE',
@@ -78,26 +80,38 @@ export default function ClientPaymentHistoryPage() {
   );
 
   const submitPayment = async () => {
+    if (!form.clientOrderId) {
+      toast({ title: 'Order required', description: 'Choose the order this payment belongs to.', variant: 'destructive' });
+      return;
+    }
     if (!form.amount || Number(form.amount) <= 0) {
       toast({ title: 'Amount required', description: 'Enter the amount you paid.', variant: 'destructive' });
       return;
     }
+    if (!proofFile && !form.referenceNumber.trim()) {
+      toast({ title: 'Proof or reference required', description: 'Upload a proof file or enter a cheque/deposit reference.', variant: 'destructive' });
+      return;
+    }
     try {
-      await apiClient.post('/payments', {
-        direction: 'CLIENT_TO_OFFICE',
-        method: form.method,
-        status: 'PENDING',
-        amount: Number(form.amount),
-        creditDays: 30,
-        clientOrderId: form.clientOrderId || undefined,
-        referenceNumber: form.referenceNumber || undefined,
-        notes: form.notes || undefined,
+      const formData = new FormData();
+      formData.append('paymentMethod', form.method);
+      formData.append('amount', String(Number(form.amount)));
+      if (form.referenceNumber.trim()) formData.append('referenceNumber', form.referenceNumber.trim());
+      if (form.notes.trim()) formData.append('notes', form.notes.trim());
+      if (proofFile) formData.append('proof', proofFile);
+      await apiClient.post(`/orders/${form.clientOrderId}/payment-proof`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast({ title: 'Payment submitted', description: 'Office will verify the payment record.' });
       setOpen(false);
+      setProofFile(null);
       setForm({ clientOrderId: '', method: 'CHEQUE', amount: '', referenceNumber: '', notes: '' });
-      const response = await apiClient.get('/payments');
-      setPayments(response.data?.data || response.data || []);
+      const [paymentResponse, orderResponse] = await Promise.all([
+        apiClient.get('/payments'),
+        apiClient.get('/orders'),
+      ]);
+      setPayments(paymentResponse.data?.data || paymentResponse.data || []);
+      setOrders(orderResponse.data?.data || orderResponse.data || []);
     } catch (error: any) {
       toast({
         title: 'Unable to submit payment',
@@ -189,18 +203,28 @@ export default function ClientPaymentHistoryPage() {
                 <TableHead>Reference</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Proof</TableHead>
                 <TableHead>Due</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {payments.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No submitted payment records yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No submitted payment records yet.</TableCell></TableRow>
               ) : payments.map((payment) => (
                 <TableRow key={payment.id}>
                   <TableCell>{payment.referenceNumber || payment.clientOrderNumber || '-'}</TableCell>
                   <TableCell>{payment.method.replace(/-/g, ' ')}</TableCell>
                   <TableCell><Badge>{payment.status}</Badge></TableCell>
+                  <TableCell>
+                    {payment.proofUrl ? (
+                      <a className="text-sm font-medium text-primary hover:underline" href={toPublicFileUrl(payment.proofUrl)} target="_blank" rel="noreferrer">
+                        View
+                      </a>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                   <TableCell>{payment.dueDate || '-'}</TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
                 </TableRow>
@@ -244,6 +268,21 @@ export default function ClientPaymentHistoryPage() {
             <div>
               <Label>Reference Number</Label>
               <Input value={form.referenceNumber} onChange={(event) => setForm((prev) => ({ ...prev, referenceNumber: event.target.value }))} />
+            </div>
+            <div>
+              <Label>Payment Proof</Label>
+              <div className="mt-1 rounded-md border border-dashed p-3">
+                <label className="flex cursor-pointer items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Upload size={16} />
+                  <span>{proofFile ? proofFile.name : 'Upload cheque/deposit proof'}</span>
+                  <Input
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg"
+                    className="hidden"
+                    onChange={(event) => setProofFile(event.target.files?.[0] || null)}
+                  />
+                </label>
+              </div>
             </div>
             <div>
               <Label>Notes</Label>

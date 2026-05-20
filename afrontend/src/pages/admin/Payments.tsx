@@ -34,6 +34,7 @@ import { toast } from '@/hooks/use-toast';
 import type { Order, PaymentTransaction, PurchaseOrder, Supplier } from '@/types';
 import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
+import { toPublicFileUrl } from '@/lib/files';
 
 const statusClass: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -195,6 +196,7 @@ export default function PaymentsPage() {
                 <TableHead>Reference</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead>Due</TableHead>
+                <TableHead>Proof</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -202,7 +204,7 @@ export default function PaymentsPage() {
             </TableHeader>
             <TableBody>
               {paged.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
               ) : paged.map((payment) => (
                 <TableRow key={payment.id}>
                   <TableCell>
@@ -212,6 +214,15 @@ export default function PaymentsPage() {
                   <TableCell>{payment.referenceNumber || payment.clientOrderNumber || payment.supplierPoNumber || '-'}</TableCell>
                   <TableCell>{methodLabel(payment.method)}</TableCell>
                   <TableCell>{payment.dueDate ? format(new Date(payment.dueDate), 'MMM dd, yyyy') : '-'}</TableCell>
+                  <TableCell>
+                    {payment.proofUrl ? (
+                      <a className="text-sm font-medium text-primary hover:underline" href={toPublicFileUrl(payment.proofUrl)} target="_blank" rel="noreferrer">
+                        View proof
+                      </a>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                   <TableCell><Badge className={statusClass[payment.status] || statusClass.pending}>{payment.status}</Badge></TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
                   <TableCell className="text-right">

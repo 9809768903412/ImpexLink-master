@@ -72,7 +72,7 @@ export default function MyOrdersPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<'genuine' | 'fraud' | null>(null);
+  const [verificationResult, setVerificationResult] = useState<'genuine' | 'fraud' | 'pending' | null>(null);
   const [poMatchSource, setPoMatchSource] = useState<'ocr' | 'typed-code' | 'test' | 'none' | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [poCodeInput, setPoCodeInput] = useState('');
@@ -234,7 +234,7 @@ export default function MyOrdersPage() {
   };
 
   const handleUploadPayment = () => {
-    setPoCodeInput(selectedOrder?.orderNumber || '');
+    setPoCodeInput('');
     setSelectedFileName('');
     setUploadError('');
     setVerificationResult(null);
@@ -249,20 +249,11 @@ export default function MyOrdersPage() {
     setUploadError('');
 
     try {
-      if (!poCodeInput.trim()) {
-        setUploadError('Please enter the purchase order code.');
-        toast({
-          title: 'PO code required',
-          description: 'Enter the purchase order code so we can match it to your order.',
-          variant: 'destructive',
-        });
-        return;
-      }
       if (!file && !useTestVerification) {
-        setUploadError('Please choose a purchase order file.');
+        setUploadError('Please choose a payment or purchase order proof file.');
         toast({
           title: 'No file selected',
-          description: 'Please choose a purchase order file.',
+          description: 'Please choose a cheque, auto-deposit, or PO proof file.',
           variant: 'destructive',
         });
         return;
@@ -271,7 +262,9 @@ export default function MyOrdersPage() {
       if (file) {
         formData.append('proof', file);
       }
-      formData.append('poCode', poCodeInput.trim());
+      if (poCodeInput.trim()) {
+        formData.append('poCode', poCodeInput.trim());
+      }
       const res = await apiClient.post(`/orders/${selectedOrder.id}/payment-proof`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -294,7 +287,7 @@ export default function MyOrdersPage() {
         chequeImage: res.data?.paymentProofUrl || selectedOrder.chequeImage,
         poDocumentUrl: res.data?.poDocumentUrl || res.data?.paymentProofUrl || selectedOrder.poDocumentUrl,
       } as Order;
-      setVerificationResult(poMatchStatus === 'genuine' ? 'genuine' : 'fraud');
+      setVerificationResult(poMatchStatus === 'genuine' ? 'genuine' : poMatchStatus === 'fraud' ? 'fraud' : 'pending');
       const matchSource = res.data?.poMatch?.matchSource;
       setPoMatchSource(matchSource || (poMatchStatus === 'genuine' ? 'typed-code' : 'none'));
       setSelectedOrder(updatedOrder);
@@ -306,13 +299,20 @@ export default function MyOrdersPage() {
         )
       );
       toast({
-        title: poMatchStatus === 'genuine' ? 'Purchase Order Matched' : 'Purchase Order Mismatch',
+        title:
+          poMatchStatus === 'genuine'
+            ? 'Purchase Order Matched'
+            : poMatchStatus === 'fraud'
+            ? 'Purchase Order Mismatch'
+            : 'Payment Proof Submitted',
         description:
           poMatchStatus === 'genuine'
             ? matchSource === 'ocr'
               ? 'OCR found this order code. Admin approval is still required.'
               : 'Your purchase order matches this order and is waiting for admin approval.'
-            : 'The uploaded purchase order code does not match this order yet.',
+            : poMatchStatus === 'fraud'
+            ? 'The uploaded purchase order code does not match this order yet.'
+            : 'Office will review this payment proof before updating the payment status.',
       });
       refreshOrders();
     } catch (err) {
@@ -873,7 +873,7 @@ export default function MyOrdersPage() {
                       {selectedOrder.paymentStatus === 'pending' && selectedOrder.status !== 'cancelled' && (
                         <Button onClick={handleUploadPayment} className="w-full gap-2">
                           <Upload size={18} />
-                          Upload Purchase Order
+                          Upload Payment / PO Proof
                         </Button>
                       )}
                     </>
@@ -927,10 +927,10 @@ export default function MyOrdersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Upload size={20} />
-              Upload Purchase Order
+              Upload Payment / PO Proof
             </DialogTitle>
             <DialogDescription>
-              OCR checks uploaded PO images first; the typed PO code is used as fallback.
+              Upload cheque, auto-deposit, or purchase order proof. PO codes are matched when provided.
             </DialogDescription>
           </DialogHeader>
 
@@ -956,12 +956,12 @@ export default function MyOrdersPage() {
                         if (uploadError) setUploadError('');
                       }}
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      placeholder="Enter the PO code from the uploaded file"
+                      placeholder="Optional PO/order code from the uploaded file"
                     />
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Upload a PO image for OCR match. If OCR cannot read it, the typed PO code below is checked instead.
+                  Upload a payment or PO file for office review. If it contains an order code, OCR will try to match it.
                 </p>
                 <label className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-3">
                   <input
@@ -989,7 +989,7 @@ export default function MyOrdersPage() {
                   }}
                 />
                 <Button onClick={() => (useTestVerification ? simulateAIVerification() : fileInputRef.current?.click())}>
-                  Select PO File
+                  Select Proof File
                 </Button>
                 {selectedFileName && (
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -1014,28 +1014,40 @@ export default function MyOrdersPage() {
               <div
                 className={cn(
                   'p-6 rounded-lg text-center',
-                  verificationResult === 'genuine' ? 'bg-success/10' : 'bg-destructive/10'
+                  verificationResult === 'genuine'
+                    ? 'bg-success/10'
+                    : verificationResult === 'fraud'
+                    ? 'bg-destructive/10'
+                    : 'bg-muted'
                 )}
               >
                 <div
                   className={cn(
                     'h-16 w-16 rounded-full mx-auto mb-4 flex items-center justify-center',
-                    verificationResult === 'genuine' ? 'bg-success' : 'bg-destructive'
+                    verificationResult === 'genuine'
+                      ? 'bg-success'
+                      : verificationResult === 'fraud'
+                      ? 'bg-destructive'
+                      : 'bg-primary'
                   )}
                 >
                   {verificationResult === 'genuine' ? (
                     <CheckCircle size={32} className="text-white" />
+                  ) : verificationResult === 'pending' ? (
+                    <Upload size={32} className="text-white" />
                   ) : (
                     <span className="text-3xl text-white">!</span>
                   )}
                 </div>
-                <p className={cn('text-lg font-bold', verificationResult === 'genuine' ? 'text-success' : 'text-destructive')}>
+                <p className={cn('text-lg font-bold', verificationResult === 'genuine' ? 'text-success' : verificationResult === 'fraud' ? 'text-destructive' : 'text-foreground')}>
                   {verificationResult === 'genuine'
                     ? poMatchSource === 'ocr'
                       ? 'OCR Match'
                       : poMatchSource === 'typed-code'
                       ? 'Typed-Code Match'
                       : 'PO Match'
+                    : verificationResult === 'pending'
+                    ? 'Submitted for Review'
                     : 'Mismatch'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
@@ -1043,6 +1055,8 @@ export default function MyOrdersPage() {
                     ? poMatchSource === 'ocr'
                       ? 'The expected order code was found in the uploaded image.'
                       : 'The typed PO code matched the expected order code.'
+                    : verificationResult === 'pending'
+                    ? 'Office will review this payment proof before marking the payment received or paid.'
                     : 'OCR and typed-code checks did not match this order. Please review the PO file/code.'}
                 </p>
               </div>

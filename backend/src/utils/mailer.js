@@ -10,6 +10,14 @@ function cleanEnvValue(value) {
   return String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
 }
 
+function firstEnv(...keys) {
+  for (const key of keys) {
+    const value = cleanEnvValue(process.env[key]);
+    if (value) return value;
+  }
+  return '';
+}
+
 function sanitizeEmailError(error) {
   if (!error) return { message: 'Unknown email error' };
   if (error instanceof Error) {
@@ -44,7 +52,12 @@ function hasEmailDeliveryConfig() {
 function getEmailProvider() {
   const configured = cleanEnvValue(process.env.EMAIL_PROVIDER || process.env.MAIL_PROVIDER).toLowerCase();
   if (configured) return configured;
-  if (cleanEnvValue(process.env.SMTP_HOST)) return 'smtp';
+  if (
+    firstEnv('SMTP_HOST', 'MAIL_HOST', 'EMAIL_HOST') ||
+    firstEnv('SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER', 'EMAIL_USERNAME')
+  ) {
+    return 'smtp';
+  }
   return 'resend';
 }
 
@@ -60,23 +73,35 @@ function getResendClient() {
 }
 
 function getFromAddress() {
-  return cleanEnvValue(
-    process.env.EMAIL_FROM ||
-      process.env.MAIL_FROM ||
-      process.env.SMTP_FROM ||
-      process.env.RESEND_FROM ||
-      process.env.SMTP_USER
+  return firstEnv(
+    'EMAIL_FROM',
+    'MAIL_FROM',
+    'SMTP_FROM',
+    'RESEND_FROM',
+    'SMTP_USER',
+    'SMTP_USERNAME',
+    'MAIL_USER',
+    'MAIL_USERNAME',
+    'EMAIL_USER',
+    'EMAIL_USERNAME'
   );
 }
 
 function getSmtpConfig() {
-  const port = Number(cleanEnvValue(process.env.SMTP_PORT) || 465);
+  const port = Number(firstEnv('SMTP_PORT', 'MAIL_PORT', 'EMAIL_PORT') || 465);
+  const encryption = firstEnv('SMTP_SECURE', 'MAIL_SECURE', 'EMAIL_SECURE', 'MAIL_ENCRYPTION', 'SMTP_ENCRYPTION').toLowerCase();
+  const secure =
+    ['false', '0', 'no', 'none', 'starttls', 'tls'].includes(encryption)
+      ? false
+      : ['true', '1', 'yes', 'ssl', 'smtps'].includes(encryption)
+      ? true
+      : port === 465;
   return {
-    host: cleanEnvValue(process.env.SMTP_HOST || 'smtp.hostinger.com'),
+    host: firstEnv('SMTP_HOST', 'MAIL_HOST', 'EMAIL_HOST') || 'smtp.hostinger.com',
     port,
-    secure: cleanEnvValue(process.env.SMTP_SECURE).toLowerCase() === 'false' ? false : port === 465,
-    user: cleanEnvValue(process.env.SMTP_USER),
-    pass: cleanEnvValue(process.env.SMTP_PASS || process.env.SMTP_PASSWORD),
+    secure,
+    user: firstEnv('SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER', 'EMAIL_USERNAME'),
+    pass: firstEnv('SMTP_PASS', 'SMTP_PASSWORD', 'MAIL_PASS', 'MAIL_PASSWORD', 'EMAIL_PASS', 'EMAIL_PASSWORD'),
   };
 }
 
@@ -96,6 +121,7 @@ function getSmtpTransporter() {
     host: config.host,
     port: config.port,
     secure: config.secure,
+    requireTLS: !config.secure && config.port === 587,
     auth: {
       user: config.user,
       pass: config.pass,
@@ -136,7 +162,14 @@ async function sendEmail({ to, subject, text, html }) {
     }
     if (provider === 'smtp') {
       const transporter = getSmtpTransporter();
-      const result = await transporter.sendMail({ from, to, subject, text, html });
+      const result = await transporter.sendMail({
+        from,
+        to,
+        subject,
+        text,
+        html,
+        envelope: smtpConfig.user ? { from: smtpConfig.user, to } : undefined,
+      });
       console.log('[mailer] send success', {
         provider,
         to,
@@ -249,6 +282,10 @@ function getEmailDiagnostics() {
     hasFromAddress: Boolean(from),
     from,
     fromDomain: from ? from.replace(/^.*<(.+)>$/, '$1').trim().split('@')[1] || null : null,
+    smtpFromMatchesUser:
+      provider === 'smtp' && from && smtpConfig.user
+        ? from.replace(/^.*<(.+)>$/, '$1').trim().toLowerCase() === smtpConfig.user.toLowerCase()
+        : null,
     nodeEnv: process.env.NODE_ENV || 'development',
     requireEmailOtpDelivery: process.env.REQUIRE_EMAIL_OTP_DELIVERY === 'true',
     allowDevOtp: process.env.ALLOW_DEV_OTP || null,

@@ -9,6 +9,8 @@ export interface AuthResponse {
   message?: string;
   emailSent?: boolean;
   devOtp?: string | null;
+  emailError?: { message?: string; code?: string; statusCode?: number };
+  emailDiagnostics?: Record<string, unknown>;
 }
 
 export async function login(email: string, password: string) {
@@ -55,7 +57,7 @@ export async function verifyEmail(email: string, otp: string) {
 }
 
 export async function resendVerification(email: string) {
-  const { data } = await apiClient.post<{ ok: boolean }>('/auth/resend-verification', { email });
+  const { data } = await apiClient.post<{ ok: boolean; emailSent?: boolean; devOtp?: string | null; message?: string; emailError?: { message?: string; code?: string; statusCode?: number }; emailDiagnostics?: Record<string, unknown> }>('/auth/resend-verification', { email });
   return data;
 }
 

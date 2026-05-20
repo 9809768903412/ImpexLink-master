@@ -395,6 +395,12 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY', 'DRI
       if (requestedStatus === 'RETURN_PENDING' && !req.body.notes) {
         return res.status(400).json({ error: 'Return reason is required' });
       }
+      if (requestedStatus === 'DELAYED' && !req.body.notes) {
+        return res.status(400).json({ error: 'Delay reason is required' });
+      }
+      if (requestedStatus === 'DELAYED' && !req.body.eta) {
+        return res.status(400).json({ error: 'Updated ETA is required for delayed deliveries' });
+      }
       if (requestedStatus === 'RETURN_REJECTED' && !req.body.returnRejectionReason) {
         return res.status(400).json({ error: 'Return rejection reason is required' });
       }
@@ -481,6 +487,8 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY', 'DRI
         details:
           updatedStatus === 'RETURN_REJECTED'
             ? `Return rejected for ${delivery.drNumber}`
+            : updatedStatus === 'DELAYED'
+            ? `Delivery delayed for ${delivery.drNumber}: ${req.body.notes || 'No reason provided'}`
             : `Updated delivery ${delivery.drNumber}`,
       },
     });
@@ -493,6 +501,10 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY', 'DRI
           const message =
             updatedStatus === 'RETURN_REJECTED'
               ? `Return request rejected for ${delivery.drNumber}. Reason: ${req.body.returnRejectionReason || 'Not provided'}.`
+              : updatedStatus === 'DELAYED'
+              ? `Delivery ${delivery.drNumber} is delayed. Reason: ${req.body.notes || 'Not provided'}. Updated ETA: ${
+                  delivery.eta ? new Date(delivery.eta).toLocaleString('en-PH') : 'To be scheduled'
+                }.`
               : `Delivery ${delivery.drNumber} status is now ${delivery.status.toLowerCase().replace(/_/g, ' ')}.`;
           await prisma.notification.create({
             data: {

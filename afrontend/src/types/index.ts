@@ -339,6 +339,7 @@ export interface PaymentTransaction {
   clientName?: string | null;
   clientOrderId?: string | null;
   clientOrderNumber?: string | null;
+  proofUrl?: string | null;
   supplierId?: string | null;
   supplierName?: string | null;
   supplierOrderId?: string | null;

@@ -46,7 +46,7 @@ interface LiveTrackingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   readOnly?: boolean;
-  onStatusUpdate?: (deliveryId: string, status: DeliveryStatus, meta?: { receivedBy?: string; notes?: string }) => Promise<void> | void;
+  onStatusUpdate?: (deliveryId: string, status: DeliveryStatus, meta?: { receivedBy?: string; notes?: string; eta?: string }) => Promise<void> | void;
   onUploadProof?: (deliveryId: string, file: File) => Promise<void> | void;
 }
 
@@ -60,6 +60,7 @@ export default function LiveTrackingDialog({
 }: LiveTrackingDialogProps) {
   const [receivedBy, setReceivedBy] = useState('');
   const [notes, setNotes] = useState('');
+  const [eta, setEta] = useState('');
   const route = useMemo(() => (delivery ? getMockRoute(delivery) : BASE_ROUTE), [delivery]);
   const marker = route[route.length - 1];
   const receivedByOptions = useMemo(() => {
@@ -80,7 +81,8 @@ export default function LiveTrackingDialog({
   useEffect(() => {
     setReceivedBy(delivery?.receivedBy || '');
     setNotes(delivery?.notes || '');
-  }, [delivery?.id, delivery?.receivedBy, delivery?.notes]);
+    setEta(delivery?.eta ? new Date(delivery.eta).toISOString().slice(0, 16) : '');
+  }, [delivery?.id, delivery?.receivedBy, delivery?.notes, delivery?.eta]);
 
   const handleProofUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -94,6 +96,7 @@ export default function LiveTrackingDialog({
     await onStatusUpdate(delivery.id, status, {
       receivedBy: status === 'delivered' ? receivedBy : undefined,
       notes: notes || undefined,
+      eta: status === 'delayed' ? eta : undefined,
     });
   };
 
@@ -245,6 +248,10 @@ export default function LiveTrackingDialog({
                     <div className="space-y-2">
                       <Label>Driver / Delivery Notes</Label>
                       <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Delay reason, arrival note, or POD remarks" rows={3} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Updated ETA</Label>
+                      <Input type="datetime-local" value={eta} onChange={(e) => setEta(e.target.value)} />
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 justify-end">
