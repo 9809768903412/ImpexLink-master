@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { MessageSquare, Plus, Search, Send, UserRound } from 'lucide-react';
+import { Check, MessageSquare, Plus, Search, Send, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,13 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -52,6 +45,7 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
   const [draft, setDraft] = useState('');
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [recipientId, setRecipientId] = useState('');
+  const [recipientSearch, setRecipientSearch] = useState('');
   const [loading, setLoading] = useState(false);
 
   const selectedThread = threads.find((thread) => thread.id === selectedThreadId) || null;
@@ -64,6 +58,21 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
         .some((value) => String(value).toLowerCase().includes(term))
     );
   }, [threads, search]);
+  const filteredRecipients = useMemo(() => {
+    const term = recipientSearch.trim().toLowerCase();
+    const items = term
+      ? recipients.filter((recipient) =>
+          [recipient.name, recipient.email, roleLabel(recipient)]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(term))
+        )
+      : recipients;
+    return {
+      clients: items.filter((recipient) => roleLabel(recipient).toLowerCase() === 'client'),
+      staff: items.filter((recipient) => roleLabel(recipient).toLowerCase() !== 'client'),
+    };
+  }, [recipients, recipientSearch]);
+  const selectedRecipient = recipients.find((recipient) => recipient.id === recipientId) || null;
 
   const fetchThreads = async () => {
     const response = await apiClient.get('/messages/threads', {
@@ -126,6 +135,7 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
       setSelectedThreadId(thread.id);
       setNewMessageOpen(false);
       setRecipientId('');
+      setRecipientSearch('');
     } catch (error: any) {
       toast({
         title: 'Unable to start chat',
@@ -170,7 +180,13 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
               : 'Coordinate with clients, sales, warehouse, drivers, and office staff.'}
           </p>
         </div>
-        <Button onClick={() => setNewMessageOpen(true)} className="gap-2">
+        <Button
+          onClick={() => {
+            setNewMessageOpen(true);
+            setRecipientSearch('');
+          }}
+          className="gap-2"
+        >
           <Plus size={16} />
           New Message
         </Button>
@@ -297,24 +313,79 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
         </div>
       </Card>
 
-      <Dialog open={newMessageOpen} onOpenChange={setNewMessageOpen}>
-        <DialogContent>
+      <Dialog
+        open={newMessageOpen}
+        onOpenChange={(open) => {
+          setNewMessageOpen(open);
+          if (!open) setRecipientSearch('');
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>New message</DialogTitle>
-            <DialogDescription>Select the person or office account you need to contact.</DialogDescription>
+            <DialogDescription>Choose a contact to start a conversation.</DialogDescription>
           </DialogHeader>
-          <Select value={recipientId} onValueChange={setRecipientId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select recipient" />
-            </SelectTrigger>
-            <SelectContent>
-              {recipients.map((recipient) => (
-                <SelectItem key={recipient.id} value={recipient.id}>
-                  {recipient.name} - {roleLabel(recipient)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={recipientSearch}
+                onChange={(event) => setRecipientSearch(event.target.value)}
+                placeholder="Search name, role, or email"
+                className="pl-9"
+              />
+            </div>
+
+            <div className="max-h-[340px] overflow-y-auto rounded-md border bg-card">
+              {filteredRecipients.staff.length === 0 && filteredRecipients.clients.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">No contacts found.</div>
+              ) : (
+                [
+                  { title: 'Impex team', items: filteredRecipients.staff },
+                  { title: 'Clients', items: filteredRecipients.clients },
+                ].map((group) =>
+                  group.items.length ? (
+                    <div key={group.title} className="border-b last:border-b-0">
+                      <div className="bg-muted/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {group.title}
+                      </div>
+                      <div className="divide-y">
+                        {group.items.map((recipient) => {
+                          const selected = recipient.id === recipientId;
+                          return (
+                            <button
+                              key={recipient.id}
+                              type="button"
+                              onClick={() => setRecipientId(recipient.id)}
+                              className={cn(
+                                'flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50',
+                                selected && 'bg-primary/10'
+                              )}
+                            >
+                              <Avatar className="h-9 w-9">
+                                <AvatarFallback>{initials(recipient.name || 'IM')}</AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{recipient.name}</p>
+                                <p className="truncate text-xs text-muted-foreground">{roleLabel(recipient)}</p>
+                              </div>
+                              {selected ? <Check className="h-4 w-4 text-primary" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null
+                )
+              )}
+            </div>
+
+            {selectedRecipient ? (
+              <p className="text-xs text-muted-foreground">
+                Starting chat with <span className="font-medium text-foreground">{selectedRecipient.name}</span>.
+              </p>
+            ) : null}
+          </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setNewMessageOpen(false)}>
               Cancel
