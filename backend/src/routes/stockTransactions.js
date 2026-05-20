@@ -8,6 +8,9 @@ router.use(requireAuth);
 
 router.get('/', async (req, res, next) => {
   try {
+    const roleList = Array.isArray(req.user?.roles)
+      ? req.user.roles.map((role) => String(role).toUpperCase())
+      : [String(req.user?.role || '').toUpperCase()];
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
     const productId = req.query.productId ? Number(req.query.productId) : null;
@@ -22,6 +25,9 @@ router.get('/', async (req, res, next) => {
             }
           : {},
         productId ? { productId } : {},
+        roleList.includes('PAINT_CHEMIST')
+          ? { product: { category: { categoryName: 'Paint & Consumables' } } }
+          : {},
       ],
     };
     const [txns, total] = await Promise.all([

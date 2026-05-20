@@ -55,7 +55,16 @@ import {
 } from "@/lib/roles";
 
 const queryClient = new QueryClient();
-const ADMIN_NON_DELIVERY_ROLES = ADMIN_AREA_ROLES.filter((role) => !['delivery_guy', 'driver', 'receiver'].includes(role));
+const ADMIN_NON_DRIVER_ROLES = ADMIN_AREA_ROLES.filter((role) => !['driver'].includes(role));
+const ADMIN_DASHBOARD_ROLES = ADMIN_AREA_ROLES.filter((role) => !['warehouse_staff', 'delivery_guy', 'driver', 'receiver'].includes(role));
+
+function defaultPathForRoles(roleList: string[]) {
+  if (roleList.includes('client')) return '/client';
+  if (roleList.includes('driver')) return '/logistics';
+  if (roleList.includes('warehouse_staff')) return '/admin/inventory';
+  if (roleList.includes('paint_chemist')) return '/admin/inventory';
+  return '/admin';
+}
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { isAuthenticated, user, isLoading } = useAuth();
@@ -63,7 +72,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
-  const logisticsOnly = roleList.some((role) => ['delivery_guy', 'driver', 'receiver'].includes(role));
+  const logisticsOnly = roleList.some((role) => ['driver'].includes(role));
   if (logisticsOnly && location.pathname.startsWith('/admin') && location.pathname !== '/admin/settings') {
     return <Navigate to="/logistics" replace />;
   }
@@ -71,7 +80,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
     const allowed = roleList.some((r) => allowedRoles.includes(r));
     if (!allowed) {
       if (logisticsOnly) return <Navigate to="/logistics" replace />;
-      return <Navigate to={roleList.includes('client') ? '/client' : '/admin'} replace />;
+      return <Navigate to={defaultPathForRoles(roleList)} replace />;
     }
   }
   return <>{children}</>;
@@ -82,8 +91,8 @@ function RoleBasedRedirect() {
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
-  if (roleList.some((role) => ['delivery_guy', 'driver', 'receiver'].includes(role))) return <Navigate to="/logistics" replace />;
-  return <Navigate to={roleList.includes('client') ? '/client' : '/admin'} replace />;
+  if (roleList.some((role) => ['driver'].includes(role))) return <Navigate to="/logistics" replace />;
+  return <Navigate to={defaultPathForRoles(roleList)} replace />;
 }
 
 function AppRoutes() {
@@ -94,25 +103,25 @@ function AppRoutes() {
       <Route path="/" element={<RoleBasedRedirect />} />
       
       {/* Admin Routes */}
-      <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES}><AdminLayout><AdminDashboard /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/inventory" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewInventory)}><AdminLayout><InventoryPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/projects" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewProjects)}><AdminLayout><ProjectsPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/requests" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewMaterialRequests)}><AdminLayout><MaterialRequestsPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewClientOrders)}><AdminLayout><ClientOrdersPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/purchase-orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewPurchaseOrders)}><AdminLayout><PurchaseOrdersPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/suppliers" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewSuppliers)}><AdminLayout><SuppliersPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/logistics" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewLogistics)}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/payments" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewPayments)}><AdminLayout><PaymentsPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewReports)}><AdminLayout><ReportsPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/ai-insights" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewAIInsights)}><AdminLayout><AIInsightsPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewAuditLogs)}><AdminLayout><AuditLogsPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/proofs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewProofCenter)}><AdminLayout><ProofCenterPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/messages" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewMessages)}><AdminLayout><AdminMessagesPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/notifications" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewNotifications)}><AdminLayout><AdminNotificationsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute allowedRoles={ADMIN_DASHBOARD_ROLES}><AdminLayout><AdminDashboard /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/inventory" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewInventory)}><AdminLayout><InventoryPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/projects" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewProjects)}><AdminLayout><ProjectsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/requests" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewMaterialRequests)}><AdminLayout><MaterialRequestsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewClientOrders)}><AdminLayout><ClientOrdersPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/purchase-orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewPurchaseOrders)}><AdminLayout><PurchaseOrdersPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/suppliers" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewSuppliers)}><AdminLayout><SuppliersPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/logistics" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewLogistics)}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/payments" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewPayments)}><AdminLayout><PaymentsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewReports)}><AdminLayout><ReportsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/ai-insights" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewAIInsights)}><AdminLayout><AIInsightsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewAuditLogs)}><AdminLayout><AuditLogsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/proofs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewProofCenter)}><AdminLayout><ProofCenterPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/messages" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewMessages)}><AdminLayout><AdminMessagesPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/notifications" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewNotifications)}><AdminLayout><AdminNotificationsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={ADMIN_AREA_ROLES.filter(canAccessSettings)}><AdminLayout><SettingsPage /></AdminLayout></ProtectedRoute>} />
 
       {/* Delivery Guy Route */}
-      <Route path="/logistics" element={<ProtectedRoute allowedRoles={['delivery_guy', 'driver', 'receiver']}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/logistics" element={<ProtectedRoute allowedRoles={['driver']}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
       
       {/* Client Routes */}
       <Route path="/client" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientDashboard /></ClientLayout></ProtectedRoute>} />

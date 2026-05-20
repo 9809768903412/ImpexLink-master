@@ -66,7 +66,7 @@ interface AdminLayoutProps {
   children: ReactNode;
 }
 
-const dashboardRoles = ADMIN_AREA_ROLES.filter((role) => !['delivery_guy', 'driver', 'receiver'].includes(role));
+const dashboardRoles = ADMIN_AREA_ROLES.filter((role) => !['warehouse_staff', 'delivery_guy', 'driver', 'receiver'].includes(role));
 const navItems = [
   { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true, roles: dashboardRoles },
   { path: '/admin/inventory', icon: Package, label: 'Inventory', roles: ADMIN_AREA_ROLES.filter(canViewInventory) },

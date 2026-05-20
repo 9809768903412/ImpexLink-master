@@ -125,7 +125,7 @@ async function notifyClientOrderDelay(orderIds, reason, eta, actorId, sourceLabe
   return sent;
 }
 
-router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+router.get('/', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
@@ -270,7 +270,7 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
   }
 });
 
-router.post('/auto', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+router.post('/auto', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const { items } = req.body;
     if (!Array.isArray(items)) return res.status(400).json({ error: 'Items required' });
@@ -403,7 +403,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
   }
 });
 
-router.post('/:id/receive', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+router.post('/:id/receive', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const orderId = Number(req.params.id);
     const receiptItems = Array.isArray(req.body.items) ? req.body.items : [];
@@ -497,7 +497,7 @@ router.post('/:id/receive', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (re
   }
 });
 
-router.post('/:id/delay-impact', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+router.post('/:id/delay-impact', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const orderId = Number(req.params.id);
     const reason = String(req.body.reason || '').trim();

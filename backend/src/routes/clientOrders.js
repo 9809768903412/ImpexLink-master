@@ -117,7 +117,7 @@ function canTransitionOrder(req, currentStatus, requestedStatus) {
 }
 
 async function buildOrderRoleScope(req) {
-  if (hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT') || hasRole(req, 'ENGINEER') || hasRole(req, 'WAREHOUSE_STAFF')) {
+  if (hasRole(req, 'ADMIN')) {
     return {};
   }
 
@@ -323,6 +323,9 @@ router.get('/', async (req, res, next) => {
     const roleList = Array.isArray(req.user?.roles)
       ? req.user.roles.map((r) => String(r).toUpperCase())
       : [String(req.user?.role || '').toUpperCase()];
+    if (!roleList.includes('ADMIN') && !roleList.includes('CLIENT')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const clientId = req.query.clientId ? Number(req.query.clientId) : null;
     const clientName = req.query.clientName ? String(req.query.clientName) : '';
     const createdBy = req.query.createdBy ? Number(req.query.createdBy) : null;
@@ -341,9 +344,9 @@ router.get('/', async (req, res, next) => {
             }
           : {},
         status ? { status } : {},
-        clientId && (roleList.includes('ADMIN') || roleList.includes('PRESIDENT')) ? { clientId } : {},
+        clientId && roleList.includes('ADMIN') ? { clientId } : {},
         clientName ? { client: { clientName: { contains: clientName, mode: 'insensitive' } } } : {},
-        createdBy && (roleList.includes('ADMIN') || roleList.includes('PRESIDENT')) ? { createdBy } : {},
+        createdBy && roleList.includes('ADMIN') ? { createdBy } : {},
       ],
     };
     const sort = parseSort(req.query, ['createdAt', 'total', 'status']);
@@ -375,7 +378,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', requireRole(['ADMIN', 'SALES_AGENT', 'CLIENT']), async (req, res, next) => {
+router.post('/', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
   try {
     const { orderNumber, clientId, projectId, items, subtotal, vat, total, status, paymentStatus, specialInstructions, cancelReason } = req.body;
     if (!orderNumber) return res.status(400).json({ error: 'Order number is required' });
@@ -569,7 +572,7 @@ router.put('/:id/assignment', requireRole(['ADMIN']), async (req, res, next) => 
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIENT']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     if (hasRole(req, 'CLIENT')) {
       const access = await resolveClientAccess(prisma, req.user.userId);

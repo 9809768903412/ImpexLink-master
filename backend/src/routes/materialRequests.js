@@ -7,8 +7,8 @@ const { isPositiveInt, isValidDateString } = require('../utils/validate');
 const router = express.Router();
 router.use(requireAuth);
 
-const DECISION_ROLES = ['ADMIN', 'PRESIDENT'];
-const PROCUREMENT_ROLES = ['ADMIN', 'WAREHOUSE_STAFF'];
+const DECISION_ROLES = ['ADMIN'];
+const PROCUREMENT_ROLES = ['ADMIN'];
 
 function hasRole(req, role) {
   return getRoleList(req.user).includes(String(role).toUpperCase());
@@ -39,7 +39,7 @@ function areAllPaintItems(request) {
 }
 
 async function canAccessProject(req, projectId) {
-  if (hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT')) return true;
+  if (hasRole(req, 'ADMIN')) return true;
   if (!projectId) return false;
   const project = await prisma.project.findUnique({ where: { projectId: Number(projectId) } });
   if (!project) return false;
@@ -53,11 +53,11 @@ async function canAccessProject(req, projectId) {
 }
 
 function canProjectManagerReview(req, request) {
-  return hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT');
+  return hasRole(req, 'ADMIN');
 }
 
 function canPresidentReview(req) {
-  return hasRole(req, 'PRESIDENT') || hasRole(req, 'ADMIN');
+  return hasRole(req, 'ADMIN');
 }
 
 async function getUsersByRoles(roleNames = []) {
@@ -90,13 +90,9 @@ async function notifyUsers(users, notification) {
 }
 
 function getRequestScopeWhere(req) {
-  if (hasRole(req, 'PRESIDENT')) {
-    return {};
-  }
-
   const scopes = [];
 
-  if (hasRole(req, 'ADMIN') || hasRole(req, 'WAREHOUSE_STAFF')) {
+  if (hasRole(req, 'ADMIN')) {
     scopes.push({ status: { in: ['APPROVED', 'FULFILLED'] } });
   }
 
@@ -105,6 +101,10 @@ function getRequestScopeWhere(req) {
   }
 
   if (hasRole(req, 'ENGINEER')) {
+    scopes.push({ requestedBy: req.user.userId });
+  }
+
+  if (hasRole(req, 'PAINT_CHEMIST')) {
     scopes.push({ requestedBy: req.user.userId });
   }
 
@@ -150,17 +150,15 @@ router.get('/', async (req, res, next) => {
   try {
     const roleList = getRoleList(req.user);
     const isClient = roleList.includes('CLIENT');
-    const isPresident = roleList.includes('PRESIDENT');
     const isAdmin = roleList.includes('ADMIN');
     const isProjectManager = roleList.includes('PROJECT_MANAGER');
     const isEngineer = roleList.includes('ENGINEER');
     const isPaintChemist = roleList.includes('PAINT_CHEMIST');
-    const isWarehouse = roleList.includes('WAREHOUSE_STAFF');
 
     if (isClient) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    if (!isPresident && !isAdmin && !isProjectManager && !isEngineer && !isPaintChemist && !isWarehouse) {
+    if (!isAdmin && !isProjectManager && !isEngineer && !isPaintChemist) {
       return res.json([]);
     }
     const pagination = parsePagination(req.query);
@@ -207,7 +205,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', requireRole(['ENGINEER']), async (req, res, next) => {
+router.post('/', requireRole(['ENGINEER', 'PAINT_CHEMIST']), async (req, res, next) => {
   try {
     const { projectId, items, purpose, urgency } = req.body;
     const requestNumber = req.body.requestNumber || `REQ-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -236,6 +234,9 @@ router.post('/', requireRole(['ENGINEER']), async (req, res, next) => {
           });
           if (!product) {
             throw new Error('Invalid product');
+          }
+          if (hasRole(req, 'PAINT_CHEMIST') && product.category?.categoryName !== 'Paint & Consumables') {
+            throw new Error('Paint Chemist requests are limited to paint and consumable items.');
           }
           estCost += Number(product.unitPrice) * Number(item.quantity || 0);
           return {
@@ -338,8 +339,8 @@ router.put('/:id', requireRole([...DECISION_ROLES, ...PROCUREMENT_ROLES]), async
     }
 
     if (isFulfill) {
-      if (!(hasRole(req, 'ADMIN') || hasRole(req, 'WAREHOUSE_STAFF'))) {
-        return res.status(403).json({ error: 'Only Procurement can fulfill approved requests.' });
+      if (!hasRole(req, 'ADMIN')) {
+        return res.status(403).json({ error: 'Only Admin can fulfill approved requests.' });
       }
       if (existing.status !== 'APPROVED') {
         return res.status(400).json({ error: 'Only approved requests can be fulfilled.' });
@@ -411,9 +412,9 @@ router.put('/:id', requireRole([...DECISION_ROLES, ...PROCUREMENT_ROLES]), async
     });
 
     if (isPmApproval) {
-      const presidents = await getUsersByRoles(['PRESIDENT']);
-      await notifyUsers(presidents, {
-        title: 'Material request needs President approval',
+      const admins = await getUsersByRoles(['ADMIN']);
+      await notifyUsers(admins, {
+        title: 'Material request needs Admin approval',
         message: `${request.requestNumber} has Project Manager approval and is waiting for final approval.`,
       });
     }

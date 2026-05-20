@@ -62,7 +62,7 @@ const statusIcons: Record<DeliveryStatus, React.ReactNode> = {
   'return-rejected': <RotateCcw size={16} />,
   returned: <RotateCcw size={16} />,
 };
-const RECEIVER_OPTIONS = ['Jason / Engineers on site', 'Project In-charge', 'Safety Officer'];
+const RECEIVER_OPTIONS = ['Sir Jason', 'Project In-charge', 'Safety Officer', 'Site Engineer'];
 
 // TODO: Replace with real data 
 export default function LogisticsPage() {

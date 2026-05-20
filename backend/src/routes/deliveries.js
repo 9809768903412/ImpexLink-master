@@ -141,7 +141,7 @@ async function validateDeliveryGuyAssignment(assignedDeliveryGuyId) {
 
 async function buildDeliveryScope(req) {
   const roleList = getRoleList(req.user);
-  if (roleList.includes('ADMIN') || roleList.includes('PRESIDENT') || roleList.includes('WAREHOUSE_STAFF')) {
+  if (roleList.includes('ADMIN') || roleList.includes('WAREHOUSE_STAFF')) {
     return {};
   }
 
@@ -162,7 +162,7 @@ async function buildDeliveryScope(req) {
     scopes.push({ clientOrder: { assignedSalesAgentId: req.user.userId } });
   }
 
-  if (roleList.includes('DELIVERY_GUY') || roleList.includes('DRIVER')) {
+  if (roleList.includes('DRIVER')) {
     return {};
   }
 
@@ -218,7 +218,7 @@ function mapDelivery(d) {
   };
 }
 
-router.get('/', async (req, res, next) => {
+router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
@@ -243,7 +243,7 @@ router.get('/', async (req, res, next) => {
             }
           : {},
         status ? { status } : {},
-        clientId && (roleList.includes('ADMIN') || roleList.includes('PRESIDENT') || roleList.includes('WAREHOUSE_STAFF'))
+        clientId && (roleList.includes('ADMIN') || roleList.includes('WAREHOUSE_STAFF'))
           ? { clientOrder: { clientId } }
           : {},
       ],
@@ -349,7 +349,7 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY', 'DRIVER', 'RECEIVER']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
     if (req.body.status) {
@@ -634,7 +634,7 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
 });
 
 
-router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY', 'DRIVER']), uploadProof.single('proof'), async (req, res, next) => {
+router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER']), uploadProof.single('proof'), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
     const existing = await prisma.delivery.findUnique({

@@ -858,37 +858,6 @@ export default function MyOrdersPage() {
                   </div>
                 )}
 
-                {/* Payment Section */}
-                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
-                  {(selectedOrder.paymentStatus === 'verified' || selectedOrder.paymentStatus === 'paid') ? (
-                    <div className="text-sm text-muted-foreground">
-                      Payment completed.
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Payment Status</span>
-                        {getPaymentBadge(selectedOrder.paymentStatus)}
-                      </div>
-                      {selectedOrder.paymentStatus === 'pending' && selectedOrder.status !== 'cancelled' && (
-                        <Button onClick={handleUploadPayment} className="w-full gap-2">
-                          <Upload size={18} />
-                          Upload Payment / PO Proof
-                        </Button>
-                      )}
-                    </>
-                  )}
-                  {(selectedOrder.poMatchStatus || selectedOrder.chequeVerification) === 'genuine' && (
-                    <div className="p-3 bg-success/10 rounded-lg text-sm text-success">
-                      Purchase order matched successfully
-                    </div>
-                  )}
-                  {(selectedOrder.poMatchStatus || selectedOrder.chequeVerification) === 'fraud' && (
-                    <div className="p-3 bg-destructive/10 rounded-lg text-sm text-destructive">
-                      Purchase order code mismatch detected
-                    </div>
-                  )}
-                </div>
               </div>
             </ScrollArea>
           )}

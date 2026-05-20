@@ -35,7 +35,7 @@ const BASE_ROUTE: [number, number][] = [
   [14.5595, 121.0385],
   [14.5638, 121.0482],
 ];
-const RECEIVER_OPTIONS = ['Jason / Engineers on site', 'Project In-charge', 'Safety Officer'];
+const RECEIVER_OPTIONS = ['Sir Jason', 'Project In-charge', 'Safety Officer', 'Site Engineer'];
 
 function getMockRoute(delivery: Delivery): [number, number][] {
   const hash = Number(delivery.id || 0) % 7;
