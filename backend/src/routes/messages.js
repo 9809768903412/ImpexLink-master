@@ -86,6 +86,37 @@ async function ensureThreadAccess(threadId, userId) {
   return Boolean(participant);
 }
 
+async function getClientAssignedEngineerIds(userId) {
+  const client = (await require('../utils/clientVisibility').resolveLinkedClient(prisma, userId))?.client;
+  if (!client?.clientId) return [];
+  const projects = await prisma.project.findMany({
+    where: {
+      clientId: client.clientId,
+      deletedAt: null,
+      assignedPmId: { not: null },
+    },
+    include: {
+      assignedPm: { include: { role: true, userRoles: { include: { role: true } } } },
+    },
+  });
+  return [
+    ...new Set(
+      projects
+        .filter((project) => {
+          const roles = [
+            project.assignedPm?.role?.roleName,
+            ...(project.assignedPm?.userRoles || []).map((entry) => entry.role?.roleName),
+          ]
+            .filter(Boolean)
+            .map((role) => String(role).toUpperCase());
+          return roles.includes('ENGINEER');
+        })
+        .map((project) => project.assignedPmId)
+        .filter(Boolean)
+    ),
+  ];
+}
+
 async function canMessageUser(req, recipientId) {
   if (Number(req.user.userId) === Number(recipientId)) return false;
   const recipient = await prisma.user.findUnique({
@@ -102,9 +133,15 @@ async function canMessageUser(req, recipientId) {
   ].filter(Boolean).map((role) => String(role).toUpperCase());
   const recipientIsAdmin = recipientRoles.some((role) => ADMIN_ROLES.includes(role));
   const recipientIsClient = recipientRoles.includes('CLIENT');
+  const recipientIsStaff = recipientRoles.some((role) => STAFF_ROLES.includes(role));
+  const recipientIsEngineer = recipientRoles.includes('ENGINEER');
 
-  if (currentIsAdmin) return true;
-  if (currentIsClient) return recipientIsAdmin;
+  if (currentIsAdmin) return recipientIsStaff;
+  if (currentIsClient) {
+    if (!recipientIsEngineer) return false;
+    const assignedEngineerIds = await getClientAssignedEngineerIds(req.user.userId);
+    return assignedEngineerIds.includes(Number(recipientId));
+  }
   return recipientIsAdmin && !recipientIsClient;
 }
 
@@ -113,15 +150,13 @@ router.get('/recipients', async (req, res, next) => {
     const q = req.query.q ? String(req.query.q) : '';
     const currentIsAdmin = hasAnyRole(req.user, ADMIN_ROLES);
     const currentIsClient = hasAnyRole(req.user, ['CLIENT']);
-    const allowedRoles = currentIsAdmin
-      ? [...ADMIN_ROLES, ...STAFF_ROLES, 'CLIENT']
-      : currentIsClient
-        ? ADMIN_ROLES
-        : ADMIN_ROLES;
+    const clientEngineerIds = currentIsClient ? await getClientAssignedEngineerIds(req.user.userId) : [];
+    const allowedRoles = currentIsAdmin ? STAFF_ROLES : currentIsClient ? ['ENGINEER'] : ADMIN_ROLES;
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null,
         userId: { not: req.user.userId },
+        ...(currentIsClient ? { userId: { in: clientEngineerIds.length ? clientEngineerIds : [-1] } } : {}),
         status: 'ACTIVE',
         ...roleFilter(allowedRoles),
         ...(q

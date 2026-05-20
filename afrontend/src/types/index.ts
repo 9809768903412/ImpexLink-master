@@ -103,6 +103,8 @@ export interface OrderItem {
   itemName: string;
   unit: string;
   quantity: number;
+  receivedQuantity?: number;
+  remainingQuantity?: number;
   unitPrice: number;
   amount: number;
   notes?: string | null;
@@ -167,6 +169,8 @@ export interface PurchaseOrder {
   poNumber: string;
   supplierId: string;
   supplierName: string;
+  projectId?: string | null;
+  projectName?: string | null;
   date: string;
   terms: string;
   items: OrderItem[];

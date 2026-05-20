@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Eye, Plus, Search, FolderKanban, MapPin, CalendarDays, Building2, FileText, Download, PackageSearch } from 'lucide-react';
+import { ArrowLeft, Eye, Plus, Search, FolderKanban, MapPin, CalendarDays, Building2, FileText, Download, PackageSearch, Trash2 } from 'lucide-react';
 import type { Project, Client, Order, Delivery, User as UserType, ProjectForm, MaterialRequest } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -153,6 +153,7 @@ export default function ProjectsPage() {
   const { data: users, reload: reloadUsers } = useResource<UserType[]>('/users', []);
   const { data: availableProjects } = useResource<Project[]>('/projects', [], [user?.id], 15_000, { picker: true });
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [removeProjectTarget, setRemoveProjectTarget] = useState<Project | null>(null);
   const { data: projectForms, setData: setProjectForms } = useResource<ProjectForm[]>(
     '/project-forms',
     [],
@@ -741,6 +742,28 @@ export default function ProjectsPage() {
     const next = value === 'pending' ? 'pending' : 'all';
     setActiveTab(next);
     setStatusFilter(next === 'pending' ? 'pending' : 'all');
+  };
+
+  const handleRemoveProject = async () => {
+    if (!removeProjectTarget) return;
+    try {
+      await apiClient.delete(`/projects/${removeProjectTarget.id}`);
+      setProjects((prev) => prev.filter((project) => project.id !== removeProjectTarget.id));
+      if (selectedProject?.id === removeProjectTarget.id) {
+        setSelectedProject(null);
+      }
+      setRemoveProjectTarget(null);
+      toast({
+        title: 'Project removed',
+        description: 'The project has been archived and hidden from active project lists.',
+      });
+    } catch {
+      toast({
+        title: 'Unable to remove project',
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleProjectDecision = async (project: Project, status: Project['status'], reason?: string) => {
@@ -1424,7 +1447,19 @@ export default function ProjectsPage() {
                 </CardContent>
               </Card>
 
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+                {isAdmin ? (
+                  <Button
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setRemoveProjectTarget(selectedProject)}
+                  >
+                    <Trash2 size={16} className="mr-2" />
+                    Remove Project
+                  </Button>
+                ) : (
+                  <span />
+                )}
                 <Button variant="outline" onClick={() => setSelectedProject(null)}>
                   Close
                 </Button>
@@ -1438,37 +1473,45 @@ export default function ProjectsPage() {
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>IMPEX ENGINEERING & INDUSTRIAL SUPPLY PROJECT FORM</DialogTitle>
-            <DialogDescription>Create and link a digital project form to a project with autofill, imports, and draft support.</DialogDescription>
+            <DialogDescription>Select a project first. Project details fill from the selected record, then you can add materials manually or pull existing lines.</DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
-            <div className="flex flex-wrap gap-2 rounded-2xl border border-dashed bg-muted/20 p-3">
-              <Button
-                variant="outline"
-                onClick={() =>
-                  setProjectFormData(
-                    buildProjectFormSeed(
-                      projects.find((entry) => entry.id === projectFormData.projectId) || selectedProject
-                    )
-                  )
-                }
-              >
-                Autofill Project Details
-              </Button>
-              <Button variant="outline" onClick={importOrderLinesToForm} disabled={!projectFormData.projectId}>
-                Import from Orders
-              </Button>
-              <Button variant="outline" onClick={importRequestLinesToForm} disabled={!projectFormData.projectId}>
-                Import from Material Requests
-              </Button>
-              {projectFormDraftAvailable ? (
-                <Button variant="outline" onClick={restoreProjectFormDraft}>
-                  Restore Draft
-                </Button>
-              ) : null}
-              <Button variant="outline" onClick={clearProjectFormDraft}>
-                Clear Draft
-              </Button>
-            </div>
+            <Card>
+              <CardContent className="grid gap-3 p-4 md:grid-cols-3">
+                <div className="rounded-md border bg-muted/30 p-3">
+                  <p className="text-sm font-medium">Project details</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Selecting a project fills the name, company, address, and site fields automatically.
+                  </p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-sm font-medium">Materials source</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Pull lines already used in orders or material requests.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={importOrderLinesToForm} disabled={!projectFormData.projectId}>
+                      Import Orders
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={importRequestLinesToForm} disabled={!projectFormData.projectId}>
+                      Import Requests
+                    </Button>
+                  </div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-sm font-medium">Draft</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Save unfinished work or restore your last saved form draft.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {projectFormDraftAvailable ? (
+                      <Button variant="outline" size="sm" onClick={restoreProjectFormDraft}>
+                        Restore
+                      </Button>
+                    ) : null}
+                    <Button variant="outline" size="sm" onClick={clearProjectFormDraft}>
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -1674,6 +1717,29 @@ export default function ProjectsPage() {
               <Button variant="outline" onClick={() => saveProjectFormDraft(projectFormData)}>Save Draft</Button>
               <Button onClick={handleSaveProjectForm}>Save Project Form</Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!removeProjectTarget} onOpenChange={(open) => !open && setRemoveProjectTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove Project</DialogTitle>
+            <DialogDescription>
+              This archives the project and hides it from active project lists. Existing orders, deliveries, and audit records remain intact.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <p className="font-medium">{removeProjectTarget?.name}</p>
+            <p className="text-muted-foreground">{removeProjectTarget?.clientName}</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRemoveProjectTarget(null)}>
+              Cancel
+            </Button>
+            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleRemoveProject}>
+              Remove
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -35,6 +35,7 @@ const BASE_ROUTE: [number, number][] = [
   [14.5595, 121.0385],
   [14.5638, 121.0482],
 ];
+const RECEIVER_OPTIONS = ['Jason / Engineers on site', 'Project In-charge', 'Safety Officer'];
 
 function getMockRoute(delivery: Delivery): [number, number][] {
   const hash = Number(delivery.id || 0) % 7;
@@ -64,18 +65,7 @@ export default function LiveTrackingDialog({
   const route = useMemo(() => (delivery ? getMockRoute(delivery) : BASE_ROUTE), [delivery]);
   const marker = route[route.length - 1];
   const receivedByOptions = useMemo(() => {
-    if (!delivery) return ['Client Representative'];
-    const contactName = delivery.clientContactPerson?.trim();
-    return Array.from(
-      new Set(
-        [
-          delivery.receivedBy,
-          contactName || null,
-          contactName ? `${contactName} - Authorized Representative` : 'Client Representative',
-          'Site Engineer',
-        ].filter(Boolean) as string[],
-      ),
-    );
+    return RECEIVER_OPTIONS;
   }, [delivery]);
 
   useEffect(() => {
@@ -255,15 +245,21 @@ export default function LiveTrackingDialog({
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 justify-end">
-                    <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => triggerStatus('in-transit')}>
-                      Mark as In Transit
-                    </Button>
-                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => triggerStatus('delivered')}>
-                      Mark as Delivered
-                    </Button>
-                    <Button className="bg-orange-600 hover:bg-orange-700 text-white" onClick={() => triggerStatus('delayed')}>
-                      Report Delay
-                    </Button>
+                    {delivery.status === 'pending' ? (
+                      <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => triggerStatus('in-transit')}>
+                        Mark as In Transit
+                      </Button>
+                    ) : null}
+                    {delivery.status === 'in-transit' || delivery.status === 'delayed' ? (
+                      <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => triggerStatus('delivered')}>
+                        Mark as Delivered
+                      </Button>
+                    ) : null}
+                    {delivery.status === 'pending' || delivery.status === 'in-transit' || delivery.status === 'delayed' ? (
+                      <Button className="bg-orange-600 hover:bg-orange-700 text-white" onClick={() => triggerStatus('delayed')}>
+                        Report Delay
+                      </Button>
+                    ) : null}
                   </div>
                 </CardContent>
               </Card>

@@ -35,7 +35,7 @@ import { User, Building, Users, Bell, Shield, Save, Plus, Trash2, Search } from 
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
-import type { User as UserType } from '@/types';
+import type { Client, User as UserType } from '@/types';
 import { apiClient } from '@/api/client';
 import { resendVerification } from '@/api/auth';
 import { cn } from '@/lib/utils';
@@ -84,6 +84,7 @@ export default function SettingsPage() {
     email: 'sales@impex.ph',
     website: 'www.impex.ph',
   });
+  const { data: clients, reload: reloadClients } = useResource<Client[]>('/clients', []);
   const [profileData, setProfileData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -126,6 +127,9 @@ export default function SettingsPage() {
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userStatusFilter, setUserStatusFilter] = useState('all');
+  const [mergeSourceClientId, setMergeSourceClientId] = useState('');
+  const [mergeTargetClientId, setMergeTargetClientId] = useState('');
+  const [mergeReason, setMergeReason] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingClients = users.filter((u) => u.role === 'client' && String(u.status).toLowerCase() !== 'active');
   const normalizedUserSearch = userSearch.trim().toLowerCase();
@@ -628,6 +632,40 @@ export default function SettingsPage() {
       });
   };
 
+  const handleMergeClients = () => {
+    if (!mergeSourceClientId || !mergeTargetClientId || mergeSourceClientId === mergeTargetClientId) {
+      toast({
+        title: 'Choose two clients',
+        description: 'Select a duplicate client and the client record that should remain.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    apiClient
+      .post('/clients/merge', {
+        sourceClientId: mergeSourceClientId,
+        targetClientId: mergeTargetClientId,
+        reason: mergeReason,
+      })
+      .then((res) => {
+        toast({
+          title: 'Clients merged',
+          description: `${res.data?.mergedInto || 'Target client'} now owns the transferred projects, orders, quotes, and payments.`,
+        });
+        setMergeSourceClientId('');
+        setMergeTargetClientId('');
+        setMergeReason('');
+        reloadClients();
+      })
+      .catch((error) => {
+        toast({
+          title: 'Merge failed',
+          description: getErrorMessage(error, 'Please check the selected clients and try again.'),
+          variant: 'destructive',
+        });
+      });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -1002,6 +1040,58 @@ export default function SettingsPage() {
                           </SelectContent>
                         </Select>
                       </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="mt-4">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">Duplicate Client Merge</CardTitle>
+                      <CardDescription>
+                        Move projects, orders, quotes, and payments from a duplicate company record into the correct client.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 lg:grid-cols-[1fr_1fr_1.2fr_auto] lg:items-end">
+                      <div>
+                        <Label>Duplicate Client</Label>
+                        <Select value={mergeSourceClientId} onValueChange={setMergeSourceClientId}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Record to merge away" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clients.map((client) => (
+                              <SelectItem key={client.id} value={client.id}>
+                                {client.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Keep Client</Label>
+                        <Select value={mergeTargetClientId} onValueChange={setMergeTargetClientId}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Final company record" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clients
+                              .filter((client) => client.id !== mergeSourceClientId)
+                              .map((client) => (
+                                <SelectItem key={client.id} value={client.id}>
+                                  {client.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Reason / Note</Label>
+                        <Input
+                          className="mt-1"
+                          value={mergeReason}
+                          onChange={(event) => setMergeReason(event.target.value)}
+                          placeholder="Example: Duplicate registration for same company"
+                        />
+                      </div>
+                      <Button onClick={handleMergeClients}>Merge</Button>
                     </CardContent>
                   </Card>
                 </div>

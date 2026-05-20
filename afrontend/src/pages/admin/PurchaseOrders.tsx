@@ -29,8 +29,8 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Search, Eye, FileText, Check, Trash2 } from 'lucide-react';
-import type { PurchaseOrder, POStatus, OrderItem, Supplier, InventoryItem } from '@/types';
+import { Plus, Search, Eye, FileText, Check, Trash2, AlertTriangle, PackageCheck } from 'lucide-react';
+import type { PurchaseOrder, POStatus, OrderItem, Supplier, InventoryItem, Order } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { printHtml } from '@/utils/print';
 import { useResource } from '@/hooks/use-resource';
@@ -66,6 +66,7 @@ export default function PurchaseOrdersPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const { data: suppliers } = useResource<Supplier[]>('/suppliers', []);
   const { data: inventory } = useResource<InventoryItem[]>('/inventory', []);
+  const { data: clientOrders } = useResource<Order[]>('/orders', []);
   const { data: company } = useResource(
     '/company',
     {
@@ -82,6 +83,13 @@ export default function PurchaseOrdersPage() {
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showReceiveDialog, setShowReceiveDialog] = useState(false);
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, number>>({});
+  const [receiveNotes, setReceiveNotes] = useState('');
+  const [showDelayDialog, setShowDelayDialog] = useState(false);
+  const [delayReason, setDelayReason] = useState('');
+  const [delayEta, setDelayEta] = useState('');
+  const [delayOrderIds, setDelayOrderIds] = useState<string[]>([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -101,6 +109,9 @@ export default function PurchaseOrdersPage() {
   const poPageEnd = poPageStart + poPageSize;
   const pagedPurchaseOrders = purchaseOrders.slice(poPageStart, poPageEnd);
   const totalFilteredPOs = purchaseOrders.length;
+  const impactedOrders = selectedPO?.projectId
+    ? clientOrders.filter((order) => order.projectId === selectedPO.projectId && !['delivered', 'cancelled'].includes(order.status))
+    : clientOrders.filter((order) => !['delivered', 'cancelled'].includes(order.status)).slice(0, 8);
 
   const fetchPurchaseOrders = async () => {
     setPoLoading(true);
@@ -351,6 +362,83 @@ export default function PurchaseOrdersPage() {
     });
     fetchPurchaseOrders();
     setSelectedPO(null);
+  };
+
+  const openReceiveDialog = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setReceiveNotes('');
+    setReceiveQuantities(
+      po.items.reduce<Record<string, number>>((acc, item) => {
+        acc[item.itemId] = item.remainingQuantity ?? Math.max(item.quantity - (item.receivedQuantity || 0), 0);
+        return acc;
+      }, {})
+    );
+    setShowReceiveDialog(true);
+  };
+
+  const handleReceivePO = async () => {
+    if (!selectedPO) return;
+    const items = selectedPO.items
+      .map((item) => ({
+        itemId: item.itemId,
+        quantity: Number(receiveQuantities[item.itemId] || 0),
+      }))
+      .filter((item) => item.quantity > 0);
+    if (items.length === 0) {
+      toast({ title: 'No quantities entered', description: 'Enter at least one received quantity.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await apiClient.post(`/purchase-orders/${selectedPO.id}/receive`, { items, notes: receiveNotes });
+      toast({ title: 'Stock received', description: 'The received quantities were added to inventory.' });
+      setShowReceiveDialog(false);
+      setShowPreview(false);
+      await fetchPurchaseOrders();
+    } catch (err: any) {
+      toast({
+        title: 'Unable to receive PO',
+        description: err?.response?.data?.error || 'Please check received quantities and try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const openDelayDialog = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setDelayReason('');
+    setDelayEta('');
+    const related = po.projectId
+      ? clientOrders.filter((order) => order.projectId === po.projectId && !['delivered', 'cancelled'].includes(order.status))
+      : [];
+    setDelayOrderIds(related.map((order) => order.id));
+    setShowDelayDialog(true);
+  };
+
+  const handleNotifySupplierDelay = async () => {
+    if (!selectedPO) return;
+    if (!delayReason.trim()) {
+      toast({ title: 'Delay reason required', description: 'Explain what changed before notifying clients.', variant: 'destructive' });
+      return;
+    }
+    try {
+      const response = await apiClient.post(`/purchase-orders/${selectedPO.id}/delay-impact`, {
+        reason: delayReason.trim(),
+        eta: delayEta || undefined,
+        clientOrderIds: delayOrderIds,
+      });
+      toast({
+        title: 'Delay recorded',
+        description: `${response.data?.notified || 0} client order notification(s) sent.`,
+      });
+      setShowDelayDialog(false);
+      await fetchPurchaseOrders();
+    } catch (err: any) {
+      toast({
+        title: 'Unable to notify delay',
+        description: err?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handlePrintPO = (po: PurchaseOrder) => {
@@ -847,7 +935,14 @@ export default function PurchaseOrdersPage() {
                       const line = calcLineAmounts(item.quantity, item.unitPrice);
                       return (
                         <TableRow key={item.itemId}>
-                          <TableCell className="text-center">{item.quantity}</TableCell>
+                          <TableCell className="text-center">
+                            <div>{item.quantity}</div>
+                            {(item.receivedQuantity || 0) > 0 && (
+                              <div className="text-[11px] text-muted-foreground">
+                                {item.receivedQuantity} received
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell>{item.unit}</TableCell>
                           <TableCell>{item.itemName}</TableCell>
                           <TableCell className="text-right">₱{formatPesoAmount(item.unitPrice)}</TableCell>
@@ -896,9 +991,19 @@ export default function PurchaseOrdersPage() {
                 {selectedPO.status === 'ordered' && (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    onClick={() => handleUpdateStatus(selectedPO.id, 'received')}
+                    onClick={() => openReceiveDialog(selectedPO)}
                   >
-                    Mark as Received
+                    <PackageCheck size={16} className="mr-1" />
+                    Receive Stock
+                  </Button>
+                )}
+                {['approved', 'ordered'].includes(selectedPO.status) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => openDelayDialog(selectedPO)}
+                  >
+                    <AlertTriangle size={16} className="mr-1" />
+                    Supplier Delay
                   </Button>
                 )}
                 {selectedPO.status === 'received' && (
@@ -911,6 +1016,142 @@ export default function PurchaseOrdersPage() {
                 )}
               </div>
             </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showReceiveDialog} onOpenChange={setShowReceiveDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Receive Supplier Delivery</DialogTitle>
+            <DialogDescription>
+              Record the actual quantities received for {selectedPO?.poNumber}. Partial receipts keep the PO open.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedPO && (
+            <div className="space-y-4">
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead className="text-right">Ordered</TableHead>
+                      <TableHead className="text-right">Received</TableHead>
+                      <TableHead className="w-[140px] text-right">Receive Now</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedPO.items.map((item) => {
+                      const already = item.receivedQuantity || 0;
+                      const remaining = item.remainingQuantity ?? Math.max(item.quantity - already, 0);
+                      return (
+                        <TableRow key={`receive-${item.itemId}`}>
+                          <TableCell>
+                            <p className="font-medium">{item.itemName}</p>
+                            <p className="text-xs text-muted-foreground">{item.unit}</p>
+                          </TableCell>
+                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">{already}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              max={remaining}
+                              value={receiveQuantities[item.itemId] ?? 0}
+                              onChange={(e) =>
+                                setReceiveQuantities((prev) => ({
+                                  ...prev,
+                                  [item.itemId]: Math.min(Number(e.target.value || 0), remaining),
+                                }))
+                              }
+                              className="text-right"
+                            />
+                            <p className="mt-1 text-right text-[11px] text-muted-foreground">{remaining} remaining</p>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div>
+                <Label>Receiving Notes</Label>
+                <Textarea
+                  value={receiveNotes}
+                  onChange={(e) => setReceiveNotes(e.target.value)}
+                  placeholder="Example: Supplier delivered 4 of 10 drums; balance expected Friday."
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowReceiveDialog(false)}>Cancel</Button>
+                <Button onClick={handleReceivePO}>Save Receipt</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDelayDialog} onOpenChange={setShowDelayDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Supplier Delay Impact</DialogTitle>
+            <DialogDescription>
+              Record the supplier delay and notify client orders that may be affected.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedPO && (
+            <div className="space-y-4">
+              <div>
+                <Label>Delay Reason</Label>
+                <Textarea
+                  value={delayReason}
+                  onChange={(e) => setDelayReason(e.target.value)}
+                  placeholder="Example: Supplier confirmed partial stock only; remaining materials arrive next week."
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>New Expected Supplier Arrival</Label>
+                <Input type="date" value={delayEta} onChange={(e) => setDelayEta(e.target.value)} className="mt-1" />
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-sm font-medium">Affected client orders</p>
+                <p className="text-xs text-muted-foreground">
+                  Orders from the same project are selected automatically when available.
+                </p>
+                <div className="mt-3 max-h-52 space-y-2 overflow-y-auto">
+                  {impactedOrders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No active client orders found for this PO project.</p>
+                  ) : (
+                    impactedOrders.map((order) => (
+                      <label key={order.id} className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={delayOrderIds.includes(order.id)}
+                          onChange={(e) =>
+                            setDelayOrderIds((current) =>
+                              e.target.checked ? [...current, order.id] : current.filter((id) => id !== order.id)
+                            )
+                          }
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="font-medium">{order.orderNumber}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {order.clientName} • {order.status} • {order.paymentStatus}
+                          </span>
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowDelayDialog(false)}>Cancel</Button>
+                <Button onClick={handleNotifySupplierDelay}>Record & Notify</Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>

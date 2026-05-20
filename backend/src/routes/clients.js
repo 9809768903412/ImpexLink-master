@@ -2,7 +2,7 @@ const express = require('express');
 const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { requireAuth, requireRole, getRoleList } = require('../middleware/auth');
-const { isEmail, isNonEmptyString } = require('../utils/validate');
+const { isEmail, isNonEmptyString, isPositiveInt } = require('../utils/validate');
 const { resolveLinkedClient } = require('../utils/clientVisibility');
 
 const router = express.Router();
@@ -138,6 +138,62 @@ router.put('/:id', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
       },
     });
     res.json(client);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/merge', requireRole(['ADMIN']), async (req, res, next) => {
+  try {
+    const sourceClientId = Number(req.body.sourceClientId);
+    const targetClientId = Number(req.body.targetClientId);
+    const reason = String(req.body.reason || '').trim();
+    if (!isPositiveInt(sourceClientId) || !isPositiveInt(targetClientId)) {
+      return res.status(400).json({ error: 'Source and target clients are required' });
+    }
+    if (sourceClientId === targetClientId) {
+      return res.status(400).json({ error: 'Choose two different clients to merge' });
+    }
+    const [source, target] = await Promise.all([
+      prisma.client.findFirst({ where: { clientId: sourceClientId, deletedAt: null } }),
+      prisma.client.findFirst({ where: { clientId: targetClientId, deletedAt: null } }),
+    ]);
+    if (!source || !target) return res.status(404).json({ error: 'Client not found' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const [projects, clientOrders, quoteRequests, payments] = await Promise.all([
+        tx.project.updateMany({ where: { clientId: sourceClientId }, data: { clientId: targetClientId } }),
+        tx.clientOrder.updateMany({ where: { clientId: sourceClientId }, data: { clientId: targetClientId } }),
+        tx.quoteRequest.updateMany({ where: { clientId: sourceClientId }, data: { clientId: targetClientId } }),
+        tx.paymentTransaction.updateMany({ where: { clientId: sourceClientId }, data: { clientId: targetClientId } }),
+      ]);
+      await tx.client.update({
+        where: { clientId: sourceClientId },
+        data: { deletedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: req.user.userId,
+          action: 'MERGE',
+          target: 'Client',
+          details: `Merged client ${source.clientName} (${sourceClientId}) into ${target.clientName} (${targetClientId})${reason ? `. Reason: ${reason}` : ''}`,
+        },
+      });
+      return {
+        projects: projects.count,
+        clientOrders: clientOrders.count,
+        quoteRequests: quoteRequests.count,
+        payments: payments.count,
+      };
+    });
+
+    res.json({
+      ok: true,
+      sourceClientId: sourceClientId.toString(),
+      targetClientId: targetClientId.toString(),
+      mergedInto: target.clientName,
+      moved: result,
+    });
   } catch (err) {
     next(err);
   }

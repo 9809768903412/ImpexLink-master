@@ -62,6 +62,7 @@ const statusIcons: Record<DeliveryStatus, React.ReactNode> = {
   'return-rejected': <RotateCcw size={16} />,
   returned: <RotateCcw size={16} />,
 };
+const RECEIVER_OPTIONS = ['Jason / Engineers on site', 'Project In-charge', 'Safety Officer'];
 
 // TODO: Replace with real data 
 export default function LogisticsPage() {
@@ -89,6 +90,8 @@ export default function LogisticsPage() {
   const [receiverContactNumber, setReceiverContactNumber] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [deliveryEta, setDeliveryEta] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState('TRUCK');
+  const [delayCase, setDelayCase] = useState('traffic');
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [isRejectReturnOpen, setIsRejectReturnOpen] = useState(false);
   const [returnRejectReason, setReturnRejectReason] = useState('');
@@ -128,8 +131,7 @@ export default function LogisticsPage() {
   const pagedDeliveries = filteredDeliveries.slice(deliveriesPageStart, deliveriesPageEnd);
   const totalFilteredDeliveries = filteredDeliveries.length;
   const receivedByOptions = useMemo(() => {
-    if (!selectedDelivery) return ['Client Authorized Representative', 'Site Engineer'];
-    return ['Client Authorized Representative', 'Site Engineer'];
+    return RECEIVER_OPTIONS;
   }, [selectedDelivery]);
 
   const fetchDeliveries = async () => {
@@ -188,6 +190,7 @@ export default function LogisticsPage() {
     newStatus: DeliveryStatus,
     meta?: { receivedBy?: string; notes?: string; eta?: string }
   ) => {
+    const previousDeliveries = deliveries;
     const receivedByValue = meta?.receivedBy ?? receivedBy;
     const notesValue = meta?.notes ?? deliveryNotes;
     const etaValue = meta?.eta ?? deliveryEta;
@@ -227,8 +230,8 @@ export default function LogisticsPage() {
       if (d.id === delId) {
         const updates: Partial<Delivery> = { status: newStatus };
         if (newStatus === 'delivered') {
-          updates.receivedBy = receivedByValue || 'Client Representative';
-          updates.receiverName = receivedByValue || 'Client Authorized Representative';
+          updates.receivedBy = receivedByValue || RECEIVER_OPTIONS[0];
+          updates.receiverName = receivedByValue || RECEIVER_OPTIONS[0];
           updates.receiverAddress = receiverAddress;
           updates.receiverContactNumber = receiverContactNumber;
           updates.receivedAt = new Date().toISOString();
@@ -240,6 +243,7 @@ export default function LogisticsPage() {
         if (newStatus === 'delayed') {
           updates.notes = notesValue;
           updates.eta = new Date(etaValue).toISOString();
+          updates.deliveryMethod = deliveryMethod;
         }
         if (newStatus === 'return-rejected') {
           updates.returnRejectionReason = returnRejectReason;
@@ -261,8 +265,16 @@ export default function LogisticsPage() {
         const savedDelivery = response.data as Delivery;
         setDeliveries((current) => current.map((delivery) => (delivery.id === delId ? savedDelivery : delivery)));
         syncSelectedDelivery(savedDelivery);
-      } catch (_err) {
-        // Keep optimistic update on UI if API fails
+      } catch (err: any) {
+        setDeliveries(previousDeliveries);
+        const restoredDelivery = previousDeliveries.find((delivery) => delivery.id === delId);
+        if (restoredDelivery) syncSelectedDelivery(restoredDelivery);
+        toast({
+          title: 'Status not updated',
+          description: err?.response?.data?.error || 'The delivery status could not be saved. Please refresh and try again.',
+          variant: 'destructive',
+        });
+        return;
       }
     }
     toast({
@@ -376,6 +388,59 @@ export default function LogisticsPage() {
     setReceiverContactNumber(delivery.receiverContactNumber || '');
     setDeliveryNotes(delivery.notes || '');
     setDeliveryEta(delivery.eta ? new Date(delivery.eta).toISOString().slice(0, 16) : '');
+    setDeliveryMethod(delivery.deliveryMethod || 'TRUCK');
+    setDelayCase('traffic');
+  };
+
+  const getDelayRecommendation = (delivery: Delivery | null) => {
+    if (!delivery) return { method: 'TRUCK', note: '', action: '' };
+    const loadKg = Number(delivery.loadKg || 0);
+    if (delayCase === 'receiver-unavailable') {
+      return {
+        method: delivery.deliveryMethod || 'TRUCK',
+        note: 'Receiver unavailable at site. Contact client for alternate receiver, contact number, and new receiving window.',
+        action: 'Coordinate receiver details and reschedule the same delivery.',
+      };
+    }
+    if (delayCase === 'missing-item') {
+      return {
+        method: loadKg > 300 ? 'TRUCK' : 'LALAMOVE',
+        note: 'Missing batch/item. Split available items into first batch and schedule balance after warehouse confirmation.',
+        action: 'Split delivery into batches and notify client of remaining items.',
+      };
+    }
+    if (delayCase === 'vehicle-issue') {
+      return {
+        method: loadKg > 250 ? 'TRUCK' : 'LALAMOVE',
+        note: 'Vehicle issue. Reassign delivery method and provide updated ETA.',
+        action: loadKg > 250 ? 'Switch to backup truck or reschedule truck route.' : 'Switch to Lalamove/third-party courier.',
+      };
+    }
+    if (loadKg > 1000) {
+      return {
+        method: 'TRUCK',
+        note: 'Load exceeds L300 one-ton limit. Split into batches before dispatch.',
+        action: 'Use truck delivery with batch planning.',
+      };
+    }
+    if (loadKg > 250) {
+      return {
+        method: 'TRUCK',
+        note: 'Heavy/bulky load. Truck delivery is recommended.',
+        action: 'Keep or switch to truck.',
+      };
+    }
+    return {
+      method: 'LALAMOVE',
+      note: 'Delay reported. Third-party courier is suitable for a light delivery if timing is urgent.',
+      action: 'Use Lalamove/third-party courier if client needs faster redelivery.',
+    };
+  };
+
+  const applyDelayRecommendation = () => {
+    const recommendation = getDelayRecommendation(selectedDelivery);
+    setDeliveryMethod(recommendation.method);
+    setDeliveryNotes((current) => (current.trim() ? current : recommendation.note));
   };
 
   const handleRejectReturn = (delivery: Delivery) => {
@@ -741,6 +806,44 @@ export default function LogisticsPage() {
                         placeholder="Contact number"
                       />
                     </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Delay / Exception Type</Label>
+                      <Select value={delayCase} onValueChange={setDelayCase}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="traffic">Traffic / route delay</SelectItem>
+                          <SelectItem value="vehicle-issue">Vehicle issue</SelectItem>
+                          <SelectItem value="receiver-unavailable">Receiver unavailable</SelectItem>
+                          <SelectItem value="weather">Weather delay</SelectItem>
+                          <SelectItem value="third-party">Third-party rider issue</SelectItem>
+                          <SelectItem value="missing-item">Missing batch/item</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Recommended Method</Label>
+                      <Select value={deliveryMethod} onValueChange={setDeliveryMethod}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="TRUCK">Truck</SelectItem>
+                          <SelectItem value="MOTOR">Motor</SelectItem>
+                          <SelectItem value="LALAMOVE">Third Party (Lalamove)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                    <p className="font-medium">{getDelayRecommendation(selectedDelivery).action}</p>
+                    <p className="mt-1 text-muted-foreground">{getDelayRecommendation(selectedDelivery).note}</p>
+                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={applyDelayRecommendation}>
+                      Apply Recommendation
+                    </Button>
                   </div>
                   <Textarea
                     placeholder="Delivery notes..."

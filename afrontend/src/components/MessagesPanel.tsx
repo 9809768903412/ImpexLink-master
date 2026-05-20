@@ -176,8 +176,8 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
           </h2>
           <p className="text-muted-foreground">
             {audience === 'client'
-              ? 'Message Impex admins about orders, projects, payments, and deliveries.'
-              : 'Coordinate with clients, sales, warehouse, drivers, and office staff.'}
+              ? 'Message the engineer assigned to your project.'
+              : 'Coordinate with sales, warehouse, drivers, project managers, engineers, and office staff.'}
           </p>
         </div>
         <Button

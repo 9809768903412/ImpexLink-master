@@ -74,6 +74,57 @@ async function ensureSupplierOrderPayment(order, userId, overrides = {}) {
   });
 }
 
+async function getReceivedQuantities(orderId, items = []) {
+  const productIds = items.map((item) => item.productId).filter(Boolean);
+  if (!orderId || productIds.length === 0) return new Map();
+  const transactions = await prisma.stockTransaction.findMany({
+    where: {
+      type: 'PURCHASE',
+      productId: { in: productIds },
+      notes: { contains: `PO ${orderId}` },
+    },
+    select: { productId: true, qtyChange: true },
+  });
+  return transactions.reduce((acc, tx) => {
+    acc.set(tx.productId, (acc.get(tx.productId) || 0) + Number(tx.qtyChange || 0));
+    return acc;
+  }, new Map());
+}
+
+async function notifyClientOrderDelay(orderIds, reason, eta, actorId, sourceLabel) {
+  const ids = [...new Set((orderIds || []).map(Number).filter(isPositiveInt))];
+  if (ids.length === 0) return 0;
+  const orders = await prisma.clientOrder.findMany({
+    where: { clientOrderId: { in: ids } },
+    include: { client: true },
+  });
+  let sent = 0;
+  for (const order of orders) {
+    if (!order.client?.email) continue;
+    const user = await prisma.user.findUnique({ where: { email: order.client.email } });
+    if (!user) continue;
+    await prisma.notification.create({
+      data: {
+        userId: user.userId,
+        type: 'PROJECT_UPDATE',
+        title: 'Supplier delay may affect your order',
+        message: `${sourceLabel} may delay order ${order.orderNumber}. Reason: ${reason || 'Supplier delivery delay'}.${eta ? ` Updated estimate: ${new Date(eta).toLocaleDateString('en-PH')}.` : ''}`,
+        link: '/client/orders',
+      },
+    });
+    sent += 1;
+  }
+  await prisma.auditLog.create({
+    data: {
+      userId: actorId,
+      action: 'NOTIFY',
+      target: 'ClientOrder',
+      details: `Supplier delay notification sent for ${ids.length} order(s): ${reason || 'No reason provided'}`,
+    },
+  });
+  return sent;
+}
+
 router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
@@ -99,7 +150,7 @@ router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next
     const orderBy = sort ? { [sort.sortBy]: sort.sortDir } : { orderDate: 'desc' };
     const [orders, total] = await Promise.all([
       prisma.supplierOrder.findMany({
-        include: { supplier: true, items: { include: { product: true } } },
+        include: { supplier: true, project: true, items: { include: { product: true } } },
         where,
         skip: pagination ? (pagination.page - 1) * pagination.pageSize : undefined,
         take: pagination ? pagination.pageSize : undefined,
@@ -108,21 +159,29 @@ router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next
       prisma.supplierOrder.count({ where }),
     ]);
 
-    const data = orders.map((order) => ({
+    const receivedMaps = await Promise.all(orders.map((order) => getReceivedQuantities(order.orderId, order.items)));
+    const data = orders.map((order, orderIndex) => ({
       id: order.orderId.toString(),
       poNumber: `PO-${new Date(order.orderDate).getFullYear()}-${String(order.orderId).padStart(4, '0')}`,
       supplierId: order.supplierId?.toString() || null,
       supplierName: order.supplier?.supplierName || 'Unknown Supplier',
+      projectId: order.projectId?.toString() || null,
+      projectName: order.project?.projectName || null,
       date: order.orderDate.toISOString().split('T')[0],
       terms: order.terms || 'Net 30',
-      items: order.items.map((item) => ({
-        itemId: item.productId?.toString() || '',
-        itemName: item.product?.itemName || 'Item',
-        unit: item.product?.unit || '',
-        quantity: item.quantity,
-        unitPrice: Number(item.unitPrice),
-        amount: Number(item.unitPrice) * item.quantity,
-      })),
+      items: order.items.map((item) => {
+        const receivedQuantity = item.productId ? receivedMaps[orderIndex].get(item.productId) || 0 : 0;
+        return {
+          itemId: item.productId?.toString() || '',
+          itemName: item.product?.itemName || 'Item',
+          unit: item.product?.unit || '',
+          quantity: item.quantity,
+          receivedQuantity,
+          remainingQuantity: Math.max(item.quantity - receivedQuantity, 0),
+          unitPrice: Number(item.unitPrice),
+          amount: Number(item.unitPrice) * item.quantity,
+        };
+      }),
       subtotal: Number(order.subtotal || 0),
       vat: Number(order.vat || 0),
       total: Number(order.total || 0),
@@ -289,11 +348,14 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 
     const nextStatus = (req.body.status || order.status || '').toUpperCase();
     if (nextStatus === 'RECEIVED' && existing.items?.length) {
+      const receivedMap = await getReceivedQuantities(order.orderId, existing.items);
       for (const item of existing.items) {
         if (!item.productId) continue;
         const product = item.product;
         if (!product) continue;
-        const newBalance = product.qtyOnHand + item.quantity;
+        const remainingQty = Math.max(item.quantity - (receivedMap.get(item.productId) || 0), 0);
+        if (remainingQty <= 0) continue;
+        const newBalance = product.qtyOnHand + remainingQty;
         const statusValue =
           newBalance <= 0
             ? 'OUT_OF_STOCK'
@@ -309,7 +371,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
             productId: product.productId,
             supplierId: existing.supplierId || order.supplierId || null,
             type: 'PURCHASE',
-            qtyChange: item.quantity,
+            qtyChange: remainingQty,
             newBalance,
             userId: req.user.userId,
             notes: `Received PO ${order.orderId}`,
@@ -336,6 +398,132 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
     });
 
     res.json(order);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/receive', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const receiptItems = Array.isArray(req.body.items) ? req.body.items : [];
+    const notes = String(req.body.notes || '').trim();
+    if (!isPositiveInt(orderId)) return res.status(400).json({ error: 'Invalid purchase order' });
+    if (receiptItems.length === 0) return res.status(400).json({ error: 'At least one received item is required' });
+    if (receiptItems.some((item) => Number(item.quantity || 0) < 0)) {
+      return res.status(400).json({ error: 'Received quantities must be 0 or greater' });
+    }
+    const existing = await prisma.supplierOrder.findUnique({
+      where: { orderId },
+      include: { supplier: true, project: true, items: { include: { product: true } } },
+    });
+    if (!existing) return res.status(404).json({ error: 'Purchase order not found' });
+    if (!['ORDERED', 'APPROVED', 'PENDING'].includes(existing.status)) {
+      return res.status(400).json({ error: 'Only pending, approved, or ordered POs can receive stock.' });
+    }
+    const receivedMap = await getReceivedQuantities(orderId, existing.items);
+    const requestedByProduct = new Map();
+    for (const item of receiptItems) {
+      const productId = Number(item.itemId || item.productId);
+      const quantity = Number(item.quantity || 0);
+      if (!productId || quantity <= 0) continue;
+      requestedByProduct.set(productId, (requestedByProduct.get(productId) || 0) + quantity);
+    }
+    if (requestedByProduct.size === 0) return res.status(400).json({ error: 'Enter at least one positive received quantity' });
+
+    await prisma.$transaction(async (tx) => {
+      for (const poItem of existing.items) {
+        if (!poItem.productId || !requestedByProduct.has(poItem.productId)) continue;
+        const quantity = requestedByProduct.get(poItem.productId);
+        const alreadyReceived = receivedMap.get(poItem.productId) || 0;
+        const remaining = poItem.quantity - alreadyReceived;
+        if (quantity > remaining) {
+          throw new Error(`${poItem.product?.itemName || 'Item'} can only receive ${remaining} more.`);
+        }
+        const product = await tx.product.findUnique({ where: { productId: poItem.productId } });
+        if (!product) continue;
+        const newBalance = product.qtyOnHand + quantity;
+        const statusValue =
+          newBalance <= 0 ? 'OUT_OF_STOCK' : newBalance <= product.lowStockThreshold ? 'LOW_STOCK' : 'AVAILABLE';
+        await tx.product.update({
+          where: { productId: product.productId },
+          data: { qtyOnHand: newBalance, status: statusValue },
+        });
+        await tx.stockTransaction.create({
+          data: {
+            productId: product.productId,
+            supplierId: existing.supplierId || null,
+            type: 'PURCHASE',
+            qtyChange: quantity,
+            newBalance,
+            userId: req.user.userId,
+            notes: [`Received PO ${orderId}`, `Item ${poItem.orderItemId}`, notes].filter(Boolean).join(' | '),
+          },
+        });
+      }
+    });
+
+    const updatedReceivedMap = await getReceivedQuantities(orderId, existing.items);
+    const fullyReceived = existing.items.every((item) => {
+      if (!item.productId) return true;
+      return (updatedReceivedMap.get(item.productId) || 0) >= item.quantity;
+    });
+    const status = fullyReceived ? 'RECEIVED' : 'ORDERED';
+    const order = await prisma.supplierOrder.update({
+      where: { orderId },
+      data: {
+        status,
+        remarks: [existing.remarks, notes ? `Receipt note: ${notes}` : null, fullyReceived ? 'Fully received.' : 'Partially received.']
+          .filter(Boolean)
+          .join('\n'),
+      },
+      include: { items: true },
+    });
+    await ensureSupplierOrderPayment(order, req.user.userId, { status: paymentStatusFromPoStatus(status) });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'RECEIVE',
+        target: 'PurchaseOrder',
+        details: `${fullyReceived ? 'Fully' : 'Partially'} received PO ${orderId}${notes ? `: ${notes}` : ''}`,
+      },
+    });
+    res.json({ ok: true, status: status.toLowerCase(), fullyReceived });
+  } catch (err) {
+    if (err.message && err.message.includes('can only receive')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.post('/:id/delay-impact', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    const reason = String(req.body.reason || '').trim();
+    if (!isPositiveInt(orderId)) return res.status(400).json({ error: 'Invalid purchase order' });
+    if (!reason) return res.status(400).json({ error: 'Delay reason is required' });
+    const order = await prisma.supplierOrder.findUnique({
+      where: { orderId },
+      include: { supplier: true },
+    });
+    if (!order) return res.status(404).json({ error: 'Purchase order not found' });
+    const notifyCount = await notifyClientOrderDelay(
+      req.body.clientOrderIds,
+      reason,
+      req.body.eta,
+      req.user.userId,
+      `Supplier PO ${orderId}${order.supplier?.supplierName ? ` from ${order.supplier.supplierName}` : ''}`
+    );
+    await prisma.supplierOrder.update({
+      where: { orderId },
+      data: {
+        remarks: [order.remarks, `Supplier delay: ${reason}${req.body.eta ? ` | ETA: ${new Date(req.body.eta).toLocaleDateString('en-PH')}` : ''}`]
+          .filter(Boolean)
+          .join('\n'),
+      },
+    });
+    res.json({ ok: true, notified: notifyCount });
   } catch (err) {
     next(err);
   }
