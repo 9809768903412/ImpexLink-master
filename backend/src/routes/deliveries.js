@@ -83,6 +83,9 @@ function deliverySelect(includeOptionalColumns = false) {
     itemsCount: true,
     eta: true,
     receivedBy: true,
+    receiverName: true,
+    receiverAddress: true,
+    receiverContactNumber: true,
     receivedAt: true,
     notes: true,
     proofOfDeliveryUrl: true,
@@ -107,7 +110,7 @@ function deliverySelect(includeOptionalColumns = false) {
         orderNumber: true,
         status: true,
         createdBy: true,
-        client: { select: { clientName: true, contactPerson: true } },
+        client: { select: { clientName: true, contactPerson: true, address: true, phone: true } },
         project: { select: { projectName: true } },
         items: { include: { product: true } },
       },
@@ -130,8 +133,8 @@ async function validateDeliveryGuyAssignment(assignedDeliveryGuyId) {
   ]
     .filter(Boolean)
     .map((role) => String(role).toUpperCase());
-  if (!roleNames.includes('DELIVERY_GUY')) {
-    throw new Error('Assigned user must have the Delivery Guy role');
+  if (!roleNames.includes('DELIVERY_GUY') && !roleNames.includes('DRIVER')) {
+    throw new Error('Assigned user must have the Driver role');
   }
   return driver.userId;
 }
@@ -159,7 +162,11 @@ async function buildDeliveryScope(req) {
     scopes.push({ clientOrder: { assignedSalesAgentId: req.user.userId } });
   }
 
-  if (roleList.includes('DELIVERY_GUY')) {
+  if (roleList.includes('DELIVERY_GUY') || roleList.includes('DRIVER')) {
+    return {};
+  }
+
+  if (roleList.includes('RECEIVER')) {
     return {};
   }
 
@@ -193,6 +200,9 @@ function mapDelivery(d) {
     issuedBy: 'System',
     issuedAt: d.createdAt.toISOString(),
     receivedBy: d.receivedBy || null,
+    receiverName: d.receiverName || d.receivedBy || null,
+    receiverAddress: d.receiverAddress || d.clientOrder?.client?.address || null,
+    receiverContactNumber: d.receiverContactNumber || d.clientOrder?.client?.phone || null,
     receivedAt: d.receivedAt ? d.receivedAt.toISOString() : null,
     notes: d.notes || null,
     returnRejectionReason: d.returnRejectionReason || null,
@@ -266,7 +276,21 @@ router.get('/', async (req, res, next) => {
 router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
-    const { drNumber, clientOrderId, status, eta, itemsCount, deliveryMethod, loadKg, thirdPartyProvider, thirdPartyReference, notes } = req.body;
+    const {
+      drNumber,
+      clientOrderId,
+      status,
+      eta,
+      itemsCount,
+      deliveryMethod,
+      loadKg,
+      thirdPartyProvider,
+      thirdPartyReference,
+      receiverName,
+      receiverAddress,
+      receiverContactNumber,
+      notes,
+    } = req.body;
     if (!isNonEmptyString(drNumber)) return res.status(400).json({ error: 'DR number is required' });
     if (!clientOrderId || !isPositiveInt(clientOrderId)) return res.status(400).json({ error: 'Client order is required' });
     if (eta && !isValidDateString(eta)) {
@@ -299,6 +323,9 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
               thirdPartyReference: thirdPartyReference || null,
             }
           : {}),
+        receiverName: receiverName || null,
+        receiverAddress: receiverAddress || null,
+        receiverContactNumber: receiverContactNumber || null,
         notes: notes || null,
       },
       select: deliverySelect(columnSupport.batches),
@@ -322,7 +349,7 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY', 'DRIVER', 'RECEIVER']), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
     if (req.body.status) {
@@ -379,6 +406,9 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), as
         status: requestedStatus || undefined,
         eta: req.body.eta ? new Date(req.body.eta) : undefined,
         receivedBy: req.body.receivedBy,
+        receiverName: req.body.receiverName || req.body.receivedBy,
+        receiverAddress: req.body.receiverAddress,
+        receiverContactNumber: req.body.receiverContactNumber,
         receivedAt: req.body.receivedAt ? new Date(req.body.receivedAt) : requestedStatus === 'DELIVERED' ? new Date() : undefined,
         notes: req.body.notes,
         proofOfDeliveryUrl: req.body.proofOfDelivery || undefined,
@@ -592,7 +622,7 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
 });
 
 
-router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY']), uploadProof.single('proof'), async (req, res, next) => {
+router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DELIVERY_GUY', 'DRIVER']), uploadProof.single('proof'), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
     const existing = await prisma.delivery.findUnique({

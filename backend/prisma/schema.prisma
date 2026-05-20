@@ -167,6 +167,10 @@ model User {
   assignedClientOrders ClientOrder[]    @relation("ClientOrderAssignedSalesAgent")
   assignedMaterialRequests MaterialRequest[] @relation("MaterialRequestAssignedPm")
   assignedDeliveries Delivery[]         @relation("DeliveryAssignedDeliveryGuy")
+  createdChatThreads ChatThread[]       @relation("ChatThreadCreator")
+  chatParticipants   ChatParticipant[]
+  sentChatMessages   ChatMessage[]      @relation("ChatMessageSender")
+  createdPayments    PaymentTransaction[] @relation("PaymentCreatedBy")
 
   @@index([roleId])
   @@map("users")
@@ -275,6 +279,7 @@ model Client {
   projects      Project[]
   clientOrders  ClientOrder[]
   quoteRequests QuoteRequest[]
+  payments      PaymentTransaction[]
 
   @@map("clients")
 }
@@ -316,6 +321,7 @@ model Supplier {
 
   supplierOrders SupplierOrder[]
   stockTransactions StockTransaction[]
+  payments PaymentTransaction[]
 
   @@map("suppliers")
 }
@@ -338,6 +344,7 @@ model SupplierOrder {
   supplier   Supplier? @relation(fields: [supplierId], references: [supplierId])
   project    Project?  @relation(fields: [projectId], references: [projectId])
   items    SupplierOrderItem[]
+  payments PaymentTransaction[]
 
   @@index([supplierId])
   @@index([projectId])
@@ -431,6 +438,7 @@ model ClientOrder {
   assignedSalesAgent User?   @relation("ClientOrderAssignedSalesAgent", fields: [assignedSalesAgentId], references: [userId])
   items      ClientOrderItem[]
   deliveries Delivery[]
+  payments   PaymentTransaction[]
 
   @@index([projectId])
   @@index([clientId])
@@ -464,6 +472,9 @@ model Delivery {
   createdAt     DateTime       @default(now()) @map("created_at")
   receivedAt    DateTime?      @map("received_at")
   receivedBy    String?        @map("received_by")
+  receiverName   String?       @db.VarChar(150) @map("receiver_name")
+  receiverAddress String?      @db.Text @map("receiver_address")
+  receiverContactNumber String? @db.VarChar(50) @map("receiver_contact_number")
   proofOfDeliveryUrl String?   @db.Text @map("proof_of_delivery_url")
   notes         String?        @db.Text
   deliveryMethod String        @default("TRUCK") @map("delivery_method") @db.VarChar(30)
@@ -513,6 +524,91 @@ model Notification {
   @@index([userId])
   @@index([createdAt])
   @@map("notifications")
+}
+
+model ChatThread {
+  threadId    Int       @id @default(autoincrement()) @map("thread_id")
+  title       String?   @db.VarChar(150)
+  threadType  String    @default("DIRECT") @db.VarChar(30) @map("thread_type")
+  createdById Int?      @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+  closedAt    DateTime? @map("closed_at")
+
+  createdBy    User?             @relation("ChatThreadCreator", fields: [createdById], references: [userId])
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  @@index([createdById])
+  @@index([updatedAt])
+  @@map("chat_threads")
+}
+
+model ChatParticipant {
+  participantId Int       @id @default(autoincrement()) @map("participant_id")
+  threadId      Int       @map("thread_id")
+  userId        Int       @map("user_id")
+  unreadCount   Int       @default(0) @map("unread_count")
+  lastReadAt    DateTime? @map("last_read_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  thread ChatThread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@index([userId])
+  @@map("chat_participants")
+}
+
+model ChatMessage {
+  messageId Int       @id @default(autoincrement()) @map("message_id")
+  threadId  Int       @map("thread_id")
+  senderId  Int       @map("sender_id")
+  body      String    @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  thread ChatThread @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
+  sender User       @relation("ChatMessageSender", fields: [senderId], references: [userId])
+
+  @@index([threadId, createdAt])
+  @@index([senderId])
+  @@map("chat_messages")
+}
+
+model PaymentTransaction {
+  paymentId       Int       @id @default(autoincrement()) @map("payment_id")
+  direction       String    @db.VarChar(40)
+  method          String    @db.VarChar(50)
+  status          String    @default("PENDING") @db.VarChar(30)
+  amount          Decimal   @db.Decimal(12, 2)
+  creditDays      Int       @default(30) @map("credit_days")
+  dueDate         DateTime? @db.Date @map("due_date")
+  paidAt          DateTime? @map("paid_at")
+  referenceNumber String?   @db.VarChar(120) @map("reference_number")
+  notes           String?   @db.Text
+  clientId        Int?      @map("client_id")
+  clientOrderId   Int?      @map("client_order_id")
+  supplierId      Int?      @map("supplier_id")
+  supplierOrderId Int?      @map("supplier_order_id")
+  createdById     Int?      @map("created_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  client        Client?        @relation(fields: [clientId], references: [clientId])
+  clientOrder   ClientOrder?   @relation(fields: [clientOrderId], references: [clientOrderId])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [supplierId])
+  supplierOrder SupplierOrder? @relation(fields: [supplierOrderId], references: [orderId])
+  createdBy     User?          @relation("PaymentCreatedBy", fields: [createdById], references: [userId])
+
+  @@index([direction])
+  @@index([status])
+  @@index([clientId])
+  @@index([clientOrderId])
+  @@index([supplierId])
+  @@index([supplierOrderId])
+  @@index([createdById])
+  @@map("payment_transactions")
 }
 
 model QuoteRequest {

@@ -1,7 +1,7 @@
 const express = require('express');
 const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse } = require('../utils/pagination');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -93,7 +93,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
   try {
     const txn = await prisma.stockTransaction.create({
       data: {

@@ -1,7 +1,9 @@
 const MAX_ITEM_QTY_PER_DELIVERY = 30;
 const PAINT_CAN_KG = 16;
+const GALLON_LITERS = 4;
 const TRUCK_MAX_PAINT_CANS = 20;
-const TRUCK_MAX_KG = 320;
+const L300_TRUCK_MAX_KG = 1000;
+const TRUCK_MAX_KG = L300_TRUCK_MAX_KG;
 const MOTORCYCLE_MAX_KG = 20;
 
 function isPaintItem(item) {
@@ -11,10 +13,12 @@ function isPaintItem(item) {
 }
 
 function estimateItemWeightKg(item) {
-  if (isPaintItem(item)) return PAINT_CAN_KG;
+  const name = String(item?.product?.itemName || item?.itemName || '').toLowerCase();
   const unit = String(item?.product?.unit || item?.unit || '').toLowerCase();
+  if (unit.includes('gallon') || name.includes('gallon')) return GALLON_LITERS;
+  if (unit.includes('pail') || unit.includes('can') || name.includes('pail') || name.includes('can')) return PAINT_CAN_KG;
+  if (isPaintItem(item)) return PAINT_CAN_KG;
   if (unit.includes('kg')) return 1;
-  if (unit.includes('pail') || unit.includes('gallon') || unit.includes('can')) return PAINT_CAN_KG;
   if (unit.includes('roll')) return 20;
   if (unit.includes('unit')) return 25;
   if (unit.includes('bundle')) return 2;
@@ -49,7 +53,7 @@ function calculateDeliveryPlan(items = []) {
   const perBatchPaintCans = load.paintCans / batchCount;
   const method =
     perBatchKg <= MOTORCYCLE_MAX_KG && perBatchPaintCans <= 1
-      ? 'MOTORCYCLE'
+      ? 'MOTOR'
       : perBatchKg > TRUCK_MAX_KG || perBatchPaintCans > TRUCK_MAX_PAINT_CANS
       ? 'THIRD_PARTY'
       : 'TRUCK';
@@ -62,7 +66,7 @@ function calculateDeliveryPlan(items = []) {
     warnings.push(`Paint load exceeds ${TRUCK_MAX_PAINT_CANS} cans per truck delivery.`);
   }
   if (load.totalKg > TRUCK_MAX_KG) {
-    warnings.push(`Estimated load exceeds ${TRUCK_MAX_KG}kg truck capacity.`);
+    warnings.push(`Estimated load exceeds ${TRUCK_MAX_KG}kg L300 truck capacity.`);
   }
   if (method === 'THIRD_PARTY') {
     warnings.push('Third-party/Lalamove delivery is recommended for this load.');
@@ -82,6 +86,8 @@ function calculateDeliveryPlan(items = []) {
 module.exports = {
   MAX_ITEM_QTY_PER_DELIVERY,
   PAINT_CAN_KG,
+  GALLON_LITERS,
+  L300_TRUCK_MAX_KG,
   TRUCK_MAX_PAINT_CANS,
   TRUCK_MAX_KG,
   MOTORCYCLE_MAX_KG,

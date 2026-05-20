@@ -8,6 +8,9 @@ export type UserRole =
   | 'paint_chemist'
   | 'warehouse_staff'
   | 'delivery_guy'
+  | 'driver'
+  | 'receiver'
+  | 'project_in_charge'
   | 'client';
 
 export interface User {
@@ -212,6 +215,9 @@ export interface Delivery {
   issuedBy: string;
   issuedAt: string;
   receivedBy?: string;
+  receiverName?: string | null;
+  receiverAddress?: string | null;
+  receiverContactNumber?: string | null;
   receivedAt?: string;
   proofOfDelivery?: string;
   notes?: string;
@@ -287,6 +293,59 @@ export interface Notification {
   createdAt: string;
   link?: string;
   userId?: string;
+}
+
+export interface ChatUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole | string;
+  roles?: (UserRole | string)[];
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  senderName: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface ChatThread {
+  id: string;
+  title: string;
+  type: string;
+  participants: ChatUser[];
+  otherParticipants: ChatUser[];
+  unreadCount: number;
+  lastMessage?: ChatMessage | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  direction: 'client-to-office' | 'office-to-supplier' | string;
+  method: string;
+  status: 'pending' | 'received' | 'paid' | 'overdue' | 'cancelled' | string;
+  amount: number;
+  creditDays: number;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  referenceNumber?: string | null;
+  notes?: string | null;
+  clientId?: string | null;
+  clientName?: string | null;
+  clientOrderId?: string | null;
+  clientOrderNumber?: string | null;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierOrderId?: string | null;
+  supplierPoNumber?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Audit Log Types

@@ -23,6 +23,7 @@ import {
   Bell,
   Phone,
   Mail,
+  MessageSquare,
   ChevronUp,
   ChevronDown,
   User,
@@ -42,6 +43,7 @@ const navItems = [
   { path: '/client/order', icon: ShoppingCart, label: 'Catalog' },
   { path: '/client/orders', icon: Package, label: 'Orders & Deliveries' },
   { path: '/client/projects', icon: FolderKanban, label: 'Projects' },
+  { path: '/client/messages', icon: MessageSquare, label: 'Messages' },
   { path: '/client/notifications', icon: Bell, label: 'Notifications' },
 ];
 

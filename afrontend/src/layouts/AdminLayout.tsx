@@ -24,10 +24,12 @@ import {
   Factory,
   Truck,
   BarChart3,
+  CreditCard,
   Brain,
   History,
   Files,
   Bell,
+  MessageSquare,
   Settings,
   LogOut,
   ChevronRight,
@@ -51,10 +53,12 @@ import {
   canViewSuppliers,
   canViewLogistics,
   canViewReports,
+  canViewPayments,
   canViewAIInsights,
   canViewAuditLogs,
   canViewProofCenter,
   canViewNotifications,
+  canViewMessages,
   canManageUsers,
   canAccessSettings,
 } from '@/lib/roles';
@@ -63,7 +67,7 @@ interface AdminLayoutProps {
   children: ReactNode;
 }
 
-const dashboardRoles = ADMIN_AREA_ROLES.filter((role) => role !== 'delivery_guy');
+const dashboardRoles = ADMIN_AREA_ROLES.filter((role) => !['delivery_guy', 'driver', 'receiver'].includes(role));
 const navItems = [
   { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true, roles: dashboardRoles },
   { path: '/admin/inventory', icon: Package, label: 'Inventory', roles: ADMIN_AREA_ROLES.filter(canViewInventory) },
@@ -73,10 +77,12 @@ const navItems = [
   { path: '/admin/purchase-orders', icon: FileText, label: 'Purchase Orders', roles: ADMIN_AREA_ROLES.filter(canViewPurchaseOrders) },
   { path: '/admin/suppliers', icon: Factory, label: 'Suppliers', roles: ADMIN_AREA_ROLES.filter(canViewSuppliers) },
   { path: '/admin/logistics', icon: Truck, label: 'Logistics', roles: ADMIN_AREA_ROLES.filter(canViewLogistics) },
+  { path: '/admin/payments', icon: CreditCard, label: 'Payments', roles: ADMIN_AREA_ROLES.filter(canViewPayments) },
   { path: '/admin/reports', icon: BarChart3, label: 'Reports', roles: ADMIN_AREA_ROLES.filter(canViewReports) },
   { path: '/admin/ai-insights', icon: Brain, label: 'AI Insights', roles: ADMIN_AREA_ROLES.filter(canViewAIInsights) },
   { path: '/admin/audit-logs', icon: History, label: 'Audit Logs', roles: ADMIN_AREA_ROLES.filter(canViewAuditLogs) },
   { path: '/admin/proofs', icon: Files, label: 'Attachments', roles: ADMIN_AREA_ROLES.filter(canViewProofCenter) },
+  { path: '/admin/messages', icon: MessageSquare, label: 'Messages', roles: ADMIN_AREA_ROLES.filter(canViewMessages) },
   { path: '/admin/notifications', icon: Bell, label: 'Notifications', roles: ADMIN_AREA_ROLES.filter(canViewNotifications) },
   { path: '/admin/settings', icon: Settings, label: 'Settings', roles: ADMIN_AREA_ROLES.filter(canAccessSettings) },
 ];

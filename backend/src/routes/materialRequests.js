@@ -7,7 +7,7 @@ const { isPositiveInt, isValidDateString } = require('../utils/validate');
 const router = express.Router();
 router.use(requireAuth);
 
-const DECISION_ROLES = ['PROJECT_MANAGER', 'PRESIDENT'];
+const DECISION_ROLES = ['ADMIN', 'PRESIDENT'];
 const PROCUREMENT_ROLES = ['ADMIN', 'WAREHOUSE_STAFF'];
 
 function hasRole(req, role) {
@@ -53,17 +53,11 @@ async function canAccessProject(req, projectId) {
 }
 
 function canProjectManagerReview(req, request) {
-  if (hasRole(req, 'PROJECT_MANAGER')) {
-    return (
-      request.assignedProjectManagerId === req.user.userId ||
-      request.project?.assignedPmId === req.user.userId
-    );
-  }
-  return false;
+  return hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT');
 }
 
 function canPresidentReview(req) {
-  return hasRole(req, 'PRESIDENT');
+  return hasRole(req, 'PRESIDENT') || hasRole(req, 'ADMIN');
 }
 
 async function getUsersByRoles(roleNames = []) {
@@ -324,7 +318,7 @@ router.put('/:id', requireRole([...DECISION_ROLES, ...PROCUREMENT_ROLES]), async
     }
 
     if ((isPmApproval || (isReject && existing.status === 'PENDING')) && !canProjectManagerReview(req, existing)) {
-      return res.status(403).json({ error: 'Only the assigned Project Manager can review this request.' });
+      return res.status(403).json({ error: 'Only Admin or President can review this request.' });
     }
 
     if ((isPresidentApproval || (isReject && existing.status === 'PM_APPROVED')) && !canPresidentReview(req)) {
@@ -332,11 +326,11 @@ router.put('/:id', requireRole([...DECISION_ROLES, ...PROCUREMENT_ROLES]), async
     }
 
     if (isPmApproval && existing.status !== 'PENDING') {
-      return res.status(400).json({ error: 'Only requests pending Project Manager review can be approved by the Project Manager.' });
+      return res.status(400).json({ error: 'Only pending requests can move to office review.' });
     }
 
     if (isPresidentApproval && existing.status !== 'PM_APPROVED') {
-      return res.status(400).json({ error: 'Only Project Manager-approved requests can be approved by the President.' });
+      return res.status(400).json({ error: 'Only office-reviewed requests can receive final approval.' });
     }
 
     if (isReject && !['PENDING', 'PM_APPROVED'].includes(existing.status)) {

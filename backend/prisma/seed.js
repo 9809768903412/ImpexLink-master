@@ -486,6 +486,9 @@ async function main() {
     'PAINT_CHEMIST',
     'WAREHOUSE_STAFF',
     'DELIVERY_GUY',
+    'DRIVER',
+    'RECEIVER',
+    'PROJECT_IN_CHARGE',
     'CLIENT',
   ];
 

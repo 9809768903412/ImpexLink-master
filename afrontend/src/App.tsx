@@ -18,10 +18,12 @@ import PurchaseOrdersPage from "@/pages/admin/PurchaseOrders";
 import SuppliersPage from "@/pages/admin/Suppliers";
 import LogisticsPage from "@/pages/admin/Logistics";
 import ReportsPage from "@/pages/admin/Reports";
+import PaymentsPage from "@/pages/admin/Payments";
 import AIInsightsPage from "@/pages/admin/AIInsights";
 import AuditLogsPage from "@/pages/admin/AuditLogs";
 import ProofCenterPage from "@/pages/admin/ProofCenter";
 import AdminNotificationsPage from "@/pages/admin/Notifications";
+import AdminMessagesPage from "@/pages/admin/Messages";
 import SettingsPage from "@/pages/admin/Settings";
 import ClientDashboard from "@/pages/client/Dashboard";
 import PlaceOrderPage from "@/pages/client/PlaceOrder";
@@ -31,6 +33,7 @@ import ClientProfilePage from "@/pages/client/Profile";
 import ClientProjectsPage from "@/pages/client/Projects";
 import ClientInvoicesPage from "@/pages/client/Invoices";
 import ClientPaymentHistoryPage from "@/pages/client/PaymentHistory";
+import ClientMessagesPage from "@/pages/client/Messages";
 import NotFound from "@/pages/NotFound";
 import {
   ADMIN_AREA_ROLES,
@@ -42,15 +45,17 @@ import {
   canViewSuppliers,
   canViewLogistics,
   canViewReports,
+  canViewPayments,
   canViewAIInsights,
   canViewAuditLogs,
   canViewProofCenter,
   canViewNotifications,
+  canViewMessages,
   canAccessSettings,
 } from "@/lib/roles";
 
 const queryClient = new QueryClient();
-const ADMIN_NON_DELIVERY_ROLES = ADMIN_AREA_ROLES.filter((role) => role !== 'delivery_guy');
+const ADMIN_NON_DELIVERY_ROLES = ADMIN_AREA_ROLES.filter((role) => !['delivery_guy', 'driver', 'receiver'].includes(role));
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { isAuthenticated, user, isLoading } = useAuth();
@@ -58,13 +63,14 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
-  if (roleList.includes('delivery_guy') && location.pathname.startsWith('/admin') && location.pathname !== '/admin/settings') {
+  const logisticsOnly = roleList.some((role) => ['delivery_guy', 'driver', 'receiver'].includes(role));
+  if (logisticsOnly && location.pathname.startsWith('/admin') && location.pathname !== '/admin/settings') {
     return <Navigate to="/logistics" replace />;
   }
   if (allowedRoles && user) {
     const allowed = roleList.some((r) => allowedRoles.includes(r));
     if (!allowed) {
-      if (roleList.includes('delivery_guy')) return <Navigate to="/logistics" replace />;
+      if (logisticsOnly) return <Navigate to="/logistics" replace />;
       return <Navigate to={roleList.includes('client') ? '/client' : '/admin'} replace />;
     }
   }
@@ -76,7 +82,7 @@ function RoleBasedRedirect() {
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
-  if (roleList.includes('delivery_guy')) return <Navigate to="/logistics" replace />;
+  if (roleList.some((role) => ['delivery_guy', 'driver', 'receiver'].includes(role))) return <Navigate to="/logistics" replace />;
   return <Navigate to={roleList.includes('client') ? '/client' : '/admin'} replace />;
 }
 
@@ -96,15 +102,17 @@ function AppRoutes() {
       <Route path="/admin/purchase-orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewPurchaseOrders)}><AdminLayout><PurchaseOrdersPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/suppliers" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewSuppliers)}><AdminLayout><SuppliersPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/logistics" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewLogistics)}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/payments" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewPayments)}><AdminLayout><PaymentsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewReports)}><AdminLayout><ReportsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/ai-insights" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewAIInsights)}><AdminLayout><AIInsightsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewAuditLogs)}><AdminLayout><AuditLogsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/proofs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewProofCenter)}><AdminLayout><ProofCenterPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/messages" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewMessages)}><AdminLayout><AdminMessagesPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/notifications" element={<ProtectedRoute allowedRoles={ADMIN_NON_DELIVERY_ROLES.filter(canViewNotifications)}><AdminLayout><AdminNotificationsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={ADMIN_AREA_ROLES.filter(canAccessSettings)}><AdminLayout><SettingsPage /></AdminLayout></ProtectedRoute>} />
 
       {/* Delivery Guy Route */}
-      <Route path="/logistics" element={<ProtectedRoute allowedRoles={['delivery_guy']}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/logistics" element={<ProtectedRoute allowedRoles={['delivery_guy', 'driver', 'receiver']}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
       
       {/* Client Routes */}
       <Route path="/client" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientDashboard /></ClientLayout></ProtectedRoute>} />
@@ -114,6 +122,7 @@ function AppRoutes() {
       <Route path="/client/deliveries" element={<ProtectedRoute allowedRoles={['client']}><Navigate to="/client/orders?tab=my-deliveries" replace /></ProtectedRoute>} />
       <Route path="/client/projects" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientProjectsPage /></ClientLayout></ProtectedRoute>} />
       <Route path="/client/notifications" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientNotificationsPage /></ClientLayout></ProtectedRoute>} />
+      <Route path="/client/messages" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientMessagesPage /></ClientLayout></ProtectedRoute>} />
       <Route path="/client/profile" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientProfilePage /></ClientLayout></ProtectedRoute>} />
       <Route path="/client/invoices" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientInvoicesPage /></ClientLayout></ProtectedRoute>} />
       <Route path="/client/payments" element={<ProtectedRoute allowedRoles={['client']}><ClientLayout><ClientPaymentHistoryPage /></ClientLayout></ProtectedRoute>} />

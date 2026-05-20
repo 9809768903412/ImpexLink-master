@@ -31,6 +31,8 @@ const publicRoutes = require('./routes/public');
 const proofRoutes = require('./routes/proofs');
 const testEmailRoutes = require('./routes/testEmail');
 const fileRoutes = require('./routes/files');
+const messageRoutes = require('./routes/messages');
+const paymentRoutes = require('./routes/payments');
 
 const app = express();
 
@@ -156,6 +158,8 @@ app.use('/api/public', publicRoutes);
 app.use('/api/proofs', proofRoutes);
 app.use('/api/test-email', testEmailRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/payments', paymentRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

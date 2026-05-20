@@ -60,6 +60,9 @@ export default function SettingsPage() {
     { value: 'paint_chemist', label: 'Paint Chemist' },
     { value: 'warehouse_staff', label: 'Warehouse Staff' },
     { value: 'delivery_guy', label: 'Delivery Guy' },
+    { value: 'driver', label: 'Driver' },
+    { value: 'receiver', label: 'Receiver' },
+    { value: 'project_in_charge', label: 'Project In-charge' },
     { value: 'client', label: 'Client' },
   ];
   const [userView, setUserView] = useState<'active' | 'archived'>('active');

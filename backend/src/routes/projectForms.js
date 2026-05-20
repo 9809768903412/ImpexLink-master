@@ -55,7 +55,7 @@ async function ensureProjectAccess(req, projectId) {
     return project;
   }
 
-  if (hasRole(req, 'PROJECT_MANAGER')) {
+  if (hasRole(req, 'PROJECT_MANAGER') || hasRole(req, 'PROJECT_IN_CHARGE')) {
     if (project.assignedPmId === req.user.userId) return project;
   }
 
@@ -99,7 +99,7 @@ async function getAccessibleProjectIds(req) {
 
   const ids = new Set();
 
-  if (hasRole(req, 'PROJECT_MANAGER')) {
+  if (hasRole(req, 'PROJECT_MANAGER') || hasRole(req, 'PROJECT_IN_CHARGE')) {
     const projects = await prisma.project.findMany({
       where: { assignedPmId: req.user.userId, deletedAt: null },
       select: { projectId: true },
@@ -140,7 +140,7 @@ async function getAccessibleProjectIds(req) {
   return ids;
 }
 
-router.get('/', requireRole(['ADMIN', 'PRESIDENT', 'PROJECT_MANAGER', 'ENGINEER', 'CLIENT']), async (req, res, next) => {
+router.get('/', requireRole(['ADMIN', 'PRESIDENT', 'PROJECT_MANAGER', 'PROJECT_IN_CHARGE', 'ENGINEER', 'CLIENT']), async (req, res, next) => {
   try {
     const projectId = req.query.projectId ? Number(req.query.projectId) : null;
     const forms = await readForms();
@@ -161,14 +161,14 @@ router.get('/', requireRole(['ADMIN', 'PRESIDENT', 'PROJECT_MANAGER', 'ENGINEER'
   }
 });
 
-router.post('/', requireRole(['ADMIN', 'PROJECT_MANAGER', 'ENGINEER']), async (req, res, next) => {
+router.post('/', requireRole(['ADMIN', 'PROJECT_MANAGER', 'PROJECT_IN_CHARGE', 'ENGINEER']), async (req, res, next) => {
   try {
     const projectId = Number(req.body.projectId);
     if (!isPositiveInt(projectId)) {
       return res.status(400).json({ error: 'Project is required' });
     }
     const project =
-      hasRole(req, 'ENGINEER') && !hasRole(req, 'ADMIN') && !hasRole(req, 'PRESIDENT') && !hasRole(req, 'PROJECT_MANAGER')
+      hasRole(req, 'ENGINEER') && !hasRole(req, 'ADMIN') && !hasRole(req, 'PRESIDENT') && !hasRole(req, 'PROJECT_MANAGER') && !hasRole(req, 'PROJECT_IN_CHARGE')
         ? await prisma.project.findUnique({
             where: { projectId: Number(projectId) },
             include: { client: true },

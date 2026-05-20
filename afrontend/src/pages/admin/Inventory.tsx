@@ -782,12 +782,13 @@ export default function InventoryPage() {
             </div>
           </div>
           <div className="max-h-[60vh] overflow-auto rounded-md border">
-            <Table className="min-w-[720px]">
+            <Table className="min-w-[820px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Supplier / Reference</TableHead>
+                  <TableHead>Performed By</TableHead>
                   <TableHead className="text-right">Qty Change</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                 </TableRow>
@@ -808,6 +809,7 @@ export default function InventoryPage() {
                         </p>
                         {txn.notes && <p className="text-xs text-muted-foreground">{txn.notes}</p>}
                       </TableCell>
+                      <TableCell>{txn.userName || 'System'}</TableCell>
                       <TableCell className={txn.qtyChange >= 0 ? 'text-right text-success' : 'text-right text-destructive'}>
                         {txn.qtyChange >= 0 ? '+' : ''}{txn.qtyChange}
                       </TableCell>
@@ -816,7 +818,7 @@ export default function InventoryPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="py-4 text-center text-muted-foreground">
                       No stock movement recorded yet.
                     </TableCell>
                   </TableRow>

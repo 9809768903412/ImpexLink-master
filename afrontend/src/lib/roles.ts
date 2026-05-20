@@ -17,6 +17,9 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   paint_chemist: 'Paint Chemist',
   warehouse_staff: 'Warehouse Staff',
   delivery_guy: 'Delivery Guy',
+  driver: 'Driver',
+  receiver: 'Receiver',
+  project_in_charge: 'Project In-charge',
   client: 'Client',
 };
 
@@ -29,6 +32,9 @@ export const ADMIN_AREA_ROLES: UserRole[] = [
   'paint_chemist',
   'warehouse_staff',
   'delivery_guy',
+  'driver',
+  'receiver',
+  'project_in_charge',
 ];
 
 export const isPresident = (role?: RoleInput) => hasRole(role, 'president');
@@ -52,7 +58,7 @@ export const canManageInventory = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'warehouse_staff'].includes(r));
 
 export const canViewProjects = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin', 'project_manager', 'president', 'engineer'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'project_manager', 'president', 'engineer', 'project_in_charge'].includes(r));
 
 export const canViewMaterialRequests = (role?: RoleInput) =>
   normalizeRoles(role).some((r) =>
@@ -63,7 +69,7 @@ export const canCreateMaterialRequests = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['engineer'].includes(r));
 
 export const canApproveMaterialRequests = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['project_manager', 'president'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
 
 export const canViewClientOrders = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'sales_agent', 'warehouse_staff'].includes(r));
@@ -76,12 +82,14 @@ export const canViewPurchaseOrders = (role?: RoleInput) => hasRole(role, 'admin'
 export const canViewSuppliers = (role?: RoleInput) => hasRole(role, 'admin');
 
 export const canViewLogistics = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'delivery_guy'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff', 'delivery_guy', 'driver', 'receiver'].includes(r));
 
 export const canManageLogistics = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin', 'delivery_guy', 'warehouse_staff'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'delivery_guy', 'driver', 'receiver', 'warehouse_staff'].includes(r));
 
 export const canViewReports = (role?: RoleInput) =>
+  normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
+export const canViewPayments = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
 export const canViewAIInsights = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
@@ -93,5 +101,13 @@ export const canViewProofCenter = (role?: RoleInput) =>
 
 export const canViewNotifications = (role?: RoleInput) => {
   const roles = normalizeRoles(role);
-  return roles.length > 0 && !roles.includes('client') && !roles.includes('delivery_guy');
+  return (
+    roles.length > 0 &&
+    !roles.some((r) => ['client', 'delivery_guy', 'driver', 'receiver'].includes(r))
+  );
+};
+
+export const canViewMessages = (role?: RoleInput) => {
+  const roles = normalizeRoles(role);
+  return roles.length > 0 && !roles.includes('client');
 };

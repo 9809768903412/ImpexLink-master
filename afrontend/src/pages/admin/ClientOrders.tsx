@@ -272,6 +272,21 @@ export default function ClientOrdersPage() {
 
   const applyBulkStatus = () => {
     if (selectedOrderIds.length === 0) return;
+    const allowedBulkStatuses: OrderStatus[] = isAdmin
+      ? ['approved', 'processing', 'ready-for-delivery', 'delivered', 'cancelled']
+      : isWarehouseStaff
+        ? ['processing', 'ready-for-delivery']
+        : isSalesAgent
+          ? ['processing']
+          : [];
+    if (!allowedBulkStatuses.includes(bulkStatus)) {
+      toast({
+        title: 'Status restricted',
+        description: 'That order status is not available for your role.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setOrders((prev) =>
       prev.map((o) => (selectedOrderIds.includes(o.id) ? { ...o, status: bulkStatus } : o))
     );
@@ -411,10 +426,10 @@ export default function ClientOrdersPage() {
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="processing">Processing</SelectItem>
-                    <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
+                    {isAdmin && <SelectItem value="approved">Approved</SelectItem>}
+                    {(isAdmin || isWarehouseStaff || isSalesAgent) && <SelectItem value="processing">Processing</SelectItem>}
+                    {(isAdmin || isWarehouseStaff) && <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>}
+                    {isAdmin && <SelectItem value="delivered">Delivered</SelectItem>}
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
@@ -800,7 +815,7 @@ export default function ClientOrdersPage() {
                   <div>
                     <p className="text-sm font-medium">Assign to Sales Agent</p>
                     <p className="text-xs text-muted-foreground">
-                      Only admin can manage manual assignment for order ownership.
+                      Only admin can assign once. After saving, the assignment is final.
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -820,7 +835,10 @@ export default function ClientOrdersPage() {
                     <Button
                       variant="outline"
                       onClick={handleSaveSalesAgentAssignment}
-                      disabled={assignedSalesAgentDraft === (selectedOrder.assignedSalesAgentId || 'unassigned')}
+                      disabled={
+                        Boolean(selectedOrder.assignedSalesAgentId) ||
+                        assignedSalesAgentDraft === (selectedOrder.assignedSalesAgentId || 'unassigned')
+                      }
                     >
                       Save
                     </Button>
@@ -830,7 +848,7 @@ export default function ClientOrdersPage() {
                   </p>
                 </div>
               )}
-              {canManageOrders && selectedOrder.status === 'pending' && (
+              {canManageOrders && isAdmin && selectedOrder.status === 'pending' && (
                 <div className="rounded-lg border p-3 space-y-2">
                   <p className="text-sm font-medium">Cancellation reason</p>
                   <Textarea
@@ -860,7 +878,7 @@ export default function ClientOrdersPage() {
                   <FileText size={16} className="mr-1" />
                   Download PDF
                 </Button>
-                {canManageOrders && selectedOrder.status === 'pending' && (
+                {canManageOrders && isAdmin && selectedOrder.status === 'pending' && (
                   <>
                     <Button
                       className="bg-red-600 hover:bg-red-700 text-white"
@@ -874,7 +892,7 @@ export default function ClientOrdersPage() {
                     >
                       Reject
                     </Button>
-                  {(isAdmin || isSalesAgent) && (
+                  {isAdmin && (
                     <Button
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
                       onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'approved')}
@@ -884,7 +902,7 @@ export default function ClientOrdersPage() {
                   )}
                 </>
               )}
-                {canManageOrders && (isAdmin || isWarehouseStaff) && selectedOrder.status === 'approved' && (
+                {canManageOrders && (isAdmin || isWarehouseStaff || isSalesAgent) && selectedOrder.status === 'approved' && (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'processing')}

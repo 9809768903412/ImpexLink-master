@@ -44,6 +44,11 @@ const escapeHtml = (value: unknown) =>
     .replace(/'/g, '&#039;');
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
 const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+const normalizeRange = (from: Date, to?: Date) => {
+  const start = startOfDay(from);
+  const end = endOfDay(to ?? from);
+  return start <= end ? { from: start, to: end } : { from: startOfDay(to ?? from), to: endOfDay(from) };
+};
 
 // TODO: Replace with real data from Lovable Cloud database
 export default function ReportsPage() {
@@ -613,8 +618,8 @@ export default function ReportsPage() {
                 mode="range"
                 selected={{ from: dateRange.from, to: dateRange.to }}
                 onSelect={(range) => {
-                  if (range?.from && range?.to) {
-                    setDateRange({ from: startOfDay(range.from), to: endOfDay(range.to) });
+                  if (range?.from) {
+                    setDateRange(normalizeRange(range.from, range.to));
                   }
                 }}
               />

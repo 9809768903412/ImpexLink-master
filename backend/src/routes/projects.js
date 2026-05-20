@@ -72,7 +72,7 @@ async function buildProjectAccessFilter(req, options = {}) {
     scopes.push({ assignedPmId: req.user.userId });
   }
 
-  if (hasRole(req, 'ENGINEER')) {
+  if (hasRole(req, 'ENGINEER') || hasRole(req, 'PROJECT_IN_CHARGE')) {
     return {};
   }
 
@@ -253,7 +253,7 @@ router.post('/', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'PROJECT_MANAGER']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN', 'PROJECT_MANAGER', 'ENGINEER', 'PROJECT_IN_CHARGE']), async (req, res, next) => {
   try {
     if (req.body.projectName !== undefined && !isNonEmptyString(req.body.projectName)) {
       return res.status(400).json({ error: 'Project name is required' });
@@ -281,7 +281,7 @@ router.put('/:id', requireRole(['ADMIN', 'PROJECT_MANAGER']), async (req, res, n
     }
     const roleList = getRoleList(req.user);
     const userHasRole = (role) => roleList.includes(String(role).toUpperCase());
-    if (userHasRole('PROJECT_MANAGER') && !userHasRole('ADMIN')) {
+    if ((userHasRole('PROJECT_MANAGER') || userHasRole('PROJECT_IN_CHARGE')) && !userHasRole('ADMIN')) {
       if (!existing.assignedPmId || existing.assignedPmId !== req.user.userId) {
         return res.status(403).json({ error: 'Forbidden' });
       }

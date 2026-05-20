@@ -55,7 +55,7 @@ export default function MaterialRequestsPage() {
   const roleInput = user?.roles?.length ? user.roles : user?.role;
   const canApprove = canApproveMaterialRequests(roleInput);
   const canCreate = canCreateMaterialRequests(roleInput);
-  const isProjectManager = hasRole(roleInput, 'project_manager');
+  const isAdmin = hasRole(roleInput, 'admin');
   const isPresident = hasRole(roleInput, 'president');
   const isProcurement = hasRole(roleInput, 'admin') || hasRole(roleInput, 'warehouse_staff');
   const [searchTerm, setSearchTerm] = useState('');
@@ -107,8 +107,8 @@ export default function MaterialRequestsPage() {
   const canApproveSelected =
     Boolean(selectedRequest) &&
     canApprove &&
-    ((isProjectManager && selectedRequest?.status === 'pending') ||
-      (isPresident && selectedRequest?.status === 'pm_approved'));
+    ((selectedRequest?.status === 'pending' && (isAdmin || isPresident)) ||
+      (selectedRequest?.status === 'pm_approved' && (isAdmin || isPresident)));
 
   const getDraftEstimatedCost = () =>
     newRequest.items.reduce((sum, item) => {
@@ -119,7 +119,7 @@ export default function MaterialRequestsPage() {
   const getStatusBadge = (status: MaterialRequest['status']) => {
     switch (status) {
       case 'pending':
-        return <Badge className="bg-warning text-warning-foreground gap-1"><Clock size={12} />Project Manager Review</Badge>;
+        return <Badge className="bg-warning text-warning-foreground gap-1"><Clock size={12} />Office Review</Badge>;
       case 'pm_approved':
         return <Badge className="bg-blue-100 text-blue-800 gap-1"><Clock size={12} />President Approval</Badge>;
       case 'approved':
@@ -132,7 +132,7 @@ export default function MaterialRequestsPage() {
   };
 
   const getApprovalActionLabel = (request: MaterialRequest) => {
-    if (request.status === 'pending') return 'PM Approve';
+    if (request.status === 'pending') return 'Mark Reviewed';
     if (request.status === 'pm_approved') return 'Final Approve';
     return 'Approve';
   };
@@ -140,9 +140,9 @@ export default function MaterialRequestsPage() {
   const getStatusDescription = (request: MaterialRequest) => {
     switch (request.status) {
       case 'pending':
-        return 'Pending Project Manager review';
+        return 'Pending Admin / President review';
       case 'pm_approved':
-        return 'Project Manager approved. Waiting for President final approval.';
+        return 'Reviewed. Waiting for final approval.';
       case 'approved':
         return 'President approved. Visible to Procurement.';
       case 'rejected':
@@ -193,11 +193,11 @@ export default function MaterialRequestsPage() {
       )
     );
     toast({
-      title: nextStatus === 'approved' ? 'Final Approval Complete' : 'PM Review Complete',
+      title: nextStatus === 'approved' ? 'Final Approval Complete' : 'Office Review Complete',
       description:
         nextStatus === 'approved'
           ? `${request.requestNumber} is approved and visible to Procurement.`
-          : `${request.requestNumber} has been sent to the President for final approval.`,
+          : `${request.requestNumber} is ready for final approval.`,
     });
     apiClient
       .put<MaterialRequest>(`/material-requests/${request.id}`, {

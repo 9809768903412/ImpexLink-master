@@ -85,6 +85,8 @@ export default function LogisticsPage() {
   const [trackingDelivery, setTrackingDelivery] = useState<Delivery | null>(null);
   const [showDRPreview, setShowDRPreview] = useState(false);
   const [receivedBy, setReceivedBy] = useState('');
+  const [receiverAddress, setReceiverAddress] = useState('');
+  const [receiverContactNumber, setReceiverContactNumber] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [isRejectReturnOpen, setIsRejectReturnOpen] = useState(false);
@@ -92,6 +94,7 @@ export default function LogisticsPage() {
   const [isLalamoveOpen, setIsLalamoveOpen] = useState(false);
   const [lalamoveForm, setLalamoveForm] = useState({
     clientOrderId: '',
+    deliveryMethod: 'LALAMOVE',
     provider: 'Lalamove',
     reference: '',
     loadKg: '',
@@ -215,6 +218,9 @@ export default function LogisticsPage() {
         const updates: Partial<Delivery> = { status: newStatus };
         if (newStatus === 'delivered') {
           updates.receivedBy = receivedByValue || 'Client Representative';
+          updates.receiverName = receivedByValue || 'Client Authorized Representative';
+          updates.receiverAddress = receiverAddress;
+          updates.receiverContactNumber = receiverContactNumber;
           updates.receivedAt = new Date().toISOString();
           updates.notes = notesValue;
         }
@@ -254,6 +260,8 @@ export default function LogisticsPage() {
     });
     setSelectedDelivery(null);
     setReceivedBy('');
+    setReceiverAddress('');
+    setReceiverContactNumber('');
     setDeliveryNotes('');
     setIsReturnOpen(false);
   };
@@ -289,7 +297,11 @@ export default function LogisticsPage() {
         <div class=\"meta\">ETA: ${delivery.eta ? format(new Date(delivery.eta), 'MMM dd, yyyy') : '—'}</div>
         <div class=\"meta\">Client: ${delivery.clientName}</div>
         <div class=\"meta\">Project: ${delivery.projectName || 'N/A'}</div>
+        <div class=\"meta\">Receiver Name: ${delivery.receiverName || delivery.receivedBy || '—'}</div>
+        <div class=\"meta\">Receiver Address: ${delivery.receiverAddress || '—'}</div>
+        <div class=\"meta\">Receiver Contact: ${delivery.receiverContactNumber || '—'}</div>
         <div class=\"meta\">Status: ${delivery.status}</div>
+        <div class=\"meta\">Delivery Fee: Office account</div>
       </div>
       <table>
         <thead><tr><th>Item</th><th>Unit</th><th>Qty</th></tr></thead>
@@ -297,7 +309,7 @@ export default function LogisticsPage() {
       </table>
       <div class=\"meta-grid\">
         <div class=\"meta\">Issued By: ${delivery.issuedBy}</div>
-        <div class=\"meta\">Received By: ${delivery.receivedBy || '—'}</div>
+        <div class=\"meta\">Received By: ${delivery.receiverName || delivery.receivedBy || '—'}</div>
       </div>`
     );
   };
@@ -312,17 +324,17 @@ export default function LogisticsPage() {
       const response = await apiClient.post<Delivery>('/deliveries', {
         drNumber: `DR-LALA-${Date.now().toString().slice(-6)}`,
         clientOrderId: lalamoveForm.clientOrderId,
-        deliveryMethod: 'LALAMOVE',
-        thirdPartyProvider: lalamoveForm.provider || 'Lalamove',
-        thirdPartyReference: lalamoveForm.reference || null,
+        deliveryMethod: lalamoveForm.deliveryMethod,
+        thirdPartyProvider: lalamoveForm.deliveryMethod === 'LALAMOVE' ? lalamoveForm.provider || 'Lalamove' : null,
+        thirdPartyReference: lalamoveForm.deliveryMethod === 'LALAMOVE' ? lalamoveForm.reference || null : null,
         loadKg: lalamoveForm.loadKg ? Number(lalamoveForm.loadKg) : null,
         itemsCount: order?.items?.length || 0,
         notes: lalamoveForm.notes || 'Third-party delivery request',
       });
       setDeliveries((current) => [response.data, ...current]);
       setIsLalamoveOpen(false);
-      setLalamoveForm({ clientOrderId: '', provider: 'Lalamove', reference: '', loadKg: '', notes: '' });
-      toast({ title: 'Lalamove request created', description: `${response.data.drNumber} is now in delivery tracking.` });
+      setLalamoveForm({ clientOrderId: '', deliveryMethod: 'LALAMOVE', provider: 'Lalamove', reference: '', loadKg: '', notes: '' });
+      toast({ title: 'Delivery request created', description: `${response.data.drNumber} is now in delivery tracking.` });
     } catch (err: any) {
       toast({
         title: 'Unable to create request',
@@ -348,6 +360,8 @@ export default function LogisticsPage() {
   const openDeliveryDetails = (delivery: Delivery) => {
     setSelectedDelivery(delivery);
     setReceivedBy(delivery.receivedBy || '');
+    setReceiverAddress(delivery.receiverAddress || '');
+    setReceiverContactNumber(delivery.receiverContactNumber || '');
     setDeliveryNotes(delivery.notes || '');
   };
 
@@ -383,7 +397,7 @@ export default function LogisticsPage() {
         <div className="flex justify-end">
           <Button onClick={() => setIsLalamoveOpen(true)} className="gap-2">
             <Send size={16} />
-            Third-party Delivery
+            New Delivery Request
           </Button>
         </div>
       )}
@@ -401,14 +415,14 @@ export default function LogisticsPage() {
             <Package size={16} />
             Paint Load
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Paint is estimated at 16kg per can/gallon for delivery planning.</p>
+          <p className="mt-1 text-xs text-muted-foreground">1 gallon = 4 liters; 1 pail/can = 16kg for delivery planning.</p>
         </div>
         <div className="rounded-lg border bg-muted/30 p-3">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Truck size={16} />
             Truck Capacity
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Truck limit is 20 paint cans or 320kg total load.</p>
+          <p className="mt-1 text-xs text-muted-foreground">L300 truck limit is 1 ton, with a 20-paint-can cap.</p>
         </div>
         <div className="rounded-lg border bg-muted/30 p-3">
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -589,6 +603,8 @@ export default function LogisticsPage() {
           if (!open) {
             setSelectedDelivery(null);
             setReceivedBy('');
+            setReceiverAddress('');
+            setReceiverContactNumber('');
             setDeliveryNotes('');
           }
         }}
@@ -616,11 +632,15 @@ export default function LogisticsPage() {
                   <div>
                     <p><span className="font-medium">Client:</span> {selectedDelivery.clientName}</p>
                     <p><span className="font-medium">Project:</span> {selectedDelivery.projectName || 'N/A'}</p>
+                    <p><span className="font-medium">Receiver:</span> {selectedDelivery.receiverName || selectedDelivery.receivedBy || 'Pending'}</p>
+                    <p><span className="font-medium">Address:</span> {selectedDelivery.receiverAddress || 'Pending'}</p>
+                    <p><span className="font-medium">Contact:</span> {selectedDelivery.receiverContactNumber || 'Pending'}</p>
                   </div>
                   <div className="text-right">
                     <p><span className="font-medium">Date:</span> {format(new Date(selectedDelivery.issuedAt), 'MMM dd, yyyy')}</p>
                     <p><span className="font-medium">ETA:</span> {format(new Date(selectedDelivery.eta), 'MMM dd, yyyy')}</p>
                     <p><span className="font-medium">Method:</span> {selectedDelivery.deliveryMethod || 'TRUCK'}</p>
+                    <p><span className="font-medium">Delivery Fee:</span> Office account</p>
                     {selectedDelivery.thirdPartyProvider && (
                       <p><span className="font-medium">Third-party:</span> {selectedDelivery.thirdPartyProvider} {selectedDelivery.thirdPartyReference || ''}</p>
                     )}
@@ -651,7 +671,9 @@ export default function LogisticsPage() {
                 </div>
                 <div>
                   <p className="font-medium">Received By:</p>
-                  <p>{selectedDelivery.receivedBy || '_______________'}</p>
+                  <p>{selectedDelivery.receiverName || selectedDelivery.receivedBy || '_______________'}</p>
+                  <p className="text-xs text-muted-foreground">{selectedDelivery.receiverAddress || 'Receiver address'}</p>
+                  <p className="text-xs text-muted-foreground">{selectedDelivery.receiverContactNumber || 'Receiver contact number'}</p>
                 </div>
               </div>
             </div>
@@ -689,6 +711,24 @@ export default function LogisticsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Receiver Address</Label>
+                      <Input
+                        value={receiverAddress}
+                        onChange={(e) => setReceiverAddress(e.target.value)}
+                        placeholder="Receiver address or site location"
+                      />
+                    </div>
+                    <div>
+                      <Label>Receiver Contact Number</Label>
+                      <Input
+                        value={receiverContactNumber}
+                        onChange={(e) => setReceiverContactNumber(e.target.value)}
+                        placeholder="Contact number"
+                      />
+                    </div>
+                  </div>
                   <Textarea
                     placeholder="Delivery notes..."
                     value={deliveryNotes}
@@ -781,8 +821,8 @@ export default function LogisticsPage() {
       <Dialog open={isLalamoveOpen} onOpenChange={setIsLalamoveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Third-party Delivery</DialogTitle>
-            <DialogDescription>Create a tracked Lalamove or other third-party delivery for oversized or heavy loads.</DialogDescription>
+            <DialogTitle>Delivery Request</DialogTitle>
+            <DialogDescription>Create a tracked Truck, Motor, or Third Party delivery. Office pays delivery fees.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -802,8 +842,25 @@ export default function LogisticsPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
+                <Label>Delivery Type</Label>
+                <Select value={lalamoveForm.deliveryMethod} onValueChange={(value) => setLalamoveForm((prev) => ({ ...prev, deliveryMethod: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select delivery type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TRUCK">Truck</SelectItem>
+                    <SelectItem value="MOTOR">Motor</SelectItem>
+                    <SelectItem value="LALAMOVE">Third Party (Lalamove)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Provider</Label>
-                <Select value={lalamoveForm.provider} onValueChange={(value) => setLalamoveForm((prev) => ({ ...prev, provider: value }))}>
+                <Select
+                  value={lalamoveForm.provider}
+                  onValueChange={(value) => setLalamoveForm((prev) => ({ ...prev, provider: value }))}
+                  disabled={lalamoveForm.deliveryMethod !== 'LALAMOVE'}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select provider" />
                   </SelectTrigger>

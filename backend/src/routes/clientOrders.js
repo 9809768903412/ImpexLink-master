@@ -42,7 +42,7 @@ function canTransitionOrder(req, currentStatus, requestedStatus) {
   if (hasRole(req, 'ADMIN')) return true;
 
   if (hasRole(req, 'SALES_AGENT')) {
-    return currentStatus === 'PENDING' && ['APPROVED', 'CANCELLED'].includes(requestedStatus);
+    return currentStatus === 'APPROVED' && requestedStatus === 'PROCESSING';
   }
 
   if (hasRole(req, 'WAREHOUSE_STAFF')) {
@@ -369,6 +369,13 @@ router.post('/', requireRole(['ADMIN', 'SALES_AGENT', 'CLIENT']), async (req, re
         : req.body.assignedSalesAgentId === 'unassigned'
         ? null
         : await validateSalesAgentAssignment(req.body.assignedSalesAgentId);
+    const requestedStatus = status ? normalizeOrderStatusForWrite(status) : 'PENDING';
+    if (!hasRole(req, 'ADMIN') && requestedStatus !== 'PENDING') {
+      return res.status(403).json({ error: 'Only admin can create an order as approved or processed.' });
+    }
+    if (!hasRole(req, 'ADMIN') && paymentStatus && String(paymentStatus).toUpperCase() !== 'PENDING') {
+      return res.status(403).json({ error: 'Only admin can set payment approval status.' });
+    }
 
     const order = await prisma.clientOrder.create({
       data: {
@@ -379,7 +386,7 @@ router.post('/', requireRole(['ADMIN', 'SALES_AGENT', 'CLIENT']), async (req, re
         subtotal,
         vat,
         total,
-        status: status ? status.toUpperCase() : 'PENDING',
+        status: requestedStatus,
         paymentStatus: paymentStatus ? paymentStatus.toUpperCase() : 'PENDING',
         createdBy: req.user.userId,
         specialInstructions: specialInstructions || null,
@@ -445,13 +452,18 @@ router.put('/:id/assignment', requireRole(['ADMIN']), async (req, res, next) => 
     if (!existing) {
       return res.status(404).json({ error: 'Order not found' });
     }
-
     const assignedSalesAgentId =
       req.body.assignedSalesAgentId === undefined
         ? existing.assignedSalesAgentId
         : req.body.assignedSalesAgentId === 'unassigned'
         ? null
         : await validateSalesAgentAssignment(req.body.assignedSalesAgentId);
+    if (
+      existing.assignedSalesAgentId &&
+      assignedSalesAgentId !== existing.assignedSalesAgentId
+    ) {
+      return res.status(409).json({ error: 'Sales agent assignment is final once assigned.' });
+    }
 
     await prisma.clientOrder.update({
       where: { clientOrderId: orderId },
@@ -471,7 +483,7 @@ router.put('/:id/assignment', requireRole(['ADMIN']), async (req, res, next) => 
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: 'UPDATE',
+        action: 'ASSIGN',
         target: 'ClientOrderAssignment',
         details: `Updated sales agent assignment for ${responseOrder.orderNumber}`,
       },
@@ -572,6 +584,9 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT', 'WAREHOUSE_STAFF', 'CLIE
       return res.status(400).json({ error: 'Invalid status' });
     }
     if (req.body.paymentStatus) {
+      if (!hasRole(req, 'ADMIN')) {
+        return res.status(403).json({ error: 'Only admin can update payment approval status.' });
+      }
       const payment = req.body.paymentStatus.toUpperCase();
       if (!['PENDING', 'VERIFIED', 'PAID', 'FAILED'].includes(payment)) {
         return res.status(400).json({ error: 'Invalid payment status' });
