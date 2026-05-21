@@ -1,20 +1,9 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useMemo } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Polyline, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Truck, Clock3, Upload, Route, Package, UserRound } from 'lucide-react';
 import type { Delivery, DeliveryStatus } from '@/types';
 import { toPublicFileUrl } from '@/lib/files';
@@ -35,8 +24,6 @@ const BASE_ROUTE: [number, number][] = [
   [14.5595, 121.0385],
   [14.5638, 121.0482],
 ];
-const RECEIVER_OPTIONS = ['Sir Jason', 'Project In-charge', 'Safety Officer', 'Site Engineer'];
-
 function getMockRoute(delivery: Delivery): [number, number][] {
   const hash = Number(delivery.id || 0) % 7;
   return BASE_ROUTE.map(([lat, lng], index) => [lat + hash * 0.0012 + index * 0.0006, lng + hash * 0.001 + index * 0.0009]);
@@ -55,40 +42,9 @@ export default function LiveTrackingDialog({
   delivery,
   open,
   onOpenChange,
-  readOnly = false,
-  onStatusUpdate,
-  onUploadProof,
 }: LiveTrackingDialogProps) {
-  const [receivedBy, setReceivedBy] = useState('');
-  const [notes, setNotes] = useState('');
-  const [eta, setEta] = useState('');
   const route = useMemo(() => (delivery ? getMockRoute(delivery) : BASE_ROUTE), [delivery]);
   const marker = route[route.length - 1];
-  const receivedByOptions = useMemo(() => {
-    return RECEIVER_OPTIONS;
-  }, [delivery]);
-
-  useEffect(() => {
-    setReceivedBy(delivery?.receivedBy || '');
-    setNotes(delivery?.notes || '');
-    setEta(delivery?.eta ? new Date(delivery.eta).toISOString().slice(0, 16) : '');
-  }, [delivery?.id, delivery?.receivedBy, delivery?.notes, delivery?.eta]);
-
-  const handleProofUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !delivery || !onUploadProof) return;
-    await onUploadProof(delivery.id, file);
-    event.currentTarget.value = '';
-  };
-
-  const triggerStatus = async (status: DeliveryStatus) => {
-    if (!delivery || !onStatusUpdate) return;
-    await onStatusUpdate(delivery.id, status, {
-      receivedBy: status === 'delivered' ? receivedBy : undefined,
-      notes: notes || undefined,
-      eta: status === 'delayed' ? eta : undefined,
-    });
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -204,66 +160,8 @@ export default function LiveTrackingDialog({
                 ) : (
                   <p className="text-muted-foreground">No proof of delivery uploaded yet.</p>
                 )}
-                {!readOnly && onUploadProof ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="pod-upload">Upload Proof of Delivery</Label>
-                    <Input id="pod-upload" type="file" accept="image/png,image/jpeg,application/pdf" onChange={handleProofUpload} />
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
-
-            {!readOnly && onStatusUpdate ? (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Delivery Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Received By</Label>
-                      <Select value={receivedBy} onValueChange={setReceivedBy}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select receiver" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {receivedByOptions.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Driver / Delivery Notes</Label>
-                      <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Delay reason, arrival note, or POD remarks" rows={3} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Updated ETA</Label>
-                      <Input type="datetime-local" value={eta} onChange={(e) => setEta(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 justify-end">
-                    {delivery.status === 'pending' ? (
-                      <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => triggerStatus('in-transit')}>
-                        Begin Delivery
-                      </Button>
-                    ) : null}
-                    {delivery.status === 'in-transit' || delivery.status === 'delayed' ? (
-                      <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => triggerStatus('delivered')}>
-                        Mark as Delivered
-                      </Button>
-                    ) : null}
-                    {delivery.status === 'pending' || delivery.status === 'in-transit' || delivery.status === 'delayed' ? (
-                      <Button className="bg-orange-600 hover:bg-orange-700 text-white" onClick={() => triggerStatus('delayed')}>
-                        Report Delay
-                      </Button>
-                    ) : null}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
           </div>
         ) : null}
       </DialogContent>
