@@ -222,6 +222,32 @@ export default function LogisticsPage() {
       });
       return;
     }
+    if (newStatus === 'in-transit') {
+      if (!receivedByValue.trim()) {
+        toast({
+          title: 'Select receiver',
+          description: 'Choose who is expected to receive the delivery before beginning the trip.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!receiverAddress.trim() || !receiverContactNumber.trim()) {
+        toast({
+          title: 'Receiver details required',
+          description: 'Enter the receiver address and contact number before beginning delivery.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!etaValue) {
+        toast({
+          title: 'Planned ETA required',
+          description: 'Enter the planned ETA before beginning delivery.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
     if ((newStatus === 'return-pending' || newStatus === 'delayed') && !notesValue.trim()) {
       toast({
         title: 'Missing notes',
@@ -249,6 +275,15 @@ export default function LogisticsPage() {
     const updatedDeliveries = deliveries.map((d) => {
       if (d.id === delId) {
         const updates: Partial<Delivery> = { status: newStatus };
+        if (newStatus === 'in-transit') {
+          updates.receivedBy = receivedByValue;
+          updates.receiverName = receivedByValue;
+          updates.receiverAddress = receiverAddress;
+          updates.receiverContactNumber = receiverContactNumber;
+          updates.eta = new Date(etaValue).toISOString();
+          updates.notes = notesValue;
+          updates.deliveryMethod = deliveryMethod;
+        }
         if (newStatus === 'delivered') {
           updates.receivedBy = receivedByValue || RECEIVER_OPTIONS[0];
           updates.receiverName = receivedByValue || RECEIVER_OPTIONS[0];
@@ -295,7 +330,10 @@ export default function LogisticsPage() {
         payload.returnRejectionReason = returnRejectReason;
       }
       try {
-        const response = await apiClient.put<Delivery>(`/deliveries/${delId}`, payload);
+        const cleanPayload = Object.fromEntries(
+          Object.entries(payload).filter(([, value]) => value !== undefined && value !== null && value !== '')
+        );
+        const response = await apiClient.put<Delivery>(`/deliveries/${delId}`, cleanPayload);
         const savedDelivery = response.data as Delivery;
         setDeliveries((current) => current.map((delivery) => (delivery.id === delId ? savedDelivery : delivery)));
         syncSelectedDelivery(savedDelivery);
