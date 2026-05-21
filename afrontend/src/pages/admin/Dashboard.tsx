@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useMemo } from 'react';
 import {
   ArrowRight,
   BarChart3,
@@ -12,10 +12,7 @@ import {
   Paintbrush2,
   Settings,
   Shield,
-  ShoppingCart,
   Truck,
-  Warehouse,
-  Wrench,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,15 +21,12 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import { useResource } from '@/hooks/use-resource';
-import { apiClient } from '@/api/client';
 import type {
   Delivery,
   InventoryItem,
   MaterialRequest,
-  Order,
   PaymentTransaction,
   Project,
-  QuoteRequest,
   StockTransaction,
   UserRole,
 } from '@/types';
@@ -148,14 +142,12 @@ export default function StaffDashboard() {
     [user?.role, user?.roles]
   );
   const effectiveRole = rolePriority.find((role) => roleList.includes(role)) || 'admin';
-  const needsStats = ['president', 'admin'].includes(effectiveRole);
+  const needsStats = ['admin'].includes(effectiveRole);
   const needsRequests = ['admin', 'project_manager', 'engineer', 'paint_chemist', 'warehouse_staff'].includes(effectiveRole);
   const needsInventory = ['admin', 'warehouse_staff', 'paint_chemist'].includes(effectiveRole);
   const needsProjects = ['president', 'project_manager', 'engineer', 'project_in_charge'].includes(effectiveRole);
-  const needsOrders = ['admin'].includes(effectiveRole);
   const needsDeliveries = ['warehouse_staff', 'delivery_guy', 'driver'].includes(effectiveRole);
   const needsTransactions = ['warehouse_staff'].includes(effectiveRole);
-  const needsQuotes = ['admin', 'sales_agent'].includes(effectiveRole);
   const needsPayments = ['sales_agent'].includes(effectiveRole);
 
   const { data: stats } = useResource<DashboardStats>(needsStats ? '/dashboard/stats' : '', {
@@ -167,22 +159,10 @@ export default function StaffDashboard() {
   const { data: requests } = useResource<MaterialRequest[]>(needsRequests ? '/material-requests' : '', []);
   const { data: inventory } = useResource<InventoryItem[]>(needsInventory ? '/inventory' : '', []);
   const { data: projects } = useResource<Project[]>(needsProjects ? '/projects' : '', []);
-  const { data: orders } = useResource<Order[]>(needsOrders ? '/orders' : '', []);
   const { data: deliveries } = useResource<Delivery[]>(needsDeliveries ? '/deliveries' : '', []);
   const { data: transactions } = useResource<StockTransaction[]>(needsTransactions ? '/transactions' : '', []);
   const { data: payments } = useResource<PaymentTransaction[]>(needsPayments ? '/payments' : '', []);
-  const [quotes, setQuotes] = useState<QuoteRequest[]>([]);
 
-  useEffect(() => {
-    if (!needsQuotes) {
-      setQuotes([]);
-      return;
-    }
-    apiClient
-      .get('/quote-requests')
-      .then((res) => setQuotes(res.data?.data || res.data || []))
-      .catch(() => setQuotes([]));
-  }, [effectiveRole, needsQuotes]);
 
   const reviewStatuses =
     effectiveRole === 'president'
@@ -202,26 +182,14 @@ export default function StaffDashboard() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
-  const myRequests = requests.filter((request) => request.requestedById === user?.id);
   const engineerVisibleRequests = requests;
   const clientPayments = payments.filter((payment) => payment.direction === 'client-to-office');
   const supplierPayments = payments.filter((payment) => payment.direction === 'office-to-supplier');
   const pendingClientPayments = clientPayments.filter((payment) => ['pending', 'overdue'].includes(payment.status));
-  const verifiedClientPayments = clientPayments.filter((payment) => ['received', 'paid'].includes(payment.status));
   const cancelledClientPayments = clientPayments.filter((payment) => ['cancelled', 'failed'].includes(payment.status));
   const paymentTotal = (items: PaymentTransaction[]) => items.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const warehouseOrders = orders
-    .filter((order) => ['approved', 'processing', 'ready-for-delivery'].includes(order.status))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const scopedProjectIds = new Set(projects.map((project) => project.id));
   const pmRequests = requests.filter((request) => scopedProjectIds.has(request.projectId));
-  const projectCostOverview = projects.slice(0, 5).map((project) => ({
-    id: project.id,
-    name: project.name,
-    totalCost: orders
-      .filter((order) => order.projectId === project.id)
-      .reduce((sum, order) => sum + order.total, 0),
-  }));
   const engineerProjects = projects;
   const paintInventory = inventory.filter((item) => item.category === 'Paint & Consumables');
   const paintRequestIds = new Set(
@@ -236,7 +204,7 @@ export default function StaffDashboard() {
   );
   const paintRequests = requests.filter((request) => paintRequestIds.has(request.id));
   const activeDeliveries = deliveries.filter((delivery) =>
-    ['pending', 'in-transit'].includes(delivery.status)
+    ['pending', 'in-transit', 'delayed'].includes(delivery.status)
   );
   const logisticsQueue = deliveries.filter((delivery) => ['pending', 'in-transit', 'delayed'].includes(delivery.status));
 
@@ -248,7 +216,7 @@ export default function StaffDashboard() {
             <CardTitle>All Projects Summary</CardTitle>
             <CardDescription>High-level view of project status across the company</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { label: 'Pending', value: projects.filter((project) => project.status === 'pending').length },
               { label: 'Active', value: projects.filter((project) => project.status === 'active').length },
@@ -571,19 +539,23 @@ export default function StaffDashboard() {
       <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
         <Card className="rounded-2xl">
           <CardHeader>
-            <CardTitle>Inventory Overview</CardTitle>
-            <CardDescription>Current material visibility for engineering requests</CardDescription>
+            <CardTitle>Engineering Projects</CardTitle>
+            <CardDescription>Projects currently visible for engineering work</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {inventory.slice(0, 6).map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
-                <div>
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-muted-foreground">{item.category}</p>
+            {engineerProjects.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No projects available right now.</p>
+            ) : (
+              engineerProjects.slice(0, 6).map((project) => (
+                <div key={project.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
+                  <div>
+                    <p className="font-medium">{project.name}</p>
+                    <p className="text-sm text-muted-foreground">{project.clientName}</p>
+                  </div>
+                  <Badge className="capitalize bg-slate-100 text-slate-700 hover:bg-slate-100">{project.status}</Badge>
                 </div>
-                <span className="text-sm font-semibold">{item.qtyOnHand} {item.unit}</span>
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -606,23 +578,18 @@ export default function StaffDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle>Engineering Projects</CardTitle>
-              <CardDescription>Projects currently visible for engineering work</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {engineerProjects.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No projects available right now.</p>
-              ) : (
-              engineerProjects.slice(0, 4).map((project) => (
-                <div key={project.id} className="rounded-xl border px-4 py-3">
-                  <p className="font-medium">{project.name}</p>
-                  <p className="text-sm text-muted-foreground">{project.clientName}</p>
-                </div>
-              )))}
-            </CardContent>
-          </Card>
+          <QuickLinkCard
+            title="Projects"
+            description="Open project details and engineering notes."
+            icon={FolderKanban}
+            onClick={() => navigate('/admin/projects')}
+          />
+          <QuickLinkCard
+            title="Material Requests"
+            description="Create or review material requests tied to engineering work."
+            icon={ClipboardList}
+            onClick={() => navigate('/admin/requests')}
+          />
         </div>
       </div>
     </div>
@@ -693,20 +660,24 @@ export default function StaffDashboard() {
         <div className="space-y-6">
           <Card className="rounded-2xl">
             <CardHeader>
-              <CardTitle>Order Processing Queue</CardTitle>
-              <CardDescription>Orders currently waiting on warehouse handling</CardDescription>
+              <CardTitle>Logistics Queue</CardTitle>
+              <CardDescription>Deliveries currently waiting on warehouse or driver handling</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {warehouseOrders.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No orders are waiting on warehouse processing right now.</p>
+              {logisticsQueue.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No deliveries are waiting on warehouse handling right now.</p>
               ) : (
-                warehouseOrders.slice(0, 5).map((order) => (
-                  <div key={order.id} className="rounded-xl border px-4 py-3">
-                    <p className="font-medium">{order.orderNumber}</p>
-                    <p className="text-sm text-muted-foreground">{order.clientName} â€¢ {order.status.replace(/-/g, ' ')}</p>
+                logisticsQueue.slice(0, 5).map((delivery) => (
+                  <div key={delivery.id} className="rounded-xl border px-4 py-3">
+                    <p className="font-medium">{delivery.drNumber}</p>
+                    <p className="text-sm text-muted-foreground">{delivery.clientName} - {delivery.status.replace(/-/g, ' ')}</p>
                   </div>
                 ))
               )}
+              <Button variant="ghost" className="w-full" onClick={() => navigate('/admin/logistics')}>
+                Open Logistics
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </CardContent>
           </Card>
 
@@ -827,4 +798,8 @@ export default function StaffDashboard() {
     </div>
   );
 }
+
+
+
+
 
