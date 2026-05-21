@@ -24,14 +24,15 @@ const uploadProof = multer({
     destination: (_req, _file, cb) => cb(null, proofDir),
     filename: (_req, file, cb) => {
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      cb(null, `${Date.now()}-${safeName}`);
+      const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${suffix}-${safeName}`);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf', 'image/heic', 'image/heif'];
     const extension = path.extname(String(file.originalname || '')).toLowerCase();
-    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.heic']);
+    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.pdf', '.heic', '.heif']);
     if (!allowedMimeTypes.includes(file.mimetype) && !allowedExtensions.has(extension)) {
       return cb(new Error('Invalid file type'));
     }

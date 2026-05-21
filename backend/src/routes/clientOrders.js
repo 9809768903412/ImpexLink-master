@@ -191,13 +191,16 @@ const upload = multer({
     destination: (_req, _file, cb) => cb(null, paymentDir),
     filename: (_req, file, cb) => {
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      cb(null, `${Date.now()}-${safeName}`);
+      const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${suffix}-${safeName}`);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!allowed.includes(file.mimetype)) {
+    const allowed = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'application/pdf'];
+    const extension = path.extname(String(file.originalname || '')).toLowerCase();
+    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.pdf']);
+    if (!allowed.includes(file.mimetype) && !allowedExtensions.has(extension)) {
       return cb(new Error('Invalid file type'));
     }
     cb(null, true);
@@ -783,8 +786,8 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
     if (!['CHEQUE', 'AUTO_DEPOSIT'].includes(paymentMethod)) {
       return res.status(400).json({ error: 'Client payment method must be Cheque or Auto Deposit.' });
     }
-    if (!req.file && !referenceNumber) {
-      return res.status(400).json({ error: 'Payment proof file or reference number is required' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'Payment proof file is required before submitting payment.' });
     }
     const access = await resolveClientAccess(prisma, req.user.userId);
     const order = await prisma.clientOrder.findUnique({

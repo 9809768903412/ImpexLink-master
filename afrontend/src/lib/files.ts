@@ -1,6 +1,11 @@
 export function toPublicFileUrl(fileUrl?: string | null) {
   if (!fileUrl) return '#';
-  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) return fileUrl;
+  const trimmed = String(fileUrl).trim();
+  if (!trimmed) return '#';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  if (trimmed.startsWith('/api/files') || trimmed.startsWith('api/files')) {
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  }
 
   const configuredApiUrl = import.meta.env.VITE_API_URL || '/api';
   const apiUrl =
@@ -15,7 +20,7 @@ export function toPublicFileUrl(fileUrl?: string | null) {
     })()
       ? '/api'
       : configuredApiUrl;
-  const path = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
+  const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
   const apiBase = apiUrl.replace(/\/$/, '');
   return `${apiBase}/files?path=${encodeURIComponent(path)}`;
 }

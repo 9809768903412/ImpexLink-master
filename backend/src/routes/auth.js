@@ -33,7 +33,8 @@ const upload = multer({
     destination: (_req, _file, cb) => cb(null, pendingProofDir),
     filename: (_req, file, cb) => {
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      cb(null, `${Date.now()}-${safeName}`);
+      const suffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${suffix}-${safeName}`);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },

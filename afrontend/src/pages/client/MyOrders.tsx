@@ -280,11 +280,11 @@ export default function MyOrdersPage() {
         });
         return;
       }
-      if (!proofFile && !paymentForm.referenceNumber.trim()) {
-        setUploadError('Please upload proof or enter a reference number.');
+      if (!proofFile) {
+        setUploadError('Please upload payment proof before submitting.');
         toast({
-          title: 'Proof or reference required',
-          description: 'Upload a proof file or enter a cheque/deposit reference.',
+          title: 'Payment proof required',
+          description: 'Upload cheque, deposit, or PO proof before submitting.',
           variant: 'destructive',
         });
         return;
@@ -953,15 +953,15 @@ export default function MyOrdersPage() {
                   />
                 </div>
                 <div>
-                  <Label>Payment Proof</Label>
+                  <Label>Payment Proof <span className="text-destructive">*</span></Label>
                   <div className="mt-1 rounded-md border border-dashed p-3">
                     <label className="flex cursor-pointer items-center justify-center gap-2 text-sm text-muted-foreground">
                       <Upload size={16} />
-                      <span>{selectedFileName || 'Upload cheque/deposit proof'}</span>
+                      <span>{selectedFileName || 'Upload cheque/deposit/PO proof'}</span>
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept="image/png,image/jpeg,application/pdf"
+                        accept="image/png,image/jpeg,image/heic,image/heif,application/pdf"
                         className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0] || null;
@@ -1015,7 +1015,7 @@ export default function MyOrdersPage() {
               Close
             </Button>
             {!isUploadingProof && !proofSubmitted ? (
-              <Button onClick={uploadPaymentProof}>Submit</Button>
+              <Button onClick={uploadPaymentProof} disabled={!proofFile}>Submit</Button>
             ) : null}
           </DialogFooter>
         </DialogContent>

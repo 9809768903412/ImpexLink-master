@@ -37,6 +37,8 @@ router.get('/', (req, res) => {
   }
 
   res.setHeader('Content-Disposition', `inline; filename="${path.basename(absolutePath).replace(/"/g, '')}"`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, max-age=300');
   return res.sendFile(absolutePath);
 });
 
