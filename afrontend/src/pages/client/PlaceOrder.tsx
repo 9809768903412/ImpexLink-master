@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Search, Filter, ShoppingCart, Package, Plus, Minus, X, MessageSquare, FileText, Grid, List } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -479,8 +479,8 @@ export default function PlaceOrderPage() {
                 )}
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl sm:w-full max-h-[90vh] overflow-hidden p-4 sm:p-6">
-              <DialogHeader>
+            <DialogContent className="flex max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl flex-col overflow-hidden p-0 sm:w-full">
+              <DialogHeader className="shrink-0 px-4 pt-4 sm:px-6 sm:pt-6">
                 <DialogTitle className="flex items-center gap-2">
                   <ShoppingCart size={20} />
                   Your Cart
@@ -492,165 +492,155 @@ export default function PlaceOrderPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              {cart.length > 0 ? (
-                <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={clearCart}>
-                    Clear Cart
-                  </Button>
-                </div>
-              ) : null}
-
-              <ScrollArea className="max-h-[46vh] flex-1 -mx-4 px-4 sm:-mx-6 sm:px-6">
+              <ScrollArea className="min-h-0 flex-1 px-4 sm:px-6">
                 <div className="space-y-4 py-4">
-                  {cart.map((cartItem) => {
-                    const line = calcLineAmounts(cartItem.quantity, cartItem.item.unitPrice);
-                    return (
-                    <div key={cartItem.item.id} className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3 sm:flex-row sm:items-start">
-                      <ProductImage name={cartItem.item.name} className="h-12 w-12 shrink-0" iconSize={20} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium break-words">{cartItem.item.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          ₱{cartItem.item.unitPrice.toLocaleString('en-PH')} / {cartItem.item.unit}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Net: ₱{line.net.toLocaleString('en-PH', { minimumFractionDigits: 2 })} • VAT: ₱
-                          {line.vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                        </p>
-                        <p className="text-xs font-medium text-foreground/80">
-                          Available stock: {cartItem.item.qtyOnHand.toLocaleString('en-PH')} {cartItem.item.unit}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={() => updateCartQuantity(cartItem.item.id, cartItem.quantity - 1)}
-                        >
-                          <Minus size={14} />
-                        </Button>
-                        <Input
-                          className="h-8 w-14 text-center sm:w-16"
-                          value={cartQtyInput[cartItem.item.id] ?? String(cartItem.quantity)}
-                          inputMode="numeric"
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(/[^\d]/g, '');
-                            setCartQtyValue(cartItem.item.id, raw);
-                          }}
-                          onBlur={() => {
-                            const raw = cartQtyInput[cartItem.item.id];
-                            if (!raw) {
-                              setCartQtyValue(cartItem.item.id, String(cartItem.quantity));
-                              return;
-                            }
-                            const next = Number(raw);
-                            if (!Number.isFinite(next) || next <= 0) {
-                              setCartQtyValue(cartItem.item.id, String(cartItem.quantity));
-                              return;
-                            }
-                            updateCartQuantity(cartItem.item.id, next);
-                          }}
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={() => updateCartQuantity(cartItem.item.id, cartItem.quantity + 1)}
-                        >
-                          <Plus size={14} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-destructive"
-                          onClick={() => removeFromCart(cartItem.item.id)}
-                        >
-                          <X size={14} />
-                        </Button>
-                      </div>
+                  {cart.length > 0 ? (
+                    <div className="flex justify-end">
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={clearCart}>
+                        Clear Cart
+                      </Button>
                     </div>
-                  )})}
+                  ) : null}
+
+                  <div className="space-y-4">
+                    {cart.map((cartItem) => {
+                      const line = calcLineAmounts(cartItem.quantity, cartItem.item.unitPrice);
+                      return (
+                        <div key={cartItem.item.id} className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3 sm:flex-row sm:items-start">
+                          <ProductImage name={cartItem.item.name} className="h-12 w-12 shrink-0" iconSize={20} />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium break-words">{cartItem.item.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              PHP {cartItem.item.unitPrice.toLocaleString('en-PH')} / {cartItem.item.unit}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Net: PHP {line.net.toLocaleString('en-PH', { minimumFractionDigits: 2 })} - VAT: PHP {line.vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </p>
+                            <p className="text-xs font-medium text-foreground/80">
+                              Available stock: {cartItem.item.qtyOnHand.toLocaleString('en-PH')} {cartItem.item.unit}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+                            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => updateCartQuantity(cartItem.item.id, cartItem.quantity - 1)}>
+                              <Minus size={14} />
+                            </Button>
+                            <Input
+                              className="h-8 w-14 text-center sm:w-16"
+                              value={cartQtyInput[cartItem.item.id] ?? String(cartItem.quantity)}
+                              inputMode="numeric"
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/[^\d]/g, '');
+                                setCartQtyValue(cartItem.item.id, raw);
+                              }}
+                              onBlur={() => {
+                                const raw = cartQtyInput[cartItem.item.id];
+                                if (!raw) {
+                                  setCartQtyValue(cartItem.item.id, String(cartItem.quantity));
+                                  return;
+                                }
+                                const next = Number(raw);
+                                if (!Number.isFinite(next) || next <= 0) {
+                                  setCartQtyValue(cartItem.item.id, String(cartItem.quantity));
+                                  return;
+                                }
+                                updateCartQuantity(cartItem.item.id, next);
+                              }}
+                            />
+                            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => updateCartQuantity(cartItem.item.id, cartItem.quantity + 1)}>
+                              <Plus size={14} />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive" onClick={() => removeFromCart(cartItem.item.id)}>
+                              <X size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {cart.length > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>Project</Label>
+                          <Select
+                            value={selectedProjectId}
+                            onValueChange={(value) => {
+                              setSelectedProjectId(value);
+                              if (orderErrors.projectId) {
+                                setOrderErrors((prev) => ({ ...prev, projectId: '' }));
+                              }
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={activeProjects.length > 0 ? 'Select project' : 'No projects available'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeProjects.map((project) => (
+                                <SelectItem key={project.id} value={project.id}>
+                                  {project.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {activeProjects.length === 0 && (
+                            <div className="flex items-center justify-between rounded-md border border-dashed p-3">
+                              <span className="text-xs text-muted-foreground">
+                                No projects yet. Request one to continue.
+                              </span>
+                              <Button size="sm" variant="outline" onClick={() => setIsProjectRequestOpen(true)}>
+                                Request Project
+                              </Button>
+                            </div>
+                          )}
+                          {orderErrors.projectId && (
+                            <p className="text-xs text-destructive">{orderErrors.projectId}</p>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="instructions">Special Instructions (optional)</Label>
+                          <Textarea
+                            id="instructions"
+                            placeholder="Any special requirements..."
+                            value={specialInstructions}
+                            onChange={(e) => setSpecialInstructions(e.target.value)}
+                            rows={2}
+                          />
+                        </div>
+
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">VATable Sales</span>
+                            <span>PHP {subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">VAT ({vatLabel}%)</span>
+                            <span>PHP {vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <Separator />
+                          <div className="flex justify-between text-lg font-bold">
+                            <span>Total Amount Due</span>
+                            <span className="text-primary">
+                              PHP {total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </ScrollArea>
 
               {cart.length > 0 && (
-                <>
-                  <Separator />
-                  <div className="space-y-4 pt-4">
-                    <div className="space-y-2">
-                      <Label>Project</Label>
-                      <Select
-                        value={selectedProjectId}
-                        onValueChange={(value) => {
-                          setSelectedProjectId(value);
-                          if (orderErrors.projectId) {
-                            setOrderErrors((prev) => ({ ...prev, projectId: '' }));
-                          }
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={activeProjects.length > 0 ? 'Select project' : 'No projects available'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {activeProjects.map((project) => (
-                            <SelectItem key={project.id} value={project.id}>
-                              {project.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {activeProjects.length === 0 && (
-                        <div className="flex items-center justify-between rounded-md border border-dashed p-3">
-                          <span className="text-xs text-muted-foreground">
-                            No projects yet. Request one to continue.
-                          </span>
-                          <Button size="sm" variant="outline" onClick={() => setIsProjectRequestOpen(true)}>
-                            Request Project
-                          </Button>
-                        </div>
-                      )}
-                      {orderErrors.projectId && (
-                        <p className="text-xs text-destructive">{orderErrors.projectId}</p>
-                      )}
-                    </div>
-
-                    {/* Special Instructions */}
-                    <div className="space-y-2">
-                      <Label htmlFor="instructions">Special Instructions (optional)</Label>
-                      <Textarea
-                        id="instructions"
-                        placeholder="Any special requirements..."
-                        value={specialInstructions}
-                        onChange={(e) => setSpecialInstructions(e.target.value)}
-                        rows={2}
-                      />
-                    </div>
-
-                    {/* Totals */}
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">VATable Sales</span>
-                        <span>₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">VAT ({vatLabel}%)</span>
-                        <span>₱{vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                      <Separator />
-                      <div className="flex justify-between text-lg font-bold">
-                        <span>Total Amount Due</span>
-                        <span className="text-primary">
-                          ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <DialogFooter className="pt-4">
+                <div className="shrink-0 border-t bg-background px-4 py-4 sm:px-6">
+                  <DialogFooter>
                     <Button className="w-full" size="lg" onClick={handlePlaceOrder}>
                       Place Order
                     </Button>
                   </DialogFooter>
-                </>
+                </div>
               )}
             </DialogContent>
           </Dialog>
@@ -725,7 +715,7 @@ export default function PlaceOrderPage() {
                       <h3 className="min-h-[3.5rem] font-semibold leading-7 line-clamp-2">{item.name}</h3>
                       <p className="min-h-[1.25rem] text-sm text-muted-foreground">{item.category}</p>
                       <p className="text-lg font-bold text-primary">
-                        ₱{item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        â‚±{item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                         <span className="text-sm font-normal text-muted-foreground"> / {item.unit}</span>
                       </p>
                     </div>
@@ -772,7 +762,7 @@ export default function PlaceOrderPage() {
                     </div>
                     <div className="flex flex-col sm:items-end gap-2">
                       <p className="text-lg font-bold text-primary">
-                        ₱{item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        â‚±{item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                         <span className="text-sm font-normal text-muted-foreground"> / {item.unit}</span>
                       </p>
                       {item.status === 'out-of-stock' ? (
@@ -923,7 +913,7 @@ export default function PlaceOrderPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total Amount</span>
                 <span className="font-bold">
-                  ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  â‚±{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -985,3 +975,4 @@ export default function PlaceOrderPage() {
     </div>
   );
 }
+
