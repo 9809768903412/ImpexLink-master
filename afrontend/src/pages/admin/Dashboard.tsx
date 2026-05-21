@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   BarChart3,
+  Bell,
   ClipboardList,
+  CreditCard,
   FileText,
   FolderKanban,
+  MessageSquare,
   Package,
   Paintbrush2,
+  Settings,
   Shield,
   ShoppingCart,
   Truck,
@@ -26,6 +30,7 @@ import type {
   InventoryItem,
   MaterialRequest,
   Order,
+  PaymentTransaction,
   Project,
   QuoteRequest,
   StockTransaction,
@@ -48,10 +53,12 @@ const rolePriority: UserRole[] = [
   'paint_chemist',
   'warehouse_staff',
   'delivery_guy',
+  'driver',
+  'project_in_charge',
 ];
 
 function formatPeso(value: number) {
-  return `₱${value.toLocaleString('en-PH', {
+  return `â‚±${value.toLocaleString('en-PH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -66,7 +73,7 @@ function getRoleLabel(role: UserRole) {
     case 'project_manager':
       return 'Project Focus';
     case 'sales_agent':
-      return 'Sales & Client Focus';
+      return 'Finance & Client Coordination';
     case 'engineer':
       return 'Technical Requests';
     case 'paint_chemist':
@@ -74,7 +81,10 @@ function getRoleLabel(role: UserRole) {
     case 'warehouse_staff':
       return 'Warehouse Operations';
     case 'delivery_guy':
+    case 'driver':
       return 'Logistics View';
+    case 'project_in_charge':
+      return 'Project Site Focus';
     default:
       return 'Operations';
   }
@@ -134,18 +144,19 @@ export default function StaffDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const roleList = useMemo<UserRole[]>(
-    () => (user?.roles?.length ? user.roles : user?.role ? [user.role] : []),
+    () => (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase() as UserRole),
     [user?.role, user?.roles]
   );
   const effectiveRole = rolePriority.find((role) => roleList.includes(role)) || 'admin';
   const needsStats = ['president', 'admin'].includes(effectiveRole);
-  const needsRequests = ['admin', 'project_manager', 'engineer', 'paint_chemist', 'warehouse_staff', 'president'].includes(effectiveRole);
-  const needsInventory = ['admin', 'warehouse_staff'].includes(effectiveRole);
-  const needsProjects = ['president', 'project_manager', 'engineer'].includes(effectiveRole);
-  const needsOrders = ['president', 'admin', 'project_manager', 'sales_agent', 'engineer', 'warehouse_staff'].includes(effectiveRole);
-  const needsDeliveries = ['president', 'delivery_guy'].includes(effectiveRole);
+  const needsRequests = ['admin', 'project_manager', 'engineer', 'paint_chemist', 'warehouse_staff'].includes(effectiveRole);
+  const needsInventory = ['admin', 'warehouse_staff', 'paint_chemist'].includes(effectiveRole);
+  const needsProjects = ['president', 'project_manager', 'engineer', 'project_in_charge'].includes(effectiveRole);
+  const needsOrders = ['admin'].includes(effectiveRole);
+  const needsDeliveries = ['warehouse_staff', 'delivery_guy', 'driver'].includes(effectiveRole);
   const needsTransactions = ['warehouse_staff'].includes(effectiveRole);
   const needsQuotes = ['admin', 'sales_agent'].includes(effectiveRole);
+  const needsPayments = ['sales_agent'].includes(effectiveRole);
 
   const { data: stats } = useResource<DashboardStats>(needsStats ? '/dashboard/stats' : '', {
     pendingRequests: 0,
@@ -159,6 +170,7 @@ export default function StaffDashboard() {
   const { data: orders } = useResource<Order[]>(needsOrders ? '/orders' : '', []);
   const { data: deliveries } = useResource<Delivery[]>(needsDeliveries ? '/deliveries' : '', []);
   const { data: transactions } = useResource<StockTransaction[]>(needsTransactions ? '/transactions' : '', []);
+  const { data: payments } = useResource<PaymentTransaction[]>(needsPayments ? '/payments' : '', []);
   const [quotes, setQuotes] = useState<QuoteRequest[]>([]);
 
   useEffect(() => {
@@ -190,10 +202,14 @@ export default function StaffDashboard() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
-  const myOrders = orders.filter((order) => order.assignedSalesAgentId === user?.id);
   const myRequests = requests.filter((request) => request.requestedById === user?.id);
   const engineerVisibleRequests = requests;
-  const myOrderPipeline = myOrders.filter((order) => ['pending', 'approved', 'processing', 'ready-for-delivery'].includes(order.status));
+  const clientPayments = payments.filter((payment) => payment.direction === 'client-to-office');
+  const supplierPayments = payments.filter((payment) => payment.direction === 'office-to-supplier');
+  const pendingClientPayments = clientPayments.filter((payment) => ['pending', 'overdue'].includes(payment.status));
+  const verifiedClientPayments = clientPayments.filter((payment) => ['received', 'paid'].includes(payment.status));
+  const cancelledClientPayments = clientPayments.filter((payment) => ['cancelled', 'failed'].includes(payment.status));
+  const paymentTotal = (items: PaymentTransaction[]) => items.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const warehouseOrders = orders
     .filter((order) => ['approved', 'processing', 'ready-for-delivery'].includes(order.status))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -222,34 +238,10 @@ export default function StaffDashboard() {
   const activeDeliveries = deliveries.filter((delivery) =>
     ['pending', 'in-transit'].includes(delivery.status)
   );
-  const presidentApprovalRequests = requests
-    .filter((request) => request.status === 'pm_approved')
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const procurementReadyRequests = requests.filter((request) => request.status === 'approved');
+  const logisticsQueue = deliveries.filter((delivery) => ['pending', 'in-transit', 'delayed'].includes(delivery.status));
 
   const renderPresidentDashboard = () => (
     <div className="space-y-6">
-      <Card className="rounded-2xl border shadow-sm">
-        <CardContent className="flex flex-col gap-5 p-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-blue-100 p-3">
-              <ClipboardList className="h-6 w-6 text-blue-700" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Final Approval Queue</p>
-              <h2 className="text-3xl font-bold">{presidentApprovalRequests.length}</h2>
-              <p className="text-sm text-muted-foreground">
-                Material requests already cleared by Project Managers.
-              </p>
-            </div>
-          </div>
-          <Button onClick={() => navigate('/admin/requests')} className="bg-[#C0392B] text-white hover:bg-[#A93226]">
-            Open Final Approvals
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </CardContent>
-      </Card>
-
       <div className="grid gap-6 xl:grid-cols-[1.3fr_1fr]">
         <Card className="rounded-2xl">
           <CardHeader>
@@ -262,7 +254,6 @@ export default function StaffDashboard() {
               { label: 'Active', value: projects.filter((project) => project.status === 'active').length },
               { label: 'On Hold', value: projects.filter((project) => project.status === 'on-hold').length },
               { label: 'Completed', value: projects.filter((project) => project.status === 'completed').length },
-              { label: 'For Procurement', value: procurementReadyRequests.length },
             ].map((item) => (
               <div key={item.label} className="rounded-xl border p-4">
                 <p className="text-sm text-muted-foreground">{item.label}</p>
@@ -293,47 +284,6 @@ export default function StaffDashboard() {
           />
         </div>
       </div>
-
-      <Card className="rounded-2xl">
-        <CardHeader>
-          <CardTitle>President Approval</CardTitle>
-          <CardDescription>Latest PM-approved requests waiting for final decision</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Request ID</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Requested By</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {presidentApprovalRequests.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                    No requests are waiting for final approval.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                presidentApprovalRequests.slice(0, 8).map((request) => (
-                  <TableRow key={request.id} className="cursor-pointer" onClick={() => navigate('/admin/requests')}>
-                    <TableCell className="font-medium">{request.requestNumber}</TableCell>
-                    <TableCell>{request.projectName}</TableCell>
-                    <TableCell>{request.requestedBy}</TableCell>
-                    <TableCell>{new Date(request.date).toLocaleDateString('en-PH')}</TableCell>
-                    <TableCell>
-                      <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">President Approval</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 
@@ -506,16 +456,20 @@ export default function StaffDashboard() {
 
           <Card className="rounded-2xl">
             <CardHeader>
-              <CardTitle>Project Cost Overview</CardTitle>
-              <CardDescription>Estimated value of project-linked orders</CardDescription>
+              <CardTitle>Project Status Overview</CardTitle>
+              <CardDescription>Status of projects currently visible to you</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {projectCostOverview.slice(0, 4).map((project) => (
-                <div key={project.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
-                  <span className="font-medium">{project.name}</span>
-                  <span className="text-sm font-semibold">{formatPeso(project.totalCost)}</span>
-                </div>
-              ))}
+              {projects.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No project status available right now.</p>
+              ) : (
+                projects.slice(0, 4).map((project) => (
+                  <div key={project.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
+                    <span className="font-medium">{project.name}</span>
+                    <Badge className="capitalize bg-slate-100 text-slate-700 hover:bg-slate-100">{project.status}</Badge>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </div>
@@ -525,80 +479,93 @@ export default function StaffDashboard() {
 
   const renderSalesAgentDashboard = () => (
     <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="rounded-2xl">
+          <CardHeader>
+            <CardTitle>Client Receivables</CardTitle>
+            <CardDescription>Client payments linked to order records</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{formatPeso(paymentTotal(clientPayments))}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{clientPayments.length} client payment record(s)</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl">
+          <CardHeader>
+            <CardTitle>Needs Finance Action</CardTitle>
+            <CardDescription>Pending, overdue, or rejected client payments</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{pendingClientPayments.length + cancelledClientPayments.length}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{formatPeso(paymentTotal(pendingClientPayments))} pending or overdue</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl">
+          <CardHeader>
+            <CardTitle>Supplier Payables</CardTitle>
+            <CardDescription>Office-to-supplier payment records</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{formatPeso(paymentTotal(supplierPayments))}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{supplierPayments.length} supplier payment record(s)</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
         <Card className="rounded-2xl">
           <CardHeader>
-            <CardTitle>My Client Orders</CardTitle>
-            <CardDescription>Orders manually assigned to you</CardDescription>
+            <CardTitle>Payment Follow-up Queue</CardTitle>
+            <CardDescription>Sales Agents handle finance monitoring here, not Client Orders access</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {myOrders.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No client orders assigned to you yet.</p>
+            {pendingClientPayments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No pending client payments need follow-up right now.</p>
             ) : (
-              myOrders.slice(0, 6).map((order) => (
-                <div key={order.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
+              pendingClientPayments.slice(0, 6).map((payment) => (
+                <div key={payment.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
                   <div>
-                    <p className="font-medium">{order.orderNumber}</p>
-                    <p className="text-sm text-muted-foreground">{order.clientName}</p>
+                    <p className="font-medium">{payment.clientOrderNumber || payment.referenceNumber || 'Client payment'}</p>
+                    <p className="text-sm text-muted-foreground">{payment.clientName || 'Client'} - {formatPeso(payment.amount)}</p>
                   </div>
-                  <Badge className="capitalize bg-slate-100 text-slate-700 hover:bg-slate-100">
-                    {order.status}
+                  <Badge className="capitalize bg-amber-100 text-amber-800 hover:bg-amber-100">
+                    {payment.status}
                   </Badge>
                 </div>
               ))
             )}
+            <Button variant="ghost" className="w-full" onClick={() => navigate('/admin/payments')}>
+              Open Payments
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
           </CardContent>
         </Card>
 
         <div className="space-y-6">
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle>Assigned Order Queue</CardTitle>
-              <CardDescription>Orders currently waiting on your sales follow-through</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {myOrderPipeline.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No assigned orders in the active queue right now.</p>
-              ) : (
-                myOrderPipeline.slice(0, 4).map((order) => (
-                  <div key={order.id} className="rounded-xl border px-4 py-3">
-                    <p className="font-medium">{order.orderNumber}</p>
-                    <p className="text-sm text-muted-foreground">{order.clientName} • {order.status.replace(/-/g, ' ')}</p>
-                  </div>
-                ))
-              )}
-              <Button variant="ghost" className="w-full" onClick={() => navigate('/admin/orders')}>
-                Open Orders
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle>Client Activity</CardTitle>
-              <CardDescription>Recent movement from your assigned accounts</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {myOrders.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No assigned client activity yet.</p>
-              ) : (
-                myOrders.slice(0, 4).map((order) => (
-                  <div key={order.id} className="rounded-xl border px-4 py-3">
-                    <p className="font-medium">{order.clientName}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {order.projectName || 'No project'} • {formatPeso(order.total)}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+          <QuickLinkCard
+            title="Payments"
+            description="Confirm received payments, reject mismatches, and manage supplier terms."
+            icon={CreditCard}
+            onClick={() => navigate('/admin/payments')}
+          />
+          <QuickLinkCard
+            title="Messages"
+            description="Coordinate with clients and operations staff about payment proof or order follow-up."
+            icon={MessageSquare}
+            onClick={() => navigate('/admin/messages')}
+          />
+          <QuickLinkCard
+            title="Notifications"
+            description="Review payment, order, and system updates assigned to your account."
+            icon={Bell}
+            onClick={() => navigate('/admin/notifications')}
+          />
         </div>
       </div>
     </div>
   );
-
   const renderEngineerDashboard = () => (
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
@@ -736,7 +703,7 @@ export default function StaffDashboard() {
                 warehouseOrders.slice(0, 5).map((order) => (
                   <div key={order.id} className="rounded-xl border px-4 py-3">
                     <p className="font-medium">{order.orderNumber}</p>
-                    <p className="text-sm text-muted-foreground">{order.clientName} • {order.status.replace(/-/g, ' ')}</p>
+                    <p className="text-sm text-muted-foreground">{order.clientName} â€¢ {order.status.replace(/-/g, ' ')}</p>
                   </div>
                 ))
               )}
@@ -756,7 +723,7 @@ export default function StaffDashboard() {
                   <div key={transaction.id} className="rounded-xl border px-4 py-3">
                     <p className="font-medium capitalize">{transaction.type}</p>
                     <p className="text-sm text-muted-foreground">
-                      {transaction.date} • Balance {transaction.newBalance}
+                      {transaction.date} â€¢ Balance {transaction.newBalance}
                     </p>
                   </div>
                 ))
@@ -795,20 +762,26 @@ export default function StaffDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle>Quick Status Update</CardTitle>
-            <CardDescription>Jump straight to logistics actions</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button className="w-full bg-[#C0392B] text-white hover:bg-[#A93226]" onClick={() => navigate('/logistics')}>
-              Open Logistics Workspace
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              Update delivery progress, confirm status changes, and upload proof of delivery.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <QuickLinkCard
+            title="Logistics"
+            description="Begin deliveries, report delays, and confirm completed drop-offs."
+            icon={Truck}
+            onClick={() => navigate('/logistics')}
+          />
+          <QuickLinkCard
+            title="Messages"
+            description="Coordinate receiver changes, delays, and site instructions."
+            icon={MessageSquare}
+            onClick={() => navigate('/admin/messages')}
+          />
+          <QuickLinkCard
+            title="Settings"
+            description="Update your account details and delivery contact information."
+            icon={Settings}
+            onClick={() => navigate('/admin/settings')}
+          />
+        </div>
       </div>
     </div>
   );
@@ -820,6 +793,7 @@ export default function StaffDashboard() {
       case 'admin':
         return renderAdminDashboard();
       case 'project_manager':
+      case 'project_in_charge':
         return renderProjectManagerDashboard();
       case 'sales_agent':
         return renderSalesAgentDashboard();
@@ -830,6 +804,7 @@ export default function StaffDashboard() {
       case 'warehouse_staff':
         return renderWarehouseDashboard();
       case 'delivery_guy':
+      case 'driver':
         return renderDeliveryDashboard();
       default:
         return renderAdminDashboard();
@@ -852,3 +827,4 @@ export default function StaffDashboard() {
     </div>
   );
 }
+
