@@ -6,9 +6,13 @@ const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAuth);
 
+function isMissingNotificationStoreError(err) {
+  return ['P2021', 'P2022'].includes(err?.code);
+}
+
 router.get('/', async (req, res, next) => {
+  const pagination = parsePagination(req.query);
   try {
-    const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
     const unread = req.query.unread === 'true';
     const userId = req.user?.userId;
@@ -49,6 +53,13 @@ router.get('/', async (req, res, next) => {
     }
     return res.json(data);
   } catch (err) {
+    if (isMissingNotificationStoreError(err)) {
+      const data = [];
+      if (pagination) {
+        return res.json(buildPaginatedResponse(data, 0, pagination.page, pagination.pageSize));
+      }
+      return res.json(data);
+    }
     next(err);
   }
 });

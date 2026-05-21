@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronLeft, ChevronRight, CreditCard, Eye, Plus, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, Plus, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -188,28 +188,6 @@ export default function PaymentsPage() {
     }
   };
 
-  const quickActionsForPayment = (payment: PaymentTransaction) => {
-    if (payment.status === 'pending') {
-      return [
-        { label: 'Mark Received', status: 'received', className: 'border-sky-200 text-sky-800 hover:bg-sky-50' },
-        { label: 'Mark Paid', status: 'paid', className: 'border-emerald-200 text-emerald-800 hover:bg-emerald-50' },
-      ];
-    }
-    if (payment.status === 'received') {
-      return [
-        { label: 'Mark Paid', status: 'paid', className: 'border-emerald-200 text-emerald-800 hover:bg-emerald-50' },
-        { label: 'Cancel', status: 'cancelled', className: 'border-red-200 text-red-800 hover:bg-red-50' },
-      ];
-    }
-    if (payment.status === 'overdue') {
-      return [
-        { label: 'Mark Received', status: 'received', className: 'border-sky-200 text-sky-800 hover:bg-sky-50' },
-        { label: 'Cancel', status: 'cancelled', className: 'border-red-200 text-red-800 hover:bg-red-50' },
-      ];
-    }
-    return [];
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -265,14 +243,17 @@ export default function PaymentsPage() {
                 <TableHead>Due</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paged.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
               ) : paged.map((payment) => (
-                <TableRow key={payment.id}>
+                <TableRow
+                  key={payment.id}
+                  className="cursor-pointer transition-colors hover:bg-muted/50"
+                  onClick={() => setSelectedPayment(payment)}
+                >
                   <TableCell>
                     <p className="font-medium">{payment.direction === 'client-to-office' ? 'Client to Office' : 'Office to Supplier'}</p>
                     <p className="text-xs text-muted-foreground">{payment.clientName || payment.supplierName || 'Unlinked'}</p>
@@ -281,25 +262,6 @@ export default function PaymentsPage() {
                   <TableCell>{payment.dueDate ? format(new Date(payment.dueDate), 'MMM dd, yyyy') : '-'}</TableCell>
                   <TableCell><Badge className={statusClass[payment.status] || statusClass.pending}>{payment.status}</Badge></TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <Button variant="outline" size="sm" className="gap-1" onClick={() => setSelectedPayment(payment)}>
-                        <Eye size={14} />
-                        Details
-                      </Button>
-                      {quickActionsForPayment(payment).map((action) => (
-                        <Button
-                          key={action.status}
-                          variant="outline"
-                          size="sm"
-                          className={action.className}
-                          onClick={() => updateStatus(payment, action.status)}
-                        >
-                          {action.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

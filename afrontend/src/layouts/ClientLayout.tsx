@@ -50,7 +50,7 @@ const navItems = [
 export default function ClientLayout({ children }: ClientLayoutProps) {
   const { user, logout } = useAuth();
   const [supportOpen, setSupportOpen] = useState(false);
-  const notificationParams = useMemo(() => ({ viewer: user?.id ?? 'anonymous' }), [user?.id]);
+  const notificationParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
   const threadParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
 
   const { data: notificationsRaw, reload: reloadNotifications } = useResource<any>(

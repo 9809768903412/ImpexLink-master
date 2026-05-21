@@ -94,7 +94,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : ['project_manager'];
   const canPollNotifications = canViewNotifications(roleList);
   const canPollMessages = canViewMessages(roleList);
-  const notificationParams = useMemo(() => ({ viewer: user?.id ?? 'anonymous' }), [user?.id]);
+  const notificationParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
   const threadParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
 
   const { data: notificationsRaw, reload: reloadNotifications } = useResource<any>(canPollNotifications ? '/notifications' : '', [], [user?.id, canPollNotifications], 15_000, notificationParams);

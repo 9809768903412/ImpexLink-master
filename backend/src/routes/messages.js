@@ -79,6 +79,10 @@ function mapThread(thread, viewerId) {
   };
 }
 
+function isMissingChatStoreError(err) {
+  return ['P2021', 'P2022'].includes(err?.code);
+}
+
 async function ensureThreadAccess(threadId, userId) {
   const participant = await prisma.chatParticipant.findUnique({
     where: { threadId_userId: { threadId: Number(threadId), userId: Number(userId) } },
@@ -179,8 +183,8 @@ router.get('/recipients', async (req, res, next) => {
 });
 
 router.get('/threads', async (req, res, next) => {
+  const pagination = parsePagination(req.query);
   try {
-    const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
     const where = {
       participants: { some: { userId: req.user.userId } },
@@ -217,6 +221,11 @@ router.get('/threads', async (req, res, next) => {
     if (pagination) return res.json(buildPaginatedResponse(data, total, pagination.page, pagination.pageSize));
     res.json(data);
   } catch (err) {
+    if (isMissingChatStoreError(err)) {
+      const data = [];
+      if (pagination) return res.json(buildPaginatedResponse(data, 0, pagination.page, pagination.pageSize));
+      return res.json(data);
+    }
     next(err);
   }
 });

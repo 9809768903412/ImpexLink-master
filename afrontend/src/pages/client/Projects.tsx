@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ import { ArrowLeft, Eye, FolderKanban, Search, MapPin, CalendarDays, Building2, 
 import { useAuth } from '@/contexts/AuthContext';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
-import type { Project, Client, Order, Delivery } from '@/types';
+import type { Project, Client, Order } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
 import { ProjectStatusDots } from '@/components/ProjectStatusDots';
 
@@ -53,7 +53,6 @@ export default function ClientProjectsPage() {
   const { data: projects, reload: reloadProjects } = useResource<Project[]>('/projects', []);
   const { data: clients } = useResource<Client[]>('/clients', []);
   const { data: orders } = useResource<Order[]>('/orders', []);
-  const { data: deliveries } = useResource<Delivery[]>('/deliveries', []);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -127,23 +126,29 @@ export default function ClientProjectsPage() {
     return parts.length > 1 ? parts[parts.length - 1].trim() : address || '—';
   };
 
+  const getOrderDeliveryStatus = (order: Order) => {
+    if (order.status === 'delivered') return 'Delivered';
+    if (order.status === 'shipped') return 'In Transit';
+    if (order.status === 'ready-for-delivery') return 'Pending Dispatch';
+    if (order.status === 'processing' || order.status === 'approved') return 'Preparing';
+    return 'Not scheduled';
+  };
+
+  const orderHasDeliveryActivity = (order: Order) =>
+    ['approved', 'processing', 'ready-for-delivery', 'shipped', 'delivered'].includes(order.status);
+
   const getProjectStats = (projectId: string) => {
     const projectOrders = orders.filter((o) => o.projectId === projectId);
-    const projectDeliveries = deliveries.filter((d) =>
-      projectOrders.some((o) => o.id === d.orderId)
-    );
+    const projectDeliveries = projectOrders.filter(orderHasDeliveryActivity);
     const totalValue = projectOrders.reduce((sum, o) => sum + o.total, 0);
     return { orderCount: projectOrders.length, deliveryCount: projectDeliveries.length, totalValue };
   };
 
   const buildProjectTimeline = (project: Project) => {
     const projectOrders = orders.filter((o) => o.projectId === project.id);
-    const projectDeliveries = deliveries.filter((d) =>
-      projectOrders.some((o) => o.id === d.orderId)
-    );
     const hasApproved = ['active', 'on-hold', 'completed'].includes(project.status);
     const hasStarted = ['active', 'completed'].includes(project.status) || projectOrders.length > 0;
-    const hasDelivery = projectDeliveries.length > 0;
+    const hasDelivery = projectOrders.some(orderHasDeliveryActivity);
     const hasCompleted = project.status === 'completed';
 
     return [
@@ -402,7 +407,7 @@ export default function ClientProjectsPage() {
                     <p className="text-sm text-muted-foreground">No orders have been placed for this project yet.</p>
                   ) : (
                     paginatedLinkedOrders.map((order) => {
-                        const linkedDelivery = deliveries.find((delivery) => delivery.orderId === order.id);
+                        const linkedDeliveryStatus = getOrderDeliveryStatus(order);
                         return (
                           <button
                             key={order.id}
@@ -448,7 +453,7 @@ export default function ClientProjectsPage() {
                                   <div className="rounded-xl bg-muted/30 p-3">
                                     <p className="text-muted-foreground">Delivery Status</p>
                                     <p className="font-medium capitalize">
-                                      {linkedDelivery ? linkedDelivery.status.replace(/-/g, ' ') : 'Not scheduled'}
+                                      {linkedDeliveryStatus}
                                     </p>
                                   </div>
                                 </div>
@@ -642,7 +647,7 @@ export default function ClientProjectsPage() {
                 <div className="rounded-xl bg-muted/30 p-3">
                   <p className="text-muted-foreground">Delivery</p>
                   <p className="font-medium capitalize">
-                    {deliveries.find((delivery) => delivery.orderId === selectedLinkedOrder.id)?.status.replace(/-/g, ' ') || 'Not scheduled'}
+                    {getOrderDeliveryStatus(selectedLinkedOrder)}
                   </p>
                 </div>
               </div>

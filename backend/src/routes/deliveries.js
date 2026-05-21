@@ -218,7 +218,7 @@ function mapDelivery(d) {
   };
 }
 
-router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY']), async (req, res, next) => {
+router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY', 'CLIENT']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';
