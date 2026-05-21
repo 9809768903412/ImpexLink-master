@@ -12,7 +12,6 @@ const {
   canAccessClientOwnedRecord,
 } = require('../utils/clientVisibility');
 const { calculateDeliveryPlan } = require('../utils/deliveryRules');
-const { extractTextFromImage } = require('../utils/ocr');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -31,10 +30,6 @@ function normalizeOrderStatusForWrite(status) {
   const normalized = String(status || '').toUpperCase().replace(/-/g, '_');
   if (normalized === 'READY_FOR_DELIVERY') return 'SHIPPED';
   return normalized;
-}
-
-function normalizePoCode(value) {
-  return String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
 }
 
 function orderPaymentStatusToTransactionStatus(status) {
@@ -231,9 +226,9 @@ function mapOrder(o) {
     status: normalizeOrderStatusForResponse(o.status),
     paymentStatus: String(o.paymentStatus || 'PENDING').toLowerCase(),
     chequeImage: o.paymentProofUrl || null,
-    chequeVerification: o.chequeVerification ? o.chequeVerification.toLowerCase() : null,
+    chequeVerification: null,
     poDocumentUrl: o.paymentProofUrl || null,
-    poMatchStatus: o.chequeVerification ? o.chequeVerification.toLowerCase() : null,
+    poMatchStatus: null,
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
     createdBy: o.createdBy?.toString() || null,
@@ -781,9 +776,6 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 
 router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'), async (req, res, next) => {
   try {
-    const allowTest = process.env.ALLOW_TEST_VERIFICATION === 'true';
-    const isTest = String(req.headers['x-test-verification'] || '').toLowerCase() === 'true';
-    const poCode = String(req.body?.poCode || '').trim();
     const referenceNumber = String(req.body?.referenceNumber || '').trim();
     const paymentMethod = String(req.body?.paymentMethod || req.body?.method || 'CHEQUE').trim().toUpperCase();
     const amount = req.body?.amount !== undefined && req.body?.amount !== '' ? Number(req.body.amount) : undefined;
@@ -791,8 +783,8 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
     if (!['CHEQUE', 'AUTO_DEPOSIT'].includes(paymentMethod)) {
       return res.status(400).json({ error: 'Client payment method must be Cheque or Auto Deposit.' });
     }
-    if (!req.file && !referenceNumber && !poCode && !(allowTest && isTest)) {
-      return res.status(400).json({ error: 'Payment proof, reference number, or purchase order code is required' });
+    if (!req.file && !referenceNumber) {
+      return res.status(400).json({ error: 'Payment proof file or reference number is required' });
     }
     const access = await resolveClientAccess(prisma, req.user.userId);
     const order = await prisma.clientOrder.findUnique({
@@ -803,38 +795,23 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
       return res.status(403).json({ error: 'Forbidden' });
     }
     const paymentProofUrl = req.file ? `/uploads/payments/${req.file.filename}` : null;
-    const normalizedPoCode = normalizePoCode(poCode);
-    const expectedCode = normalizePoCode(order.orderNumber);
-    const ocrResult = req.file
-      ? await extractTextFromImage(req.file.path, req.file.mimetype)
-      : { supported: false, text: '', error: null };
-    const normalizedOcrText = normalizePoCode(ocrResult.text);
-    const ocrMatched = Boolean(expectedCode && normalizedOcrText.includes(expectedCode));
-    const typedMatched = Boolean(normalizedPoCode && normalizedPoCode === expectedCode);
-    const hasPoMatchInput = Boolean(poCode || normalizedOcrText);
-    const isMatched = isTest || ocrMatched || typedMatched;
-    const matchSource = isTest ? 'test' : ocrMatched ? 'ocr' : typedMatched ? 'typed-code' : 'none';
     const updated = await prisma.clientOrder.update({
       where: { clientOrderId: Number(req.params.id) },
       data: {
         paymentProofUrl: paymentProofUrl || order.paymentProofUrl,
         paymentStatus: 'PENDING',
-        chequeVerification: hasPoMatchInput ? (isMatched ? 'genuine' : 'fraud') : 'pending',
+        chequeVerification: null,
       },
     });
 
     await ensureClientOrderPayment(updated, req.user.userId, {
       status: 'PENDING',
       method: paymentMethod,
-      amount: amount === undefined || Number.isNaN(amount) ? undefined : amount,
-      referenceNumber: referenceNumber || poCode || undefined,
-      notes:
-        notes ||
-        (hasPoMatchInput
-          ? isMatched
-            ? `Client uploaded matching purchase order ${poCode || order.orderNumber}; awaiting admin payment approval.`
-            : `Client uploaded non-matching purchase order ${poCode || 'from OCR'}; review required.`
-          : `Client submitted ${paymentMethod === 'AUTO_DEPOSIT' ? 'auto deposit' : 'cheque'} payment proof/reference; awaiting admin approval.`),
+        amount: amount === undefined || Number.isNaN(amount) ? undefined : amount,
+        referenceNumber: referenceNumber || undefined,
+        notes:
+          notes ||
+          `Client submitted ${paymentMethod === 'AUTO_DEPOSIT' ? 'auto deposit' : 'cheque'} payment proof/reference; awaiting admin approval.`,
     });
 
     const admins = await prisma.user.findMany({
@@ -845,16 +822,8 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
         data: admins.map((admin) => ({
           userId: admin.userId,
           type: 'PAYMENT_VERIFIED',
-          title: hasPoMatchInput
-            ? isMatched
-              ? 'Purchase order matched'
-              : 'Purchase order mismatch detected'
-            : 'Payment proof submitted',
-          message: hasPoMatchInput
-            ? isMatched
-              ? `Client uploaded a matching purchase order for ${updated.orderNumber}. Admin approval is required.`
-              : `Client uploaded a purchase order that did not match ${updated.orderNumber}.`
-            : `Client submitted ${paymentMethod === 'AUTO_DEPOSIT' ? 'auto deposit' : 'cheque'} payment proof for ${updated.orderNumber}.`,
+          title: 'Payment proof submitted',
+          message: `Client submitted ${paymentMethod === 'AUTO_DEPOSIT' ? 'auto deposit' : 'cheque'} payment proof for ${updated.orderNumber}.`,
           link: '/admin/orders',
         })),
       });
@@ -871,33 +840,18 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
-        action: hasPoMatchInput && isMatched ? 'VERIFY' : 'UPDATE',
-        target: hasPoMatchInput ? 'PurchaseOrderMatch' : 'PaymentProof',
-        details: hasPoMatchInput
-          ? `${isMatched ? 'Matched' : 'Mismatch detected for'} purchase order ${poCode || 'uploaded file'} against ${updated.orderNumber} via ${matchSource}`
-          : `Client submitted payment proof/reference for ${updated.orderNumber}`,
+        action: 'UPDATE',
+        target: 'PaymentProof',
+        details: `Client submitted payment proof/reference for ${updated.orderNumber}`,
       },
     });
     return res.status(200).json({
       ...updated,
       paymentProofUrl: updated.paymentProofUrl,
       poDocumentUrl: updated.paymentProofUrl,
-      chequeVerification: hasPoMatchInput ? (isMatched ? 'genuine' : 'fraud') : 'pending',
-      poMatchStatus: hasPoMatchInput ? (isMatched ? 'genuine' : 'fraud') : 'pending',
-      verificationStatus: hasPoMatchInput ? (isMatched ? 'verified' : 'mismatch') : 'pending-admin-review',
-      poMatch: {
-        submittedCode: poCode,
-        normalizedSubmittedCode: normalizedPoCode,
-        expectedCode: order.orderNumber,
-        normalizedExpectedCode: expectedCode,
-        matchSource,
-        typedMatched,
-        ocrMatched,
-        ocrSupported: ocrResult.supported,
-        ocrError: ocrResult.error,
-        extractedTextPreview: ocrResult.text ? ocrResult.text.replace(/\s+/g, ' ').trim().slice(0, 300) : '',
-        readyForDocumentExtraction: false,
-      },
+      chequeVerification: null,
+      poMatchStatus: null,
+      verificationStatus: 'pending-admin-review',
     });
   } catch (err) {
     next(err);

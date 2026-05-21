@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, CheckCircle, XCircle, FileText, MessageSquare, Download } from 'lucide-react';
+import { Search, CheckCircle, FileText, MessageSquare, Download } from 'lucide-react';
 import type { Order, OrderStatus, QuoteRequest, User } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -51,6 +51,8 @@ import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
 import { useSearchParams } from 'react-router-dom';
 import { toPublicFileUrl } from '@/lib/files';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const statusColors: Record<OrderStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
@@ -420,26 +422,22 @@ export default function ClientOrdersPage() {
                     className="pl-10"
                   />
                 </div>
-                <Select
+                <StatusFilterSelect
                   value={statusFilter}
                   onValueChange={(value) => {
                     setStatusFilter(value);
                     setOrdersPage(1);
                   }}
+                  placeholder="All Status"
                 >
-                  <SelectTrigger className="w-full lg:w-[180px]">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    {isAdmin && <SelectItem value="approved">Approved</SelectItem>}
-                    {(isAdmin || isWarehouseStaff || isSalesAgent) && <SelectItem value="processing">Processing</SelectItem>}
-                    {(isAdmin || isWarehouseStaff) && <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>}
-                    {isAdmin && <SelectItem value="delivered">Delivered</SelectItem>}
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  {isAdmin && <SelectItem value="approved">Approved</SelectItem>}
+                  {(isAdmin || isWarehouseStaff || isSalesAgent) && <SelectItem value="processing">Processing</SelectItem>}
+                  {(isAdmin || isWarehouseStaff) && <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>}
+                  {isAdmin && <SelectItem value="delivered">Delivered</SelectItem>}
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </StatusFilterSelect>
                 <Select value={sortKey} onValueChange={(value) => setSortKey(value as typeof sortKey)}>
                   <SelectTrigger className="w-full lg:w-[180px]">
                     <SelectValue placeholder="Sort by" />
@@ -588,13 +586,13 @@ export default function ClientOrdersPage() {
                         ₱{order.total.toLocaleString()}
                       </TableCell>
                       <TableCell>
-                        <Badge className={statusColors[order.status]}>{order.status}</Badge>
+                        <Badge variant="outline" className={`capitalize ${statusBadgeClass(order.status)}`}>{order.status}</Badge>
                       </TableCell>
                       {visibleCols.payment && (
                         <TableCell>
                           <Badge
                             variant="outline"
-                            className={`capitalize ${paymentStatusColors[order.paymentStatus] || 'border-slate-200 bg-slate-50 text-slate-700'}`}
+                            className={`capitalize ${statusBadgeClass(order.paymentStatus)}`}
                           >
                             {order.paymentStatus}
                           </Badge>
@@ -770,24 +768,9 @@ export default function ClientOrdersPage() {
                   )}
                 </div>
               )}
-              {(selectedOrder.poMatchStatus || selectedOrder.chequeVerification) && (
-                <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                  {(selectedOrder.poMatchStatus || selectedOrder.chequeVerification) === 'genuine' ? (
-                    <>
-                      <CheckCircle className="text-green-600" size={20} />
-                      <span className="text-green-700 font-medium">Purchase Order Match Confirmed</span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="text-red-600" size={20} />
-                      <span className="text-red-700 font-medium">Purchase Order Mismatch Detected</span>
-                    </>
-                  )}
-                </div>
-              )}
               {(selectedOrder.poDocumentUrl || selectedOrder.chequeImage) && (
                 <div className="rounded-lg border p-3 space-y-2">
-                  <p className="text-sm font-medium">Uploaded Purchase Order</p>
+                  <p className="text-sm font-medium">Uploaded Payment / PO Proof</p>
                   {(selectedOrder.poDocumentUrl || selectedOrder.chequeImage || '').toLowerCase().endsWith('.pdf') ? (
                     <a
                       className="text-sm text-primary underline"

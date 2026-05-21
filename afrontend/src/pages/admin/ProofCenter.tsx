@@ -26,6 +26,8 @@ import PaginationNav from '@/components/PaginationNav';
 import { Skeleton } from '@/components/ui/skeleton';
 import { downloadCsv } from '@/utils/csv';
 import { toPublicFileUrl } from '@/lib/files';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 type ProofType = 'registration' | 'payment' | 'delivery';
 
@@ -59,17 +61,7 @@ const typeBadgeClasses: Record<ProofType, string> = {
 };
 
 function statusClass(status: string) {
-  const normalized = String(status || '').toLowerCase();
-  if (['verified', 'paid', 'active', 'delivered'].includes(normalized)) {
-    return 'bg-green-100 text-green-800 hover:bg-green-100';
-  }
-  if (normalized.includes('pending')) {
-    return 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100';
-  }
-  if (['inactive', 'failed', 'rejected', 'return-rejected'].includes(normalized)) {
-    return 'bg-red-100 text-red-800 hover:bg-red-100';
-  }
-  return 'bg-slate-100 text-slate-800 hover:bg-slate-100';
+  return statusBadgeClass(status);
 }
 
 export default function ProofCenterPage() {
@@ -186,7 +178,7 @@ export default function ProofCenterPage() {
                 </SelectContent>
               </Select>
 
-              <Select
+              <StatusFilterSelect
                 value={statusFilter}
                 onValueChange={(value) => {
                   setStatusFilter(value);
@@ -199,20 +191,16 @@ export default function ProofCenterPage() {
                   );
                   setPage(1);
                 }}
+                placeholder="Status"
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="pending-verification">Pending Verification</SelectItem>
-                  <SelectItem value="verified">Verified</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="delivered">Delivered</SelectItem>
-                </SelectContent>
-              </Select>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="pending-verification">Pending Verification</SelectItem>
+                <SelectItem value="verified">Verified</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="delivered">Delivered</SelectItem>
+              </StatusFilterSelect>
             </div>
           </div>
 

@@ -40,6 +40,8 @@ import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canApproveMaterialRequests, canCreateMaterialRequests, hasRole } from '@/lib/roles';
 import { formatPesoAmount } from '@/lib/currency';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const MATERIAL_REQUEST_PURPOSE_OPTIONS = [
   'Routine Maintenance',
@@ -119,15 +121,15 @@ export default function MaterialRequestsPage() {
   const getStatusBadge = (status: MaterialRequest['status']) => {
     switch (status) {
       case 'pending':
-        return <Badge className="bg-warning text-warning-foreground gap-1"><Clock size={12} />Office Review</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass('pending')}`}><Clock size={12} />Office Review</Badge>;
       case 'pm_approved':
-        return <Badge className="bg-blue-100 text-blue-800 gap-1"><Clock size={12} />President Approval</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass('approved')}`}><Clock size={12} />President Approval</Badge>;
       case 'approved':
-        return <Badge className="bg-success text-success-foreground gap-1"><CheckCircle size={12} />Approved - Procurement</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass('approved')}`}><CheckCircle size={12} />Approved - Procurement</Badge>;
       case 'rejected':
-        return <Badge className="bg-destructive text-destructive-foreground gap-1"><XCircle size={12} />Rejected</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass('rejected')}`}><XCircle size={12} />Rejected</Badge>;
       case 'fulfilled':
-        return <Badge className="bg-info text-info-foreground">Fulfilled</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass('fulfilled')}>Fulfilled</Badge>;
     }
   };
 
@@ -471,19 +473,14 @@ export default function MaterialRequestsPage() {
                 className="pl-10"
               />
             </div>
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value)}>
-              <SelectTrigger className="w-full lg:w-[180px]">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Project Manager Review</SelectItem>
-                <SelectItem value="pm_approved">President Approval</SelectItem>
-                <SelectItem value="approved">Approved - Procurement</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="fulfilled">Fulfilled</SelectItem>
-              </SelectContent>
-            </Select>
+            <StatusFilterSelect value={statusFilter} onValueChange={(value) => setStatusFilter(value)} placeholder="All Status">
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Project Manager Review</SelectItem>
+              <SelectItem value="pm_approved">President Approval</SelectItem>
+              <SelectItem value="approved">Approved - Procurement</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="fulfilled">Fulfilled</SelectItem>
+            </StatusFilterSelect>
             <Select value={sortKey} onValueChange={(value) => setSortKey(value as typeof sortKey)}>
               <SelectTrigger className="w-full lg:w-[180px]">
                 <SelectValue placeholder="Sort by" />

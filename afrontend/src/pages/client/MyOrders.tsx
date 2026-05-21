@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Delivery, Order, OrderStatus, Project } from '@/types';
 import { cn } from '@/lib/utils';
@@ -44,6 +46,8 @@ import PaginationNav from '@/components/PaginationNav';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
 import { ProductImage } from '@/components/ProductImage';
 import { formatPesoAmount } from '@/lib/currency';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 export default function MyOrdersPage() {
   const navigate = useNavigate();
@@ -71,12 +75,16 @@ export default function MyOrdersPage() {
   const [trackingDelivery, setTrackingDelivery] = useState<Delivery | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<'genuine' | 'fraud' | 'pending' | null>(null);
-  const [poMatchSource, setPoMatchSource] = useState<'ocr' | 'typed-code' | 'test' | 'none' | null>(null);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [proofSubmitted, setProofSubmitted] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
-  const [poCodeInput, setPoCodeInput] = useState('');
-  const [useTestVerification, setUseTestVerification] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    method: 'CHEQUE',
+    amount: '',
+    referenceNumber: '',
+    notes: '',
+  });
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -117,19 +125,19 @@ export default function MyOrdersPage() {
   const getDeliveryBadge = (status: Delivery['status']) => {
     switch (status) {
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800">Pending Dispatch</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Pending Dispatch</Badge>;
       case 'in-transit':
-        return <Badge className="bg-blue-100 text-blue-800 gap-1"><Truck size={12} />In Transit</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><Truck size={12} />In Transit</Badge>;
       case 'delivered':
-        return <Badge className="bg-green-100 text-green-800 gap-1"><CheckCircle size={12} />Delivered</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><CheckCircle size={12} />Delivered</Badge>;
       case 'delayed':
-        return <Badge className="bg-orange-100 text-orange-800 gap-1"><Clock size={12} />Delayed</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><Clock size={12} />Delayed</Badge>;
       case 'return-pending':
-        return <Badge className="bg-orange-100 text-orange-800">Return Pending</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Return Pending</Badge>;
       case 'return-rejected':
-        return <Badge className="bg-slate-100 text-slate-700">Return Rejected</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Return Rejected</Badge>;
       case 'returned':
-        return <Badge className="bg-red-100 text-red-800">Returned</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Returned</Badge>;
     }
   };
 
@@ -181,17 +189,17 @@ export default function MyOrdersPage() {
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
       case 'pending':
-        return <Badge className="bg-warning text-warning-foreground gap-1"><Clock size={12} />Pending</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><Clock size={12} />Pending</Badge>;
       case 'approved':
-        return <Badge className="bg-info text-info-foreground gap-1"><CheckCircle size={12} />Approved</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><CheckCircle size={12} />Approved</Badge>;
       case 'processing':
-        return <Badge className="bg-info text-info-foreground gap-1"><Package size={12} />Processing</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><Package size={12} />Processing</Badge>;
       case 'ready-for-delivery':
-        return <Badge className="bg-secondary gap-1"><Truck size={12} />Ready for Delivery</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><Truck size={12} />Ready for Delivery</Badge>;
       case 'delivered':
-        return <Badge className="bg-success text-success-foreground gap-1"><CheckCircle size={12} />Delivered</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><CheckCircle size={12} />Delivered</Badge>;
       case 'cancelled':
-        return <Badge className="bg-destructive text-destructive-foreground">Cancelled</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Cancelled</Badge>;
     }
   };
 
@@ -215,13 +223,13 @@ export default function MyOrdersPage() {
   const getPaymentBadge = (status: Order['paymentStatus']) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="outline" className="border-warning text-warning">Unpaid</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass('unpaid')}>Unpaid</Badge>;
       case 'verified':
-        return <Badge className="bg-success/10 text-success border-success/20" variant="outline">Verified</Badge>;
+        return <Badge className={statusBadgeClass(status)} variant="outline">Verified</Badge>;
       case 'paid':
-        return <Badge className="bg-success text-success-foreground gap-1"><CreditCard size={12} />Paid</Badge>;
+        return <Badge variant="outline" className={`gap-1 ${statusBadgeClass(status)}`}><CreditCard size={12} />Paid</Badge>;
       case 'failed':
-        return <Badge className="bg-destructive text-destructive-foreground">Failed</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Failed</Badge>;
     }
   };
 
@@ -239,63 +247,75 @@ export default function MyOrdersPage() {
     navigate('/client/order');
   };
 
-  const handleUploadPayment = () => {
-    setPoCodeInput('');
+  const handleUploadPayment = (order = selectedOrder) => {
+    if (order) {
+      setSelectedOrder(order);
+    }
+    setProofFile(null);
     setSelectedFileName('');
     setUploadError('');
-    setVerificationResult(null);
-    setPoMatchSource(null);
+    setProofSubmitted(false);
+    setPaymentForm({
+      method: 'CHEQUE',
+      amount: order ? String(order.total) : '',
+      referenceNumber: '',
+      notes: '',
+    });
     setIsUploadOpen(true);
   };
 
-  const simulateAIVerification = async (file?: File) => {
+  const uploadPaymentProof = async () => {
     if (!selectedOrder) return;
-    setIsVerifying(true);
-    setVerificationResult(null);
+    setIsUploadingProof(true);
+    setProofSubmitted(false);
     setUploadError('');
 
     try {
-      if (!file && !useTestVerification) {
-        setUploadError('Please choose a payment or purchase order proof file.');
+      if (!paymentForm.amount || Number(paymentForm.amount) <= 0) {
+        setUploadError('Please enter the amount paid.');
         toast({
-          title: 'No file selected',
-          description: 'Please choose a cheque, auto-deposit, or PO proof file.',
+          title: 'Amount required',
+          description: 'Enter the amount you paid.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!proofFile && !paymentForm.referenceNumber.trim()) {
+        setUploadError('Please upload proof or enter a reference number.');
+        toast({
+          title: 'Proof or reference required',
+          description: 'Upload a proof file or enter a cheque/deposit reference.',
           variant: 'destructive',
         });
         return;
       }
       const formData = new FormData();
-      if (file) {
-        formData.append('proof', file);
+      formData.append('paymentMethod', paymentForm.method);
+      formData.append('amount', String(Number(paymentForm.amount)));
+      if (paymentForm.referenceNumber.trim()) {
+        formData.append('referenceNumber', paymentForm.referenceNumber.trim());
       }
-      if (poCodeInput.trim()) {
-        formData.append('poCode', poCodeInput.trim());
+      if (paymentForm.notes.trim()) {
+        formData.append('notes', paymentForm.notes.trim());
+      }
+      if (proofFile) {
+        formData.append('proof', proofFile);
       }
       const res = await apiClient.post(`/orders/${selectedOrder.id}/payment-proof`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-          ...(useTestVerification ? { 'X-Test-Verification': 'true' } : {}),
         },
       });
       const paymentStatus = (res.data?.paymentStatus || selectedOrder.paymentStatus || '').toLowerCase();
-      const poMatchStatus = (
-        res.data?.poMatchStatus ||
-        res.data?.chequeVerification ||
-        selectedOrder.poMatchStatus ||
-        selectedOrder.chequeVerification ||
-        ''
-      ).toLowerCase();
       const updatedOrder = {
         ...selectedOrder,
         paymentStatus: paymentStatus || selectedOrder.paymentStatus,
-        chequeVerification: poMatchStatus || selectedOrder.chequeVerification,
-        poMatchStatus: poMatchStatus || selectedOrder.poMatchStatus,
+        chequeVerification: null,
+        poMatchStatus: null,
         chequeImage: res.data?.paymentProofUrl || selectedOrder.chequeImage,
         poDocumentUrl: res.data?.poDocumentUrl || res.data?.paymentProofUrl || selectedOrder.poDocumentUrl,
       } as Order;
-      setVerificationResult(poMatchStatus === 'genuine' ? 'genuine' : poMatchStatus === 'fraud' ? 'fraud' : 'pending');
-      const matchSource = res.data?.poMatch?.matchSource;
-      setPoMatchSource(matchSource || (poMatchStatus === 'genuine' ? 'typed-code' : 'none'));
+      setProofSubmitted(true);
       setSelectedOrder(updatedOrder);
       setOrders((prev) => prev.map((o) => (o.id === selectedOrder.id ? updatedOrder : o)));
       setCache(
@@ -305,33 +325,21 @@ export default function MyOrdersPage() {
         )
       );
       toast({
-        title:
-          poMatchStatus === 'genuine'
-            ? 'Purchase Order Matched'
-            : poMatchStatus === 'fraud'
-            ? 'Purchase Order Mismatch'
-            : 'Payment Proof Submitted',
-        description:
-          poMatchStatus === 'genuine'
-            ? matchSource === 'ocr'
-              ? 'OCR found this order code. Admin approval is still required.'
-              : 'Your purchase order matches this order and is waiting for admin approval.'
-            : poMatchStatus === 'fraud'
-            ? 'The uploaded purchase order code does not match this order yet.'
-            : 'Office will review this payment proof before updating the payment status.',
+        title: 'Payment Proof Submitted',
+        description: 'Office will review this proof before updating the payment status.',
       });
       refreshOrders();
     } catch (err) {
-      setVerificationResult(null);
+      setProofSubmitted(false);
       const message =
         (err as any)?.response?.data?.error || 'Please try again or contact support.';
       toast({
-        title: 'PO Matching Failed',
+        title: 'Proof Upload Failed',
         description: message,
         variant: 'destructive',
       });
     } finally {
-      setIsVerifying(false);
+      setIsUploadingProof(false);
     }
   };
 
@@ -602,11 +610,7 @@ export default function MyOrdersPage() {
                   onChange={(event) => setOrderSearchTerm(event.target.value)}
                   placeholder="Search order number, client, or project"
                 />
-                <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
+                <StatusFilterSelect value={orderStatusFilter} onValueChange={setOrderStatusFilter} placeholder="Status">
                     <SelectItem value="all">All statuses</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
@@ -614,8 +618,7 @@ export default function MyOrdersPage() {
                     <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>
                     <SelectItem value="delivered">Delivered</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+                </StatusFilterSelect>
               </div>
             </CardContent>
             <CardContent className="p-0">
@@ -645,11 +648,7 @@ export default function MyOrdersPage() {
                   onChange={(event) => setDeliverySearchTerm(event.target.value)}
                   placeholder="Search DR, order, project, or item"
                 />
-                <Select value={deliveryStatusFilter} onValueChange={setDeliveryStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Delivery status" />
-                  </SelectTrigger>
-                  <SelectContent>
+                <StatusFilterSelect value={deliveryStatusFilter} onValueChange={setDeliveryStatusFilter} placeholder="Delivery status">
                     <SelectItem value="all">All statuses</SelectItem>
                     <SelectItem value="pending">Pending Dispatch</SelectItem>
                     <SelectItem value="in-transit">In Transit</SelectItem>
@@ -658,8 +657,7 @@ export default function MyOrdersPage() {
                     <SelectItem value="return-pending">Return Pending</SelectItem>
                     <SelectItem value="return-rejected">Return Rejected</SelectItem>
                     <SelectItem value="returned">Returned</SelectItem>
-                  </SelectContent>
-                </Select>
+                </StatusFilterSelect>
               </div>
             </CardContent>
             <CardContent className="p-0">
@@ -870,6 +868,12 @@ export default function MyOrdersPage() {
           )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
+            {selectedOrder?.paymentStatus !== 'paid' && selectedOrder?.status !== 'cancelled' ? (
+              <Button onClick={() => handleUploadPayment(selectedOrder)} className="gap-2">
+                <CreditCard size={16} />
+                Submit Payment
+              </Button>
+            ) : null}
             {selectedOrder?.status === 'delivered' ? (
               <Button onClick={() => handleReorder(selectedOrder)} className="gap-2">
                 <RotateCcw size={16} />
@@ -906,134 +910,98 @@ export default function MyOrdersPage() {
               Upload Payment / PO Proof
             </DialogTitle>
             <DialogDescription>
-              Upload cheque, auto-deposit, or purchase order proof. PO codes are matched when provided.
+              Upload cheque, auto-deposit, or purchase order proof for office review.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            {!isVerifying && verificationResult === null && (
-              <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                <Upload size={40} className="mx-auto mb-4 text-muted-foreground" />
-                <div className="mb-4 space-y-3 text-left">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Expected order code</p>
-                    <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium">
-                      {selectedOrder?.orderNumber}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                      Purchase Order Code
-                    </label>
-                    <input
-                      value={poCodeInput}
-                      onChange={(event) => {
-                        setPoCodeInput(event.target.value);
-                        if (uploadError) setUploadError('');
-                      }}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      placeholder="Optional PO/order code from the uploaded file"
-                    />
-                  </div>
+            {!isUploadingProof && !proofSubmitted && (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                  <p className="text-xs font-medium text-muted-foreground">Order</p>
+                  <p className="font-semibold">{selectedOrder?.orderNumber}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{selectedOrder?.projectName || 'No project assigned'}</p>
                 </div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Upload a payment or PO file for office review. If it contains an order code, OCR will try to match it.
-                </p>
-                <label className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-3">
-                  <input
-                    type="checkbox"
-                    checked={useTestVerification}
-                    onChange={(e) => {
-                      setUseTestVerification(e.target.checked);
+                <div>
+                  <Label>Payment Method</Label>
+                  <Select value={paymentForm.method} onValueChange={(value) => setPaymentForm((prev) => ({ ...prev, method: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CHEQUE">Cheque</SelectItem>
+                      <SelectItem value="AUTO_DEPOSIT">Auto Deposit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Amount</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={paymentForm.amount}
+                    onChange={(event) => setPaymentForm((prev) => ({ ...prev, amount: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Reference Number</Label>
+                  <Input
+                    value={paymentForm.referenceNumber}
+                    onChange={(event) => {
+                      setPaymentForm((prev) => ({ ...prev, referenceNumber: event.target.value }));
                       if (uploadError) setUploadError('');
                     }}
+                    placeholder="Cheque number or deposit reference"
                   />
-                  Use test verification (skip upload)
-                </label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,application/pdf"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      setSelectedFileName(file.name);
-                      if (uploadError) setUploadError('');
-                      simulateAIVerification(file);
-                    }
-                  }}
-                />
-                <Button onClick={() => (useTestVerification ? simulateAIVerification() : fileInputRef.current?.click())}>
-                  Select Proof File
-                </Button>
-                {selectedFileName && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Selected: {selectedFileName}
-                  </p>
-                )}
+                </div>
+                <div>
+                  <Label>Payment Proof</Label>
+                  <div className="mt-1 rounded-md border border-dashed p-3">
+                    <label className="flex cursor-pointer items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Upload size={16} />
+                      <span>{selectedFileName || 'Upload cheque/deposit proof'}</span>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,application/pdf"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] || null;
+                          setProofFile(file);
+                          setSelectedFileName(file?.name || '');
+                          if (uploadError) setUploadError('');
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <Label>Notes</Label>
+                  <Textarea
+                    value={paymentForm.notes}
+                    onChange={(event) => setPaymentForm((prev) => ({ ...prev, notes: event.target.value }))}
+                  />
+                </div>
                 {uploadError && (
-                  <p className="mt-2 text-xs text-destructive">{uploadError}</p>
+                  <p className="text-xs text-destructive">{uploadError}</p>
                 )}
               </div>
             )}
 
-            {isVerifying && (
+            {isUploadingProof && (
               <div className="p-8 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                <p className="font-medium">Matching Purchase Order...</p>
-                <p className="text-sm text-muted-foreground">Checking whether the uploaded PO code matches this order</p>
+                <p className="font-medium">Uploading Proof...</p>
+                <p className="text-sm text-muted-foreground">Sending the file to the office for review.</p>
               </div>
             )}
 
-            {verificationResult && (
-              <div
-                className={cn(
-                  'p-6 rounded-lg text-center',
-                  verificationResult === 'genuine'
-                    ? 'bg-success/10'
-                    : verificationResult === 'fraud'
-                    ? 'bg-destructive/10'
-                    : 'bg-muted'
-                )}
-              >
-                <div
-                  className={cn(
-                    'h-16 w-16 rounded-full mx-auto mb-4 flex items-center justify-center',
-                    verificationResult === 'genuine'
-                      ? 'bg-success'
-                      : verificationResult === 'fraud'
-                      ? 'bg-destructive'
-                      : 'bg-primary'
-                  )}
-                >
-                  {verificationResult === 'genuine' ? (
-                    <CheckCircle size={32} className="text-white" />
-                  ) : verificationResult === 'pending' ? (
-                    <Upload size={32} className="text-white" />
-                  ) : (
-                    <span className="text-3xl text-white">!</span>
-                  )}
+            {proofSubmitted && (
+              <div className="rounded-lg bg-muted p-6 text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
+                  <Upload size={32} className="text-white" />
                 </div>
-                <p className={cn('text-lg font-bold', verificationResult === 'genuine' ? 'text-success' : verificationResult === 'fraud' ? 'text-destructive' : 'text-foreground')}>
-                  {verificationResult === 'genuine'
-                    ? poMatchSource === 'ocr'
-                      ? 'OCR Match'
-                      : poMatchSource === 'typed-code'
-                      ? 'Typed-Code Match'
-                      : 'PO Match'
-                    : verificationResult === 'pending'
-                    ? 'Submitted for Review'
-                    : 'Mismatch'}
-                </p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  {verificationResult === 'genuine'
-                    ? poMatchSource === 'ocr'
-                      ? 'The expected order code was found in the uploaded image.'
-                      : 'The typed PO code matched the expected order code.'
-                    : verificationResult === 'pending'
-                    ? 'Office will review this payment proof before marking the payment received or paid.'
-                    : 'OCR and typed-code checks did not match this order. Please review the PO file/code.'}
+                <p className="text-lg font-bold">Submitted for Review</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Office will review this payment proof before marking the payment received or paid.
                 </p>
               </div>
             )}
@@ -1042,11 +1010,13 @@ export default function MyOrdersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setIsUploadOpen(false);
-              setVerificationResult(null);
-              setPoMatchSource(null);
+              setProofSubmitted(false);
             }}>
               Close
             </Button>
+            {!isUploadingProof && !proofSubmitted ? (
+              <Button onClick={uploadPaymentProof}>Submit</Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

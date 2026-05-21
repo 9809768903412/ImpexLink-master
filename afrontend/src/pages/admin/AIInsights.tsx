@@ -24,15 +24,14 @@ import {
   TrendingUp,
   AlertTriangle,
   ShoppingCart,
-  Shield,
   MapPin,
   RefreshCw,
   Eye,
   CheckCircle2,
 } from 'lucide-react';
 import {
-  Bar,
-  BarChart,
+  Line,
+  LineChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -80,12 +79,10 @@ export default function AIInsightsPage() {
   const [patternPage, setPatternPage] = useState(1);
   const [riskPage, setRiskPage] = useState(1);
   const [reorderPage, setReorderPage] = useState(1);
-  const [fraudPage, setFraudPage] = useState(1);
   const [dispatchPage, setDispatchPage] = useState(1);
   const patternPageSize = 6;
   const riskPageSize = 5;
   const reorderPageSize = 5;
-  const fraudPageSize = 4;
   const dispatchPageSize = 3;
   const { data: aiAnalysis, setData: setAiAnalysis } = useResource<AiAnalysis | null>('/ai/analysis', null, [], 10 * 60 * 1000);
   const aiSummary: AiSummary | null = aiAnalysis
@@ -100,7 +97,6 @@ export default function AIInsightsPage() {
     : null;
   const warehouseRisks = aiAnalysis?.warehouseRisks || [];
   const reorderSuggestions = aiAnalysis?.reorderSuggestions || [];
-  const fraudAlerts = aiAnalysis?.fraudAlerts || [];
   const logisticsSnapshot = aiAnalysis?.logisticsSnapshot || fallbackLogistics;
   const { data: transactions } = useResource<StockTransaction[]>('/transactions', []);
   const { data: inventory } = useResource<InventoryItem[]>('/inventory', []);
@@ -217,8 +213,6 @@ export default function AIInsightsPage() {
   const riskPageItems = filteredRisks.slice((riskPage - 1) * riskPageSize, riskPage * riskPageSize);
   const reorderTotalPages = Math.max(1, Math.ceil(reorderSuggestions.length / reorderPageSize));
   const reorderPageItems = reorderSuggestions.slice((reorderPage - 1) * reorderPageSize, reorderPage * reorderPageSize);
-  const fraudTotalPages = Math.max(1, Math.ceil(fraudAlerts.length / fraudPageSize));
-  const fraudPageItems = fraudAlerts.slice((fraudPage - 1) * fraudPageSize, fraudPage * fraudPageSize);
   const dispatchTotalPages = Math.max(1, Math.ceil(logisticsSnapshot.dispatches.length / dispatchPageSize));
   const dispatchPageItems = logisticsSnapshot.dispatches.slice(
     (dispatchPage - 1) * dispatchPageSize,
@@ -232,10 +226,6 @@ export default function AIInsightsPage() {
   useEffect(() => {
     setReorderPage(1);
   }, [reorderSuggestions.length]);
-
-  useEffect(() => {
-    setFraudPage(1);
-  }, [fraudAlerts.length]);
 
   useEffect(() => {
     setDispatchPage(1);
@@ -356,7 +346,7 @@ export default function AIInsightsPage() {
             {patternTrends.some((month) => Number(month.totalUsage || 0) > 0) ? (
               <div className="space-y-4">
                 <ResponsiveContainer width="100%" height={340}>
-                  <BarChart
+                  <LineChart
                     data={patternTrends}
                     margin={{ top: 8, right: 20, left: 0, bottom: 40 }}
                   >
@@ -378,15 +368,18 @@ export default function AIInsightsPage() {
                     />
                     <Legend />
                     {DEMO_PATTERN_ITEMS.map((item) => (
-                      <Bar
+                      <Line
                         key={item.name}
+                        type="monotone"
                         dataKey={item.name}
-                        stackId="usage"
-                        fill={item.color}
+                        stroke={item.color}
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                        activeDot={{ r: 5 }}
                         isAnimationActive={false}
                       />
                     ))}
-                  </BarChart>
+                  </LineChart>
                 </ResponsiveContainer>
                 <div className="grid gap-2 sm:grid-cols-3">
                   <div className="rounded-md border bg-muted/30 p-3">
@@ -587,73 +580,6 @@ export default function AIInsightsPage() {
                 Create PO from Suggestions
               </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Fraud Detection */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield size={20} className="text-blue-600" />
-              Purchase Order Match Monitor
-            </CardTitle>
-            <CardDescription>Advisory review of purchase order and payment signals</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {fraudAlerts.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Shield size={48} className="mx-auto mb-2 opacity-50" />
-                <p>No purchase order advisory alerts</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {fraudPageItems.map((alert) => (
-                  <div
-                    key={alert.id}
-                    className={`p-3 rounded-lg border ${
-                      alert.severity === 'low'
-                        ? 'bg-green-50 border-green-200'
-                        : alert.severity === 'medium'
-                        ? 'bg-yellow-50 border-yellow-200'
-                        : 'bg-red-50 border-red-200'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">{alert.orderNumber}</p>
-                        <p className="text-sm">{alert.message}</p>
-                      </div>
-                      <Badge
-                        className={
-                          alert.severity === 'low'
-                            ? 'bg-green-600'
-                            : alert.severity === 'medium'
-                            ? 'bg-yellow-600'
-                            : 'bg-red-600'
-                        }
-                      >
-                        {alert.severity}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(alert.timestamp), 'MMM dd, yyyy HH:mm')}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-            {fraudAlerts.length > 0 && (
-              <div className="mt-4 flex items-center justify-center">
-                <PaginationNav
-                  page={fraudPage}
-                  totalPages={fraudTotalPages}
-                  onPageChange={setFraudPage}
-                />
-              </div>
-            )}
-            <p className="text-sm text-muted-foreground text-center mt-4">
-              * The system reviews order, payment, and purchase-document signals when data is available
-            </p>
           </CardContent>
         </Card>
 

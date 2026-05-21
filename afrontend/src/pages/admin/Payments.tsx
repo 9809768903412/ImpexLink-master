@@ -35,6 +35,8 @@ import type { Order, PaymentTransaction, PurchaseOrder, Supplier } from '@/types
 import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
 import { toPublicFileUrl } from '@/lib/files';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const statusClass: Record<string, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -218,17 +220,14 @@ export default function PaymentsPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search reference, order, client, supplier..." className="pl-9" />
             </div>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="lg:w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger>
-              <SelectContent>
+            <StatusFilterSelect value={status} onValueChange={setStatus} placeholder="Status">
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="received">Received</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            </StatusFilterSelect>
           </div>
         </CardContent>
       </Card>
@@ -260,7 +259,7 @@ export default function PaymentsPage() {
                   </TableCell>
                   <TableCell>{payment.referenceNumber || payment.clientOrderNumber || payment.supplierPoNumber || '-'}</TableCell>
                   <TableCell>{payment.dueDate ? format(new Date(payment.dueDate), 'MMM dd, yyyy') : '-'}</TableCell>
-                  <TableCell><Badge className={statusClass[payment.status] || statusClass.pending}>{payment.status}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className={`capitalize ${statusBadgeClass(payment.status)}`}>{payment.status}</Badge></TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
                 </TableRow>
               ))}
@@ -285,7 +284,7 @@ export default function PaymentsPage() {
                 </div>
                 <div className="rounded-md border p-3">
                   <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge className={`mt-1 ${statusClass[selectedPayment.status] || statusClass.pending}`}>{selectedPayment.status}</Badge>
+                  <Badge variant="outline" className={`mt-1 capitalize ${statusBadgeClass(selectedPayment.status)}`}>{selectedPayment.status}</Badge>
                 </div>
                 <div className="rounded-md border p-3">
                   <p className="text-xs text-muted-foreground">Reference</p>

@@ -27,6 +27,7 @@ import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
 import { downloadCsv } from '@/utils/csv';
 import PaginationNav from '@/components/PaginationNav';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
 
 const REPORT_PAGE_SIZE = 10;
 
@@ -850,20 +851,12 @@ export default function ReportsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={projectStatusFilter}
-              onValueChange={setProjectStatusFilter}
-            >
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="on-hold">On Hold</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
+            <StatusFilterSelect value={projectStatusFilter} onValueChange={setProjectStatusFilter} placeholder="All Status">
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="on-hold">On Hold</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+            </StatusFilterSelect>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -1125,21 +1118,13 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row justify-between gap-3 mb-4">
-                <Select
-                  value={deliveryStatusFilter}
-                  onValueChange={setDeliveryStatusFilter}
-                >
-                  <SelectTrigger className="w-full sm:w-[200px]">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in-transit">In Transit</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
-                    <SelectItem value="returned">Returned</SelectItem>
-                  </SelectContent>
-                </Select>
+                <StatusFilterSelect value={deliveryStatusFilter} onValueChange={setDeliveryStatusFilter} placeholder="All Status">
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in-transit">In Transit</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="returned">Returned</SelectItem>
+                </StatusFilterSelect>
               </div>
               <Table>
                 <TableHeader>

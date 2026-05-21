@@ -40,6 +40,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { canManageLogistics } from '@/lib/roles';
 import PaginationNav from '@/components/PaginationNav';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const statusColors: Record<DeliveryStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -599,27 +601,23 @@ export default function LogisticsPage() {
                     className="pl-10"
                   />
                 </div>
-                <Select
+                <StatusFilterSelect
                   value={statusFilter}
                   onValueChange={(value) => {
                     setStatusFilter(value);
                     setDeliveriesPage(1);
                   }}
+                  placeholder="All Status"
                 >
-                  <SelectTrigger className="w-full lg:w-[180px]">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in-transit">In Transit</SelectItem>
-                    <SelectItem value="delayed">Delayed</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
-                    <SelectItem value="return-pending">Return Pending</SelectItem>
-                    <SelectItem value="return-rejected">Return Rejected</SelectItem>
-                    <SelectItem value="returned">Returned</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in-transit">In Transit</SelectItem>
+                  <SelectItem value="delayed">Delayed</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="return-pending">Return Pending</SelectItem>
+                  <SelectItem value="return-rejected">Return Rejected</SelectItem>
+                  <SelectItem value="returned">Returned</SelectItem>
+                </StatusFilterSelect>
                 <Select value={sortKey} onValueChange={(value) => setSortKey(value as typeof sortKey)}>
                   <SelectTrigger className="w-full lg:w-[160px]">
                     <SelectValue placeholder="Sort by" />
@@ -702,12 +700,12 @@ export default function LogisticsPage() {
                       </TableCell>
                       <TableCell>
                         {isDelayed(delivery) ? (
-                          <Badge className={`${delayedBadge} flex items-center gap-1 w-fit`}>
+                          <Badge variant="outline" className={`${statusBadgeClass('delayed')} flex items-center gap-1 w-fit`}>
                             <Clock size={16} />
                             delayed
                           </Badge>
                         ) : (
-                          <Badge className={`${statusColors[delivery.status]} flex items-center gap-1 w-fit`}>
+                          <Badge variant="outline" className={`${statusBadgeClass(delivery.status)} flex items-center gap-1 w-fit`}>
                             {statusIcons[delivery.status]}
                             {delivery.status}
                           </Badge>

@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 type ActivityItem = {
   id: string;
@@ -370,9 +371,7 @@ export default function ClientDashboard() {
                   </div>
                   <Badge
                     className={`w-fit shrink-0 capitalize ${
-                      activity.type === 'order'
-                        ? orderBadgeClasses[activity.status] || 'bg-muted text-foreground'
-                        : deliveryBadgeClasses[activity.status] || 'bg-muted text-foreground'
+                      statusBadgeClass(activity.status)
                     }`}
                   >
                     {activity.status.replace(/-/g, ' ')}

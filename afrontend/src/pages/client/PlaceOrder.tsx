@@ -930,7 +930,7 @@ export default function PlaceOrderPage() {
 
             <div className="p-3 bg-info/10 rounded-lg">
               <p className="text-sm text-info">
-                Next step: wait for admin approval. Once your PO is available, upload it from "My Orders" for OCR matching.
+                Next step: wait for admin approval. Once your payment or PO proof is available, upload it from "My Orders" for office review.
               </p>
             </div>
           </div>

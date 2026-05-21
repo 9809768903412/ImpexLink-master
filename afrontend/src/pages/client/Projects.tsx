@@ -27,6 +27,8 @@ import { apiClient } from '@/api/client';
 import type { Project, Client, Order } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
 import { ProjectStatusDots } from '@/components/ProjectStatusDots';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const orderStatusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -248,19 +250,14 @@ export default function ClientProjectsPage() {
                 className="pl-10"
               />
             </div>
-            <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="on-hold">On Hold</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
+            <StatusFilterSelect value={statusFilter} onValueChange={handleStatusFilterChange} placeholder="All Status">
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="on-hold">On Hold</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+            </StatusFilterSelect>
           </div>
         </CardContent>
       </Card>
@@ -358,7 +355,7 @@ export default function ClientProjectsPage() {
           {selectedProject && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Badge className="capitalize">{selectedProject.status}</Badge>
+                <Badge variant="outline" className={`capitalize ${statusBadgeClass(selectedProject.status)}`}>{selectedProject.status}</Badge>
                 <span className="text-sm text-muted-foreground">
                   Start: {selectedProject.startDate ? format(new Date(selectedProject.startDate), 'MMM dd, yyyy') : '—'}
                 </span>
@@ -419,7 +416,7 @@ export default function ClientProjectsPage() {
                               <div className="min-w-0 space-y-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="font-semibold">{order.orderNumber}</p>
-                                  <Badge className={`capitalize ${orderStatusColors[order.status] || 'bg-slate-100 text-slate-800'}`}>
+                                  <Badge variant="outline" className={`capitalize ${statusBadgeClass(order.status)}`}>
                                     {order.status.replace(/-/g, ' ')}
                                   </Badge>
                                 </div>
@@ -634,13 +631,13 @@ export default function ClientProjectsPage() {
                 </div>
                 <div className="rounded-xl bg-muted/30 p-3">
                   <p className="text-muted-foreground">Order Status</p>
-                  <Badge className={`mt-1 capitalize ${orderStatusColors[selectedLinkedOrder.status] || 'bg-slate-100 text-slate-800'}`}>
+                  <Badge variant="outline" className={`mt-1 capitalize ${statusBadgeClass(selectedLinkedOrder.status)}`}>
                     {selectedLinkedOrder.status.replace(/-/g, ' ')}
                   </Badge>
                 </div>
                 <div className="rounded-xl bg-muted/30 p-3">
                   <p className="text-muted-foreground">Payment</p>
-                  <Badge className={`mt-1 capitalize ${paymentStatusColors[selectedLinkedOrder.paymentStatus] || 'bg-slate-100 text-slate-800'}`}>
+                  <Badge variant="outline" className={`mt-1 capitalize ${statusBadgeClass(selectedLinkedOrder.paymentStatus)}`}>
                     {selectedLinkedOrder.paymentStatus}
                   </Badge>
                 </div>

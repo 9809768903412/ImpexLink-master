@@ -41,6 +41,8 @@ import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const statusColors: Record<POStatus, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -50,8 +52,6 @@ const statusColors: Record<POStatus, string> = {
   received: 'bg-green-100 text-green-800',
   paid: 'bg-emerald-100 text-emerald-800',
 };
-
-const normalizePoCode = (value: string) => value.replace(/[^a-z0-9]/gi, '').toUpperCase();
 
 // TODO: Replace with real data
 export default function PurchaseOrdersPage() {
@@ -511,26 +511,22 @@ export default function PurchaseOrdersPage() {
                     className="pl-10"
                   />
                 </div>
-                <Select
+                <StatusFilterSelect
                   value={statusFilter}
                   onValueChange={(value) => {
                     setStatusFilter(value);
                     setPoPage(1);
                   }}
+                  placeholder="All Status"
                 >
-                  <SelectTrigger className="w-full lg:w-[180px]">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="ordered">Ordered</SelectItem>
-                    <SelectItem value="received">Received</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="ordered">Ordered</SelectItem>
+                  <SelectItem value="received">Received</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                </StatusFilterSelect>
                 <Select value={sortKey} onValueChange={(value) => setSortKey(value as typeof sortKey)}>
                   <SelectTrigger className="w-full lg:w-[180px]">
                     <SelectValue placeholder="Sort by" />
@@ -590,7 +586,7 @@ export default function PurchaseOrdersPage() {
                         ₱{po.total.toLocaleString()}
                       </TableCell>
                       <TableCell>
-                        <Badge className={statusColors[po.status]}>
+                        <Badge variant="outline" className={`capitalize ${statusBadgeClass(po.status)}`}>
                           {po.status === 'paid' ? '✓ PAID' : po.status}
                         </Badge>
                       </TableCell>
@@ -896,18 +892,14 @@ export default function PurchaseOrdersPage() {
                   <p className="text-sm text-muted-foreground">TIN: {company.tin}</p>
                   </div>
                 </div>
-                <div className="mb-4 grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm md:grid-cols-3">
+                <div className="mb-4 grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm md:grid-cols-2">
                   <div>
                     <p className="text-muted-foreground">PO Number</p>
                     <p className="font-semibold">{selectedPO.poNumber}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Normalized Match Code</p>
-                    <p className="font-mono text-xs font-semibold">{normalizePoCode(selectedPO.poNumber)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Matching Status</p>
-                    <Badge variant="outline">Ready for sample PO matching</Badge>
+                    <p className="text-muted-foreground">Document Status</p>
+                    <Badge variant="outline">Ready for office review</Badge>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">

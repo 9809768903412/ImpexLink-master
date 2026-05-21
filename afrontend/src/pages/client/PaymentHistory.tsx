@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,31 +12,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { CreditCard, Search, Upload } from 'lucide-react';
+import { CreditCard, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/api/client';
 import type { Order, PaymentTransaction } from '@/types';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
-import { toast } from '@/hooks/use-toast';
 import { formatPesoAmount } from '@/lib/currency';
 import { toPublicFileUrl } from '@/lib/files';
 import PaginationNav from '@/components/PaginationNav';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const paymentStatusColors: Record<string, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -48,21 +33,13 @@ const paymentStatusColors: Record<string, string> = {
 
 export default function ClientPaymentHistoryPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [search, setSearch] = useState('');
   const [ordersPage, setOrdersPage] = useState(1);
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [pageSize] = useState(10);
-  const [open, setOpen] = useState(false);
-  const [proofFile, setProofFile] = useState<File | null>(null);
-  const [form, setForm] = useState({
-    clientOrderId: '',
-    method: 'CHEQUE',
-    amount: '',
-    referenceNumber: '',
-    notes: '',
-  });
 
   useEffect(() => {
     if (!user?.id) return;
@@ -114,48 +91,6 @@ export default function ClientPaymentHistoryPage() {
     if (paymentsPage > paymentTotalPages) setPaymentsPage(paymentTotalPages);
   }, [paymentsPage, paymentTotalPages]);
 
-  const submitPayment = async () => {
-    if (!form.clientOrderId) {
-      toast({ title: 'Order required', description: 'Choose the order this payment belongs to.', variant: 'destructive' });
-      return;
-    }
-    if (!form.amount || Number(form.amount) <= 0) {
-      toast({ title: 'Amount required', description: 'Enter the amount you paid.', variant: 'destructive' });
-      return;
-    }
-    if (!proofFile && !form.referenceNumber.trim()) {
-      toast({ title: 'Proof or reference required', description: 'Upload a proof file or enter a cheque/deposit reference.', variant: 'destructive' });
-      return;
-    }
-    try {
-      const formData = new FormData();
-      formData.append('paymentMethod', form.method);
-      formData.append('amount', String(Number(form.amount)));
-      if (form.referenceNumber.trim()) formData.append('referenceNumber', form.referenceNumber.trim());
-      if (form.notes.trim()) formData.append('notes', form.notes.trim());
-      if (proofFile) formData.append('proof', proofFile);
-      await apiClient.post(`/orders/${form.clientOrderId}/payment-proof`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      toast({ title: 'Payment submitted', description: 'Office will verify the payment record.' });
-      setOpen(false);
-      setProofFile(null);
-      setForm({ clientOrderId: '', method: 'CHEQUE', amount: '', referenceNumber: '', notes: '' });
-      const [paymentResponse, orderResponse] = await Promise.all([
-        apiClient.get('/payments'),
-        apiClient.get('/orders'),
-      ]);
-      setPayments(paymentResponse.data?.data || paymentResponse.data || []);
-      setOrders(orderResponse.data?.data || orderResponse.data || []);
-    } catch (error: any) {
-      toast({
-        title: 'Unable to submit payment',
-        description: error?.response?.data?.error || 'Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -163,9 +98,9 @@ export default function ClientPaymentHistoryPage() {
           <h2 className="text-2xl font-bold text-foreground">Payment History</h2>
           <p className="text-muted-foreground">Track payment status and submit Cheque or Auto Deposit references.</p>
         </div>
-        <Button onClick={() => setOpen(true)} className="gap-2">
+        <Button onClick={() => navigate('/client/orders')} className="gap-2">
           <CreditCard size={16} />
-          Submit Payment
+          Submit from Orders
         </Button>
       </div>
 
@@ -213,7 +148,7 @@ export default function ClientPaymentHistoryPage() {
                     <TableCell className="font-medium">{order.orderNumber}</TableCell>
                     <TableCell>{order.projectName || '-'}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={`capitalize ${paymentStatusColors[order.paymentStatus] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                      <Badge variant="outline" className={`capitalize ${statusBadgeClass(order.paymentStatus)}`}>
                         {order.paymentStatus}
                       </Badge>
                     </TableCell>
@@ -256,7 +191,7 @@ export default function ClientPaymentHistoryPage() {
                   <TableCell>{payment.referenceNumber || payment.clientOrderNumber || '-'}</TableCell>
                   <TableCell>{payment.method.replace(/-/g, ' ')}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={`capitalize ${paymentStatusColors[payment.status] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                    <Badge variant="outline" className={`capitalize ${statusBadgeClass(payment.status)}`}>
                       {payment.status}
                     </Badge>
                   </TableCell>
@@ -280,68 +215,6 @@ export default function ClientPaymentHistoryPage() {
           <PaginationNav page={paymentsPage} totalPages={paymentTotalPages} onPageChange={setPaymentsPage} />
         </div>
       </Card>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Submit payment reference</DialogTitle>
-            <DialogDescription>Use Cheque or Auto Deposit direct to the Impex savings account.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Order</Label>
-              <Select value={form.clientOrderId} onValueChange={(value) => {
-                const order = orders.find((entry) => entry.id === value);
-                setForm((prev) => ({ ...prev, clientOrderId: value, amount: order ? String(order.total) : prev.amount }));
-              }}>
-                <SelectTrigger><SelectValue placeholder="Select order" /></SelectTrigger>
-                <SelectContent>{orders.map((order) => <SelectItem key={order.id} value={order.id}>{order.orderNumber} - PHP {formatPesoAmount(order.total)}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Payment Method</Label>
-              <Select value={form.method} onValueChange={(value) => setForm((prev) => ({ ...prev, method: value }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CHEQUE">Cheque</SelectItem>
-                  <SelectItem value="AUTO_DEPOSIT">Auto Deposit</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Amount</Label>
-              <Input type="number" min="0" value={form.amount} onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))} />
-            </div>
-            <div>
-              <Label>Reference Number</Label>
-              <Input value={form.referenceNumber} onChange={(event) => setForm((prev) => ({ ...prev, referenceNumber: event.target.value }))} />
-            </div>
-            <div>
-              <Label>Payment Proof</Label>
-              <div className="mt-1 rounded-md border border-dashed p-3">
-                <label className="flex cursor-pointer items-center justify-center gap-2 text-sm text-muted-foreground">
-                  <Upload size={16} />
-                  <span>{proofFile ? proofFile.name : 'Upload cheque/deposit proof'}</span>
-                  <Input
-                    type="file"
-                    accept="application/pdf,image/png,image/jpeg"
-                    className="hidden"
-                    onChange={(event) => setProofFile(event.target.files?.[0] || null)}
-                  />
-                </label>
-              </div>
-            </div>
-            <div>
-              <Label>Notes</Label>
-              <Textarea value={form.notes} onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))} />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={submitPayment}>Submit</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

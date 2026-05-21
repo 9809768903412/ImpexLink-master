@@ -38,6 +38,8 @@ import { downloadCsv } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { canManageInventory } from '@/lib/roles';
 import PaginationNav from '@/components/PaginationNav';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 const INVENTORY_REASON_OPTIONS = [
   'Stock Adjustment',
@@ -393,11 +395,11 @@ export default function InventoryPage() {
   const getStatusBadge = (status: InventoryItem['status']) => {
     switch (status) {
       case 'in-stock':
-        return <Badge className="bg-success text-success-foreground">In Stock</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>In Stock</Badge>;
       case 'low-stock':
-        return <Badge className="bg-warning text-warning-foreground">Low Stock</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Low Stock</Badge>;
       case 'out-of-stock':
-        return <Badge className="bg-destructive text-destructive-foreground">Out of Stock</Badge>;
+        return <Badge variant="outline" className={statusBadgeClass(status)}>Out of Stock</Badge>;
     }
   };
 
@@ -538,23 +540,19 @@ export default function InventoryPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select
+            <StatusFilterSelect
               value={statusFilter}
               onValueChange={(value) => {
                 setStatusFilter(value);
                 setPage(1);
               }}
+              placeholder="All Status"
             >
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="in-stock">In Stock</SelectItem>
-                <SelectItem value="low-stock">Low Stock</SelectItem>
-                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
-              </SelectContent>
-            </Select>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="in-stock">In Stock</SelectItem>
+              <SelectItem value="low-stock">Low Stock</SelectItem>
+              <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+            </StatusFilterSelect>
           </div>
         </CardContent>
       </Card>

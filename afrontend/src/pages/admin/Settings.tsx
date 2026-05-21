@@ -39,6 +39,7 @@ import type { Client, User as UserType } from '@/types';
 import { apiClient } from '@/api/client';
 import { resendVerification } from '@/api/auth';
 import { cn } from '@/lib/utils';
+import StatusFilterSelect from '@/components/StatusFilterSelect';
 import {
   ROLE_LABELS,
   canManageUsers,
@@ -1028,17 +1029,12 @@ export default function SettingsPage() {
                   ))}
                           </SelectContent>
                         </Select>
-                        <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
-                          <SelectTrigger className="w-full lg:w-[180px]">
-                            <SelectValue placeholder="All Status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Status</SelectItem>
-                            <SelectItem value="active">Active</SelectItem>
-                            <SelectItem value="inactive">Inactive</SelectItem>
-                            <SelectItem value="suspended">Suspended</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <StatusFilterSelect value={userStatusFilter} onValueChange={setUserStatusFilter} placeholder="All Status">
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                          <SelectItem value="suspended">Suspended</SelectItem>
+                        </StatusFilterSelect>
                       </div>
                     </CardContent>
                   </Card>
