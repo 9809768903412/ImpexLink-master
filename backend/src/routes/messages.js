@@ -132,6 +132,18 @@ async function getClientMessageRecipientIds(userId) {
   ];
 }
 
+async function getSalesAgentClientRecipientIds(userId) {
+  const orders = await prisma.clientOrder.findMany({
+    where: {
+      assignedSalesAgentId: Number(userId),
+      deletedAt: null,
+      createdBy: { not: null },
+    },
+    select: { createdBy: true },
+  });
+  return [...new Set(orders.map((order) => order.createdBy).filter(Boolean))];
+}
+
 async function canMessageUser(req, recipientId) {
   if (Number(req.user.userId) === Number(recipientId)) return false;
   const recipient = await prisma.user.findUnique({
@@ -142,6 +154,7 @@ async function canMessageUser(req, recipientId) {
 
   const currentIsAdmin = hasAnyRole(req.user, ADMIN_ROLES);
   const currentIsClient = hasAnyRole(req.user, ['CLIENT']);
+  const currentIsSalesAgent = hasAnyRole(req.user, ['SALES_AGENT']);
   const recipientRoles = [
     recipient.role?.roleName,
     ...(recipient.userRoles || []).map((entry) => entry.role?.roleName),
@@ -156,6 +169,10 @@ async function canMessageUser(req, recipientId) {
     const assignedContactIds = await getClientMessageRecipientIds(req.user.userId);
     return assignedContactIds.includes(Number(recipientId));
   }
+  if (currentIsSalesAgent && recipientIsClient) {
+    const assignedClientUserIds = await getSalesAgentClientRecipientIds(req.user.userId);
+    return assignedClientUserIds.includes(Number(recipientId));
+  }
   return recipientIsAdmin && !recipientIsClient;
 }
 
@@ -164,13 +181,16 @@ router.get('/recipients', async (req, res, next) => {
     const q = req.query.q ? String(req.query.q) : '';
     const currentIsAdmin = hasAnyRole(req.user, ADMIN_ROLES);
     const currentIsClient = hasAnyRole(req.user, ['CLIENT']);
+    const currentIsSalesAgent = hasAnyRole(req.user, ['SALES_AGENT']);
     const clientContactIds = currentIsClient ? await getClientMessageRecipientIds(req.user.userId) : [];
-    const allowedRoles = currentIsAdmin ? STAFF_ROLES : currentIsClient ? STAFF_ROLES : ADMIN_ROLES;
+    const salesAgentClientUserIds = currentIsSalesAgent ? await getSalesAgentClientRecipientIds(req.user.userId) : [];
+    const allowedRoles = currentIsAdmin ? STAFF_ROLES : currentIsClient ? STAFF_ROLES : currentIsSalesAgent ? ['CLIENT', ...ADMIN_ROLES] : ADMIN_ROLES;
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null,
         userId: { not: req.user.userId },
         ...(currentIsClient ? { userId: { in: clientContactIds.length ? clientContactIds : [-1] } } : {}),
+        ...(currentIsSalesAgent ? { userId: { in: [...salesAgentClientUserIds, -1] } } : {}),
         status: 'ACTIVE',
         ...roleFilter(allowedRoles),
         ...(q

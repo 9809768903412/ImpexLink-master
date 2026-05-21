@@ -318,7 +318,7 @@ router.get('/', async (req, res, next) => {
     const roleList = Array.isArray(req.user?.roles)
       ? req.user.roles.map((r) => String(r).toUpperCase())
       : [String(req.user?.role || '').toUpperCase()];
-    if (!roleList.includes('ADMIN') && !roleList.includes('CLIENT')) {
+    if (!roleList.includes('ADMIN') && !roleList.includes('CLIENT') && !roleList.includes('SALES_AGENT')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const clientId = req.query.clientId ? Number(req.query.clientId) : null;

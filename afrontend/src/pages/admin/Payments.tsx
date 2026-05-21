@@ -54,9 +54,10 @@ function methodLabel(value: string) {
 
 export default function PaymentsPage() {
   const { user } = useAuth();
-  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase());
   const isSalesAgent = roleList.includes('sales_agent');
   const canRecordPayments = roleList.some((role) => ['admin', 'president', 'sales_agent'].includes(role));
+  const canManageSupplierPayments = roleList.some((role) => ['admin', 'president'].includes(role));
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [summary, setSummary] = useState({ clientReceivables: 0, supplierPayables: 0, overdue: 0, cleared: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
@@ -105,10 +106,12 @@ export default function PaymentsPage() {
   useEffect(() => {
     if (canRecordPayments) {
       apiClient.get('/orders', { params: { page: 1, pageSize: 500 } }).then((res) => setOrders(res.data?.data || res.data || [])).catch(() => undefined);
-      apiClient.get('/purchase-orders', { params: { page: 1, pageSize: 500 } }).then((res) => setPurchaseOrders(res.data?.data || res.data || [])).catch(() => undefined);
-      apiClient.get('/suppliers').then((res) => setSuppliers(res.data?.data || res.data || [])).catch(() => undefined);
+      if (canManageSupplierPayments) {
+        apiClient.get('/purchase-orders', { params: { page: 1, pageSize: 500 } }).then((res) => setPurchaseOrders(res.data?.data || res.data || [])).catch(() => undefined);
+        apiClient.get('/suppliers').then((res) => setSuppliers(res.data?.data || res.data || [])).catch(() => undefined);
+      }
     }
-  }, [canRecordPayments]);
+  }, [canRecordPayments, canManageSupplierPayments]);
 
   useEffect(() => setPage(1), [search, status]);
 
@@ -199,7 +202,7 @@ export default function PaymentsPage() {
             Payment Process
           </h2>
           <p className="text-muted-foreground">
-            {isSalesAgent ? 'Manage client receivables, supplier payables, and payment status updates.' : 'Track Client to Office and Office to Supplier payments.'}
+            {isSalesAgent ? 'Monitor payments for client orders assigned to you.' : 'Track Client to Office and Office to Supplier payments.'}
           </p>
         </div>
         {canRecordPayments ? (
@@ -211,9 +214,9 @@ export default function PaymentsPage() {
       </div>
 
       {canRecordPayments ? (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className={`grid gap-4 ${canManageSupplierPayments ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
           <Card><CardHeader><CardDescription>Client receivables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.clientReceivables)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>Supplier payables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.supplierPayables)}</CardTitle></CardHeader></Card>
+          {canManageSupplierPayments ? <Card><CardHeader><CardDescription>Supplier payables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.supplierPayables)}</CardTitle></CardHeader></Card> : null}
           <Card><CardHeader><CardDescription>Cleared</CardDescription><CardTitle>PHP {formatPesoAmount(summary.cleared)}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>Overdue</CardDescription><CardTitle>PHP {formatPesoAmount(summary.overdue)}</CardTitle></CardHeader></Card>
         </div>
@@ -382,7 +385,7 @@ export default function PaymentsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Record payment</DialogTitle>
-            <DialogDescription>Client payments are Cheque or Auto Deposit. Supplier payments include Cash, GCash, Cheque, and Net terms.</DialogDescription>
+            <DialogDescription>{isSalesAgent ? 'Record payment updates for client orders assigned to you.' : 'Client payments are Cheque or Auto Deposit. Supplier payments include Cash, GCash, Cheque, and Net terms.'}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -402,7 +405,7 @@ export default function PaymentsPage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="CLIENT_TO_OFFICE">Client to Office</SelectItem>
-                  <SelectItem value="OFFICE_TO_SUPPLIER">Office to Supplier</SelectItem>
+                  {canManageSupplierPayments ? <SelectItem value="OFFICE_TO_SUPPLIER">Office to Supplier</SelectItem> : null}
                 </SelectContent>
               </Select>
             </div>

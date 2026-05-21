@@ -124,7 +124,13 @@ function includePaymentRelations() {
 }
 
 async function buildPaymentScope(req) {
-  if (hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT') || hasRole(req, 'SALES_AGENT')) return {};
+  if (hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT')) return {};
+  if (hasRole(req, 'SALES_AGENT')) {
+    return {
+      direction: 'CLIENT_TO_OFFICE',
+      clientOrder: { assignedSalesAgentId: req.user.userId },
+    };
+  }
   if (hasRole(req, 'CLIENT')) {
     const access = await resolveClientAccess(prisma, req.user.userId);
     if (!access?.client?.clientId) return { paymentId: -1 };
@@ -234,7 +240,15 @@ router.post('/', async (req, res, next) => {
         const order = await prisma.clientOrder.findUnique({ where: { clientOrderId }, include: { client: true } });
         if (!order || !canAccessClientOwnedRecord(access, order)) return res.status(403).json({ error: 'Forbidden' });
       }
-    } else if (!(hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT') || hasRole(req, 'SALES_AGENT'))) {
+    } else if (hasRole(req, 'SALES_AGENT')) {
+      if (direction !== 'CLIENT_TO_OFFICE') return res.status(403).json({ error: 'Sales Agents can only record client payments for assigned orders.' });
+      if (!clientOrderId) return res.status(400).json({ error: 'Client order is required.' });
+      const order = await prisma.clientOrder.findUnique({ where: { clientOrderId } });
+      if (!order || order.assignedSalesAgentId !== req.user.userId) {
+        return res.status(403).json({ error: 'You can only record payments for your assigned client orders.' });
+      }
+      clientId = order.clientId || clientId;
+    } else if (!(hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT'))) {
       return res.status(403).json({ error: 'Only Admin, President, Sales Agent, or Client can create payment records.' });
     }
 
@@ -304,6 +318,11 @@ router.put('/:id', requireRole(['ADMIN', 'PRESIDENT', 'SALES_AGENT']), async (re
       include: { clientOrder: true },
     });
     if (!existing) return res.status(404).json({ error: 'Payment not found' });
+    if (hasRole(req, 'SALES_AGENT')) {
+      if (existing.direction !== 'CLIENT_TO_OFFICE' || existing.clientOrder?.assignedSalesAgentId !== req.user.userId) {
+        return res.status(403).json({ error: 'You can only update payments for your assigned client orders.' });
+      }
+    }
     const status = req.body.status ? normalize(req.body.status) : undefined;
     if (status && !STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid payment status' });
     const method = req.body.method ? normalize(req.body.method) : undefined;
