@@ -998,37 +998,7 @@ export default function LogisticsPage() {
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
                   <div>
                     <p className="font-medium">After Delivery / Proof of Delivery</p>
-                    <p className="text-sm text-muted-foreground">Complete this after the items are handed over at the site.</p>
-                  </div>
-                  <Select value={receivedBy} onValueChange={setReceivedBy}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select receiver" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {receivedByOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label>Actual Receiver Address</Label>
-                      <Input
-                        value={receiverAddress}
-                        onChange={(e) => setReceiverAddress(e.target.value)}
-                        placeholder="Receiver address or site location"
-                      />
-                    </div>
-                    <div>
-                      <Label>Actual Receiver Contact Number</Label>
-                      <Input
-                        value={receiverContactNumber}
-                        onChange={(e) => setReceiverContactNumber(e.target.value)}
-                        placeholder="Contact number"
-                      />
-                    </div>
+                    <p className="text-sm text-muted-foreground">Upload proof after the items are handed over at the site. Receiver details were already confirmed before delivery started.</p>
                   </div>
                   <Textarea
                     placeholder="POD remarks, handover notes, missing/damaged item notes..."
