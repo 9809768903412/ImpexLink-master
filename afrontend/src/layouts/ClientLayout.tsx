@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -29,7 +28,6 @@ import {
   ChevronDown,
   User,
   LogOut,
-  Menu,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useResource } from '@/hooks/use-resource';
@@ -51,7 +49,6 @@ const navItems = [
 
 export default function ClientLayout({ children }: ClientLayoutProps) {
   const { user, logout } = useAuth();
-  const location = useLocation();
   const [supportOpen, setSupportOpen] = useState(false);
   const notificationParams = useMemo(() => ({ viewer: user?.id ?? 'anonymous' }), [user?.id]);
   const threadParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);
@@ -121,18 +118,50 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Top Navigation */}
-      <header className="h-14 bg-card border-b border-border sticky top-0 z-50">
-        <div className="container mx-auto h-full flex items-center justify-between px-4">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
+      <header className="bg-card border-b border-border sticky top-0 z-50">
+        <div className="container mx-auto flex flex-col gap-2 px-4 py-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex w-full items-center justify-between gap-3 xl:w-auto">
             <Logo size="md" />
             <div className="hidden h-10 w-24 items-center justify-center overflow-hidden rounded-md bg-white px-3 py-1.5 md:flex">
               <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain object-center" />
             </div>
+            <div className="xl:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="gap-2 px-2">
+                    <Avatar className="h-7 w-7">
+                      {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.name || 'User'} />}
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                        {user?.avatar || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div>
+                      <p className="font-medium">{user?.name}</p>
+                      <p className="text-xs text-muted-foreground">{displayCompanyName}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <NavLink to="/client/profile">
+                      <User size={16} className="mr-2" />
+                      Profile
+                    </NavLink>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="text-destructive">
+                    <LogOut size={16} className="mr-2" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden 2xl:flex items-center gap-1.5 whitespace-nowrap">
+          <nav className="flex w-full flex-wrap items-center justify-center gap-1.5 xl:w-auto xl:flex-nowrap xl:whitespace-nowrap">
             {navItems.map((item) => (
               <NavLink
                 key={item.path}
@@ -140,22 +169,22 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
                 end={item.exact}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-2 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors',
+                    'flex min-w-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors sm:text-[13px]',
                     isActive
                       ? 'bg-primary text-primary-foreground'
                       : 'text-foreground/80 hover:bg-muted hover:text-foreground'
                   )
                 }
               >
-                <item.icon size={16} />
-                <span>{item.label}</span>
+                <item.icon size={16} className="shrink-0" />
+                <span className="truncate">{item.label}</span>
                 {item.label === 'Notifications' && unreadNotifications > 0 && (
-                  <Badge className="ml-1 bg-secondary text-secondary-foreground text-xs px-1.5 py-0">
+                  <Badge className="ml-0.5 bg-secondary text-secondary-foreground text-xs px-1.5 py-0">
                     {unreadNotifications}
                   </Badge>
                 )}
                 {item.label === 'Messages' && unreadMessages > 0 && (
-                  <Badge className="ml-1 bg-secondary text-secondary-foreground text-xs px-1.5 py-0">
+                  <Badge className="ml-0.5 bg-secondary text-secondary-foreground text-xs px-1.5 py-0">
                     {unreadMessages}
                   </Badge>
                 )}
@@ -163,9 +192,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
             ))}
           </nav>
 
-          {/* Right side - User & Mobile menu */}
-          <div className="flex items-center gap-2">
-            {/* User dropdown */}
+          <div className="hidden xl:flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-2">
@@ -202,43 +229,6 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {/* Mobile menu */}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="2xl:hidden h-9 w-9">
-                  <Menu size={18} />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-64">
-                <div className="flex flex-col gap-4 mt-8">
-                  {navItems.map((item) => (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      end={item.exact}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-colors',
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-foreground/80 hover:bg-muted'
-                        )
-                      }
-                    >
-                      <item.icon size={20} />
-                      <span>{item.label}</span>
-                      {item.label === 'Notifications' && unreadNotifications > 0 && (
-                        <Badge className="ml-auto">{unreadNotifications}</Badge>
-                      )}
-                      {item.label === 'Messages' && unreadMessages > 0 && (
-                        <Badge className="ml-auto">{unreadMessages}</Badge>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
-              </SheetContent>
-            </Sheet>
           </div>
         </div>
       </header>
