@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronLeft, ChevronRight, CreditCard, Plus, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, Eye, Plus, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -71,6 +71,7 @@ export default function PaymentsPage() {
   const [orderPickerPage, setOrderPickerPage] = useState(1);
   const [poPickerPage, setPoPickerPage] = useState(1);
   const [open, setOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentTransaction | null>(null);
   const [form, setForm] = useState({
     direction: 'CLIENT_TO_OFFICE',
     method: 'CHEQUE',
@@ -162,8 +163,51 @@ export default function PaymentsPage() {
   };
 
   const updateStatus = async (payment: PaymentTransaction, nextStatus: string) => {
+    const previousPayments = payments;
+    const previousSelectedPayment = selectedPayment;
     setPayments((prev) => prev.map((entry) => (entry.id === payment.id ? { ...entry, status: nextStatus } : entry)));
-    await apiClient.put(`/payments/${payment.id}`, { status: nextStatus.toUpperCase() }).catch(() => fetchPayments());
+    setSelectedPayment((current) => (current?.id === payment.id ? { ...current, status: nextStatus } : current));
+    try {
+      const response = await apiClient.put(`/payments/${payment.id}`, { status: nextStatus.toUpperCase() });
+      const updatedPayment = response.data;
+      setPayments((prev) => prev.map((entry) => (entry.id === payment.id ? updatedPayment : entry)));
+      setSelectedPayment((current) => (current?.id === payment.id ? updatedPayment : current));
+      toast({
+        title: 'Payment updated',
+        description: `Payment marked as ${nextStatus}.`,
+      });
+    } catch (error: any) {
+      setPayments(previousPayments);
+      setSelectedPayment(previousSelectedPayment);
+      toast({
+        title: 'Unable to update payment',
+        description: error?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+      fetchPayments();
+    }
+  };
+
+  const quickActionsForPayment = (payment: PaymentTransaction) => {
+    if (payment.status === 'pending') {
+      return [
+        { label: 'Mark Received', status: 'received', className: 'border-sky-200 text-sky-800 hover:bg-sky-50' },
+        { label: 'Mark Paid', status: 'paid', className: 'border-emerald-200 text-emerald-800 hover:bg-emerald-50' },
+      ];
+    }
+    if (payment.status === 'received') {
+      return [
+        { label: 'Mark Paid', status: 'paid', className: 'border-emerald-200 text-emerald-800 hover:bg-emerald-50' },
+        { label: 'Cancel', status: 'cancelled', className: 'border-red-200 text-red-800 hover:bg-red-50' },
+      ];
+    }
+    if (payment.status === 'overdue') {
+      return [
+        { label: 'Mark Received', status: 'received', className: 'border-sky-200 text-sky-800 hover:bg-sky-50' },
+        { label: 'Cancel', status: 'cancelled', className: 'border-red-200 text-red-800 hover:bg-red-50' },
+      ];
+    }
+    return [];
   };
 
   return (
@@ -218,9 +262,7 @@ export default function PaymentsPage() {
               <TableRow>
                 <TableHead>Flow</TableHead>
                 <TableHead>Reference</TableHead>
-                <TableHead>Method</TableHead>
                 <TableHead>Due</TableHead>
-                <TableHead>Proof</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -228,7 +270,7 @@ export default function PaymentsPage() {
             </TableHeader>
             <TableBody>
               {paged.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
               ) : paged.map((payment) => (
                 <TableRow key={payment.id}>
                   <TableCell>
@@ -236,30 +278,27 @@ export default function PaymentsPage() {
                     <p className="text-xs text-muted-foreground">{payment.clientName || payment.supplierName || 'Unlinked'}</p>
                   </TableCell>
                   <TableCell>{payment.referenceNumber || payment.clientOrderNumber || payment.supplierPoNumber || '-'}</TableCell>
-                  <TableCell>{methodLabel(payment.method)}</TableCell>
                   <TableCell>{payment.dueDate ? format(new Date(payment.dueDate), 'MMM dd, yyyy') : '-'}</TableCell>
-                  <TableCell>
-                    {payment.proofUrl ? (
-                      <a className="text-sm font-medium text-primary hover:underline" href={toPublicFileUrl(payment.proofUrl)} target="_blank" rel="noreferrer">
-                        View proof
-                      </a>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
                   <TableCell><Badge className={statusClass[payment.status] || statusClass.pending}>{payment.status}</Badge></TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
                   <TableCell className="text-right">
-                    <Select value={payment.status} onValueChange={(value) => updateStatus(payment, value)}>
-                      <SelectTrigger className="ml-auto w-[140px]"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="received">Received</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                        <SelectItem value="overdue">Overdue</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button variant="outline" size="sm" className="gap-1" onClick={() => setSelectedPayment(payment)}>
+                        <Eye size={14} />
+                        Details
+                      </Button>
+                      {quickActionsForPayment(payment).map((action) => (
+                        <Button
+                          key={action.status}
+                          variant="outline"
+                          size="sm"
+                          className={action.className}
+                          onClick={() => updateStatus(payment, action.status)}
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -268,6 +307,74 @@ export default function PaymentsPage() {
         </CardContent>
       </Card>
       <PaginationNav page={page} totalPages={Math.max(Math.ceil(payments.length / pageSize), 1)} onPageChange={setPage} />
+
+      <Dialog open={!!selectedPayment} onOpenChange={(nextOpen) => !nextOpen && setSelectedPayment(null)}>
+        {selectedPayment && (
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Payment details</DialogTitle>
+              <DialogDescription>Review proof, references, notes, and update the payment state.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Flow</p>
+                  <p className="font-medium">{selectedPayment.direction === 'client-to-office' ? 'Client to Office' : 'Office to Supplier'}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <Badge className={`mt-1 ${statusClass[selectedPayment.status] || statusClass.pending}`}>{selectedPayment.status}</Badge>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Reference</p>
+                  <p className="font-medium">{selectedPayment.referenceNumber || selectedPayment.clientOrderNumber || selectedPayment.supplierPoNumber || '-'}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Method</p>
+                  <p className="font-medium">{methodLabel(selectedPayment.method)}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Due</p>
+                  <p className="font-medium">{selectedPayment.dueDate ? format(new Date(selectedPayment.dueDate), 'MMM dd, yyyy') : '-'}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Amount</p>
+                  <p className="font-medium">PHP {formatPesoAmount(selectedPayment.amount)}</p>
+                </div>
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Proof</p>
+                {selectedPayment.proofUrl ? (
+                  <a className="mt-1 inline-flex text-sm font-medium text-primary hover:underline" href={toPublicFileUrl(selectedPayment.proofUrl)} target="_blank" rel="noreferrer">
+                    View uploaded proof
+                  </a>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">No proof uploaded.</p>
+                )}
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Notes</p>
+                <p className="mt-1 text-sm">{selectedPayment.notes || 'No notes recorded.'}</p>
+              </div>
+              <div>
+                <Label>Status action</Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {['pending', 'received', 'paid', 'overdue', 'cancelled'].map((nextStatus) => (
+                    <Button
+                      key={nextStatus}
+                      variant={selectedPayment.status === nextStatus ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => updateStatus(selectedPayment, nextStatus)}
+                    >
+                      {nextStatus.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
