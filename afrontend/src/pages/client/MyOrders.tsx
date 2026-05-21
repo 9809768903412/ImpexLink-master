@@ -867,24 +867,24 @@ export default function MyOrdersPage() {
             </ScrollArea>
           )}
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
+          <DialogFooter className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
             {selectedOrder?.paymentStatus !== 'paid' && selectedOrder?.status !== 'cancelled' ? (
-              <Button onClick={() => handleUploadPayment(selectedOrder)} className="gap-2">
+              <Button onClick={() => handleUploadPayment(selectedOrder)} className="w-full gap-2 sm:w-auto">
                 <CreditCard size={16} />
                 Submit Payment
               </Button>
             ) : null}
             {selectedOrder?.status === 'delivered' ? (
-              <Button onClick={() => handleReorder(selectedOrder)} className="gap-2">
+              <Button onClick={() => handleReorder(selectedOrder)} className="w-full gap-2 sm:w-auto">
                 <RotateCcw size={16} />
                 Reorder This Batch
               </Button>
             ) : null}
-            <Button variant="outline" onClick={() => handleDownloadInvoice(selectedOrder!)} className="gap-2">
+            <Button variant="outline" onClick={() => handleDownloadInvoice(selectedOrder!)} className="w-full gap-2 sm:w-auto">
               <Download size={16} />
               Download Invoice
             </Button>
-            <Button variant="outline" onClick={() => handleDownloadDR(selectedOrder!)} className="gap-2">
+            <Button variant="outline" onClick={() => handleDownloadDR(selectedOrder!)} className="w-full gap-2 sm:w-auto">
               <FileText size={16} />
               Download DR
             </Button>

@@ -3,7 +3,7 @@ import type { UserRole } from '@/types';
 type RoleInput = UserRole | UserRole[] | undefined;
 
 const normalizeRoles = (role?: RoleInput) =>
-  Array.isArray(role) ? role : role ? [role] : [];
+  (Array.isArray(role) ? role : role ? [role] : []).map((entry) => String(entry).toLowerCase() as UserRole);
 
 export const hasRole = (role: RoleInput, target: UserRole) =>
   normalizeRoles(role).includes(target);
@@ -45,7 +45,9 @@ export const canManageUsers = (role?: RoleInput) => hasRole(role, 'admin');
 
 export const canAccessSettings = (role?: RoleInput) => {
   const roles = normalizeRoles(role);
-  return roles.length > 0 && !roles.some((r) => ['client', 'warehouse_staff', 'driver', 'delivery_guy', 'receiver'].includes(r));
+  return roles.some((r) =>
+    ['admin', 'president', 'project_manager', 'sales_agent', 'engineer', 'paint_chemist', 'delivery_guy', 'driver', 'project_in_charge'].includes(r)
+  );
 };
 
 export const canViewCompanySettings = (role?: RoleInput) =>
@@ -90,7 +92,7 @@ export const canManageLogistics = (role?: RoleInput) =>
 export const canViewReports = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
 export const canViewPayments = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'president', 'sales_agent'].includes(r));
 export const canViewAIInsights = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'president'].includes(r));
 export const canViewAuditLogs = (role?: RoleInput) =>
@@ -109,5 +111,7 @@ export const canViewNotifications = (role?: RoleInput) => {
 
 export const canViewMessages = (role?: RoleInput) => {
   const roles = normalizeRoles(role);
-  return roles.length > 0 && !roles.some((r) => ['client', 'warehouse_staff', 'delivery_guy', 'driver', 'receiver'].includes(r));
+  return roles.some((r) =>
+    ['admin', 'president', 'project_manager', 'sales_agent', 'engineer', 'paint_chemist', 'delivery_guy', 'driver', 'project_in_charge'].includes(r)
+  );
 };

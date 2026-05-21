@@ -59,6 +59,7 @@ const ADMIN_NON_DRIVER_ROLES = ADMIN_AREA_ROLES.filter((role) => !['driver'].inc
 const ADMIN_DASHBOARD_ROLES = ADMIN_AREA_ROLES.filter((role) => !['warehouse_staff', 'delivery_guy', 'driver', 'receiver'].includes(role));
 
 function defaultPathForRoles(roleList: string[]) {
+  roleList = roleList.map((role) => String(role).toLowerCase());
   if (roleList.includes('client')) return '/client';
   if (roleList.includes('driver') || roleList.includes('delivery_guy')) return '/logistics';
   if (roleList.includes('warehouse_staff')) return '/admin/inventory';
@@ -71,9 +72,13 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   const location = useLocation();
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase());
   const logisticsOnly = roleList.some((role) => ['driver', 'delivery_guy'].includes(role));
-  if (logisticsOnly && location.pathname.startsWith('/admin') && location.pathname !== '/admin/settings') {
+  if (
+    logisticsOnly &&
+    location.pathname.startsWith('/admin') &&
+    !['/admin/settings', '/admin/messages'].includes(location.pathname)
+  ) {
     return <Navigate to="/logistics" replace />;
   }
   if (allowedRoles && user) {
@@ -90,7 +95,7 @@ function RoleBasedRedirect() {
   const { isAuthenticated, user, isLoading } = useAuth();
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase());
   if (roleList.some((role) => ['driver', 'delivery_guy'].includes(role))) return <Navigate to="/logistics" replace />;
   return <Navigate to={defaultPathForRoles(roleList)} replace />;
 }
@@ -116,7 +121,7 @@ function AppRoutes() {
       <Route path="/admin/ai-insights" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewAIInsights)}><AdminLayout><AIInsightsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewAuditLogs)}><AdminLayout><AuditLogsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/proofs" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewProofCenter)}><AdminLayout><ProofCenterPage /></AdminLayout></ProtectedRoute>} />
-      <Route path="/admin/messages" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewMessages)}><AdminLayout><AdminMessagesPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/messages" element={<ProtectedRoute allowedRoles={ADMIN_AREA_ROLES.filter(canViewMessages)}><AdminLayout><AdminMessagesPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/notifications" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewNotifications)}><AdminLayout><AdminNotificationsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={ADMIN_AREA_ROLES.filter(canAccessSettings)}><AdminLayout><SettingsPage /></AdminLayout></ProtectedRoute>} />
 

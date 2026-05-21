@@ -90,32 +90,43 @@ async function ensureThreadAccess(threadId, userId) {
   return Boolean(participant);
 }
 
-async function getClientAssignedEngineerIds(userId) {
+async function getClientMessageRecipientIds(userId) {
   const client = (await require('../utils/clientVisibility').resolveLinkedClient(prisma, userId))?.client;
   if (!client?.clientId) return [];
-  const projects = await prisma.project.findMany({
-    where: {
-      clientId: client.clientId,
-      deletedAt: null,
-      assignedPmId: { not: null },
-    },
-    include: {
-      assignedPm: { include: { role: true, userRoles: { include: { role: true } } } },
-    },
-  });
+  const [projects, orders, deliveries] = await Promise.all([
+    prisma.project.findMany({
+      where: {
+        clientId: client.clientId,
+        deletedAt: null,
+        assignedPmId: { not: null },
+      },
+      select: { assignedPmId: true },
+    }),
+    prisma.clientOrder.findMany({
+      where: {
+        clientId: client.clientId,
+        deletedAt: null,
+        assignedSalesAgentId: { not: null },
+      },
+      select: { assignedSalesAgentId: true },
+    }),
+    prisma.delivery.findMany({
+      where: {
+        deletedAt: null,
+        assignedDeliveryGuyId: { not: null },
+        clientOrder: { clientId: client.clientId },
+      },
+      select: { assignedDeliveryGuyId: true },
+    }),
+  ]);
+
   return [
     ...new Set(
-      projects
-        .filter((project) => {
-          const roles = [
-            project.assignedPm?.role?.roleName,
-            ...(project.assignedPm?.userRoles || []).map((entry) => entry.role?.roleName),
-          ]
-            .filter(Boolean)
-            .map((role) => String(role).toUpperCase());
-          return roles.includes('ENGINEER');
-        })
-        .map((project) => project.assignedPmId)
+      [
+        ...projects.map((project) => project.assignedPmId),
+        ...orders.map((order) => order.assignedSalesAgentId),
+        ...deliveries.map((delivery) => delivery.assignedDeliveryGuyId),
+      ]
         .filter(Boolean)
     ),
   ];
@@ -138,13 +149,12 @@ async function canMessageUser(req, recipientId) {
   const recipientIsAdmin = recipientRoles.some((role) => ADMIN_ROLES.includes(role));
   const recipientIsClient = recipientRoles.includes('CLIENT');
   const recipientIsStaff = recipientRoles.some((role) => STAFF_ROLES.includes(role));
-  const recipientIsEngineer = recipientRoles.includes('ENGINEER');
 
   if (currentIsAdmin) return recipientIsStaff;
   if (currentIsClient) {
-    if (!recipientIsEngineer) return false;
-    const assignedEngineerIds = await getClientAssignedEngineerIds(req.user.userId);
-    return assignedEngineerIds.includes(Number(recipientId));
+    if (!recipientIsStaff) return false;
+    const assignedContactIds = await getClientMessageRecipientIds(req.user.userId);
+    return assignedContactIds.includes(Number(recipientId));
   }
   return recipientIsAdmin && !recipientIsClient;
 }
@@ -154,13 +164,13 @@ router.get('/recipients', async (req, res, next) => {
     const q = req.query.q ? String(req.query.q) : '';
     const currentIsAdmin = hasAnyRole(req.user, ADMIN_ROLES);
     const currentIsClient = hasAnyRole(req.user, ['CLIENT']);
-    const clientEngineerIds = currentIsClient ? await getClientAssignedEngineerIds(req.user.userId) : [];
-    const allowedRoles = currentIsAdmin ? STAFF_ROLES : currentIsClient ? ['ENGINEER'] : ADMIN_ROLES;
+    const clientContactIds = currentIsClient ? await getClientMessageRecipientIds(req.user.userId) : [];
+    const allowedRoles = currentIsAdmin ? STAFF_ROLES : currentIsClient ? STAFF_ROLES : ADMIN_ROLES;
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null,
         userId: { not: req.user.userId },
-        ...(currentIsClient ? { userId: { in: clientEngineerIds.length ? clientEngineerIds : [-1] } } : {}),
+        ...(currentIsClient ? { userId: { in: clientContactIds.length ? clientContactIds : [-1] } } : {}),
         status: 'ACTIVE',
         ...roleFilter(allowedRoles),
         ...(q
@@ -330,6 +340,33 @@ router.get('/threads/:id/messages', async (req, res, next) => {
   }
 });
 
+router.patch('/threads/:id/read', async (req, res, next) => {
+  try {
+    const threadId = Number(req.params.id);
+    const markRead = req.body.read !== false;
+    if (!(await ensureThreadAccess(threadId, req.user.userId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const participant = await prisma.chatParticipant.update({
+      where: { threadId_userId: { threadId, userId: req.user.userId } },
+      data: markRead
+        ? { unreadCount: 0, lastReadAt: new Date() }
+        : { unreadCount: 1, lastReadAt: null },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'UPDATE',
+        target: 'MessageThread',
+        details: `${markRead ? 'Marked read' : 'Marked unread'} thread ${threadId}`,
+      },
+    });
+    res.json({ threadId: threadId.toString(), unreadCount: participant.unreadCount });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/threads/:id/messages', async (req, res, next) => {
   try {
     const threadId = Number(req.params.id);
@@ -399,6 +436,66 @@ router.post('/threads/:id/messages', async (req, res, next) => {
       },
     });
     res.status(201).json(mapMessage(message));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/threads/:id/messages/:messageId', async (req, res, next) => {
+  try {
+    const threadId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!(await ensureThreadAccess(threadId, req.user.userId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const message = await prisma.chatMessage.findUnique({ where: { messageId } });
+    if (!message || message.threadId !== threadId || message.deletedAt) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    if (message.senderId !== req.user.userId && !hasAnyRole(req.user, ADMIN_ROLES)) {
+      return res.status(403).json({ error: 'You can only delete your own messages.' });
+    }
+    await prisma.chatMessage.update({
+      where: { messageId },
+      data: { deletedAt: new Date() },
+    });
+    await prisma.chatThread.update({
+      where: { threadId },
+      data: { updatedAt: new Date() },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'DELETE',
+        target: 'ChatMessage',
+        details: `Deleted message ${messageId} in thread ${threadId}`,
+      },
+    });
+    res.json({ id: messageId.toString(), deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/threads/:id', async (req, res, next) => {
+  try {
+    const threadId = Number(req.params.id);
+    if (!(await ensureThreadAccess(threadId, req.user.userId))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    await prisma.chatThread.update({
+      where: { threadId },
+      data: { closedAt: new Date(), updatedAt: new Date() },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'DELETE',
+        target: 'ChatThread',
+        details: `Deleted conversation thread ${threadId}`,
+      },
+    });
+    res.json({ id: threadId.toString(), deleted: true });
   } catch (err) {
     next(err);
   }

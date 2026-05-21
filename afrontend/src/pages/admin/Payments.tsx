@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronLeft, ChevronRight, CreditCard, Plus, Search } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CreditCard, Plus, Search, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,15 +37,7 @@ import PaginationNav from '@/components/PaginationNav';
 import { toPublicFileUrl } from '@/lib/files';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
-
-const statusClass: Record<string, string> = {
-  pending: 'border-amber-200 bg-amber-50 text-amber-800',
-  received: 'border-sky-200 bg-sky-50 text-sky-800',
-  paid: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  overdue: 'border-red-200 bg-red-50 text-red-800',
-  failed: 'border-red-200 bg-red-50 text-red-800',
-  cancelled: 'border-slate-200 bg-slate-100 text-slate-700',
-};
+import { useAuth } from '@/contexts/AuthContext';
 
 const selectorPageSize = 8;
 
@@ -61,6 +53,10 @@ function methodLabel(value: string) {
 }
 
 export default function PaymentsPage() {
+  const { user } = useAuth();
+  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const isSalesAgent = roleList.includes('sales_agent');
+  const canRecordPayments = roleList.some((role) => ['admin', 'president', 'sales_agent'].includes(role));
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [summary, setSummary] = useState({ clientReceivables: 0, supplierPayables: 0, overdue: 0, cleared: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
@@ -101,14 +97,18 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     fetchPayments().catch(() => setPayments([]));
-    apiClient.get('/payments/summary').then((res) => setSummary(res.data)).catch(() => undefined);
-  }, [search, status]);
+    if (canRecordPayments) {
+      apiClient.get('/payments/summary').then((res) => setSummary(res.data)).catch(() => undefined);
+    }
+  }, [search, status, canRecordPayments]);
 
   useEffect(() => {
-    apiClient.get('/orders', { params: { page: 1, pageSize: 500 } }).then((res) => setOrders(res.data?.data || res.data || [])).catch(() => undefined);
-    apiClient.get('/purchase-orders', { params: { page: 1, pageSize: 500 } }).then((res) => setPurchaseOrders(res.data?.data || res.data || [])).catch(() => undefined);
-    apiClient.get('/suppliers').then((res) => setSuppliers(res.data?.data || res.data || [])).catch(() => undefined);
-  }, []);
+    if (canRecordPayments) {
+      apiClient.get('/orders', { params: { page: 1, pageSize: 500 } }).then((res) => setOrders(res.data?.data || res.data || [])).catch(() => undefined);
+      apiClient.get('/purchase-orders', { params: { page: 1, pageSize: 500 } }).then((res) => setPurchaseOrders(res.data?.data || res.data || [])).catch(() => undefined);
+      apiClient.get('/suppliers').then((res) => setSuppliers(res.data?.data || res.data || [])).catch(() => undefined);
+    }
+  }, [canRecordPayments]);
 
   useEffect(() => setPage(1), [search, status]);
 
@@ -198,20 +198,26 @@ export default function PaymentsPage() {
             <CreditCard className="h-6 w-6 text-primary" />
             Payment Process
           </h2>
-          <p className="text-muted-foreground">Track Client to Office and Office to Supplier payments.</p>
+          <p className="text-muted-foreground">
+            {isSalesAgent ? 'Manage client receivables, supplier payables, and payment status updates.' : 'Track Client to Office and Office to Supplier payments.'}
+          </p>
         </div>
-        <Button onClick={() => setOpen(true)} className="gap-2">
-          <Plus size={16} />
-          Record Payment
-        </Button>
+        {canRecordPayments ? (
+          <Button onClick={() => setOpen(true)} className="gap-2">
+            <Plus size={16} />
+            Record Payment
+          </Button>
+        ) : null}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card><CardHeader><CardDescription>Client receivables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.clientReceivables)}</CardTitle></CardHeader></Card>
-        <Card><CardHeader><CardDescription>Supplier payables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.supplierPayables)}</CardTitle></CardHeader></Card>
-        <Card><CardHeader><CardDescription>Cleared</CardDescription><CardTitle>PHP {formatPesoAmount(summary.cleared)}</CardTitle></CardHeader></Card>
-        <Card><CardHeader><CardDescription>Overdue</CardDescription><CardTitle>PHP {formatPesoAmount(summary.overdue)}</CardTitle></CardHeader></Card>
-      </div>
+      {canRecordPayments ? (
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card><CardHeader><CardDescription>Client receivables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.clientReceivables)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>Supplier payables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.supplierPayables)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>Cleared</CardDescription><CardTitle>PHP {formatPesoAmount(summary.cleared)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>Overdue</CardDescription><CardTitle>PHP {formatPesoAmount(summary.overdue)}</CardTitle></CardHeader></Card>
+        </div>
+      ) : null}
 
       <Card>
         <CardContent className="p-4">
@@ -242,11 +248,12 @@ export default function PaymentsPage() {
                 <TableHead>Due</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                {isSalesAgent ? <TableHead className="text-right">Quick Update</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {paged.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={isSalesAgent ? 6 : 5} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
               ) : paged.map((payment) => (
                 <TableRow
                   key={payment.id}
@@ -261,6 +268,35 @@ export default function PaymentsPage() {
                   <TableCell>{payment.dueDate ? format(new Date(payment.dueDate), 'MMM dd, yyyy') : '-'}</TableCell>
                   <TableCell><Badge variant="outline" className={`capitalize ${statusBadgeClass(payment.status)}`}>{payment.status}</Badge></TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
+                  {isSalesAgent ? (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Confirm received"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            updateStatus(payment, 'received');
+                          }}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-8 w-8 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          title="Reject or cancel"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            updateStatus(payment, 'cancelled');
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
@@ -320,16 +356,21 @@ export default function PaymentsPage() {
               <div>
                 <Label>Status action</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {['pending', 'received', 'paid', 'overdue', 'cancelled'].map((nextStatus) => (
-                    <Button
-                      key={nextStatus}
-                      variant={selectedPayment.status === nextStatus ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => updateStatus(selectedPayment, nextStatus)}
-                    >
-                      {nextStatus.replace(/\b\w/g, (letter) => letter.toUpperCase())}
-                    </Button>
-                  ))}
+                  {['pending', 'received', 'paid', 'overdue', 'cancelled'].map((nextStatus) => {
+                    const icon = nextStatus === 'received' ? <Check className="h-4 w-4" /> : nextStatus === 'cancelled' ? <X className="h-4 w-4" /> : null;
+                    return (
+                      <Button
+                        key={nextStatus}
+                        variant={selectedPayment.status === nextStatus ? 'default' : 'outline'}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => updateStatus(selectedPayment, nextStatus)}
+                      >
+                        {icon}
+                        {nextStatus === 'cancelled' ? 'Rejected' : nextStatus.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                      </Button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

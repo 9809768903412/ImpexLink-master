@@ -91,7 +91,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : ['project_manager'];
+  const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : ['project_manager']).map((role) => String(role).toLowerCase());
   const canPollNotifications = canViewNotifications(roleList);
   const canPollMessages = canViewMessages(roleList);
   const notificationParams = useMemo(() => ({ page: 1, pageSize: 50, viewer: user?.id ?? 'anonymous' }), [user?.id]);

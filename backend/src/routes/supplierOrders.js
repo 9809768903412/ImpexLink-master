@@ -125,7 +125,7 @@ async function notifyClientOrderDelay(orderIds, reason, eta, actorId, sourceLabe
   return sent;
 }
 
-router.get('/', requireRole(['ADMIN']), async (req, res, next) => {
+router.get('/', requireRole(['ADMIN', 'SALES_AGENT']), async (req, res, next) => {
   try {
     const pagination = parsePagination(req.query);
     const q = req.query.q ? String(req.query.q) : '';

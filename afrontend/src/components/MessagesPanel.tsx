@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Check, MessageSquare, Plus, Search, Send, UserRound } from 'lucide-react';
+import { Check, Mail, MailOpen, MessageSquare, Plus, Search, Send, Trash2, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -166,6 +166,61 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
     }
   };
 
+  const markThreadReadState = async (threadId: string, read: boolean) => {
+    const previousThreads = threads;
+    setThreads((prev) => prev.map((thread) => (thread.id === threadId ? { ...thread, unreadCount: read ? 0 : Math.max(thread.unreadCount, 1) } : thread)));
+    try {
+      await apiClient.patch(`/messages/threads/${threadId}/read`, { read });
+      toast({ title: read ? 'Marked as read' : 'Marked as unread' });
+      fetchThreads().catch(() => undefined);
+    } catch (error: any) {
+      setThreads(previousThreads);
+      toast({
+        title: 'Unable to update conversation',
+        description: error?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const deleteThread = async (threadId: string) => {
+    if (!window.confirm('Delete this conversation? It will be removed from the message list.')) return;
+    const previousThreads = threads;
+    const remainingThreads = threads.filter((thread) => thread.id !== threadId);
+    setThreads(remainingThreads);
+    setSelectedThreadId((current) => (current === threadId ? remainingThreads[0]?.id || '' : current));
+    if (selectedThreadId === threadId) setMessages([]);
+    try {
+      await apiClient.delete(`/messages/threads/${threadId}`);
+      toast({ title: 'Conversation deleted' });
+    } catch (error: any) {
+      setThreads(previousThreads);
+      toast({
+        title: 'Unable to delete conversation',
+        description: error?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const deleteMessage = async (message: ChatMessage) => {
+    if (!window.confirm('Delete this message?')) return;
+    const previousMessages = messages;
+    setMessages((prev) => prev.filter((item) => item.id !== message.id));
+    try {
+      await apiClient.delete(`/messages/threads/${message.threadId}/messages/${message.id}`);
+      toast({ title: 'Message deleted' });
+      fetchThreads().catch(() => undefined);
+    } catch (error: any) {
+      setMessages(previousMessages);
+      toast({
+        title: 'Unable to delete message',
+        description: error?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -176,7 +231,7 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
           </h2>
           <p className="text-muted-foreground">
             {audience === 'client'
-              ? 'Message the engineer assigned to your project.'
+              ? 'Message the staff assigned to your projects, orders, and deliveries.'
               : 'Coordinate with sales, warehouse, drivers, project managers, engineers, and office staff.'}
           </p>
         </div>
@@ -247,10 +302,34 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
             {selectedThread ? (
               <>
                 <div className="border-b p-4">
-                  <CardTitle className="text-lg">{selectedThread.title}</CardTitle>
-                  <CardDescription>
-                    {selectedThread.participants.map((participant) => participant.name).join(' • ')}
-                  </CardDescription>
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <CardTitle className="truncate text-lg">{selectedThread.title}</CardTitle>
+                      <CardDescription className="truncate">
+                        {selectedThread.participants.map((participant) => participant.name).join(' - ')}
+                      </CardDescription>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => markThreadReadState(selectedThread.id, selectedThread.unreadCount > 0)}
+                      >
+                        {selectedThread.unreadCount > 0 ? <MailOpen size={15} /> : <Mail size={15} />}
+                        {selectedThread.unreadCount > 0 ? 'Mark Read' : 'Mark Unread'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => deleteThread(selectedThread.id)}
+                      >
+                        <Trash2 size={15} />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex-1 space-y-3 overflow-y-auto bg-muted/10 p-4">
                   {messages.length === 0 ? (
@@ -262,17 +341,30 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
                       const mine = message.senderId === user?.id;
                       return (
                         <div key={message.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
-                          <div
-                            className={cn(
-                              'max-w-[88%] rounded-lg px-3 py-2 text-sm shadow-sm sm:max-w-[70%]',
-                              mine ? 'bg-primary text-primary-foreground' : 'border bg-card'
-                            )}
-                          >
-                            {!mine && <p className="mb-1 text-xs font-medium text-muted-foreground">{message.senderName}</p>}
-                            <p className="whitespace-pre-wrap break-words">{message.body}</p>
-                            <p className={cn('mt-1 text-[11px]', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>
-                              {format(new Date(message.createdAt), 'MMM d, h:mm a')}
-                            </p>
+                          <div className={cn('group flex max-w-[88%] items-start gap-2 sm:max-w-[70%]', mine && 'flex-row-reverse')}>
+                            <div
+                              className={cn(
+                                'min-w-0 rounded-lg px-3 py-2 text-sm shadow-sm',
+                                mine ? 'bg-primary text-primary-foreground' : 'border bg-card'
+                              )}
+                            >
+                              {!mine && <p className="mb-1 text-xs font-medium text-muted-foreground">{message.senderName}</p>}
+                              <p className="whitespace-pre-wrap break-words">{message.body}</p>
+                              <p className={cn('mt-1 text-[11px]', mine ? 'text-primary-foreground/75' : 'text-muted-foreground')}>
+                                {format(new Date(message.createdAt), 'MMM d, h:mm a')}
+                              </p>
+                            </div>
+                            {mine ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 opacity-70 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                title="Delete message"
+                                onClick={() => deleteMessage(message)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       );
@@ -397,3 +489,5 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
     </div>
   );
 }
+
+

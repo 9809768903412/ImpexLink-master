@@ -90,9 +90,12 @@ function getDeliveryTimeline(delivery: Delivery) {
 export default function LogisticsPage() {
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
+  const roleList = (Array.isArray(roleInput) ? roleInput : roleInput ? [roleInput] : []).map((role) => String(role).toLowerCase());
   const canManage = canManageLogistics(roleInput);
-  const isAdmin = Array.isArray(roleInput) ? roleInput.includes('admin') : roleInput === 'admin';
-  const isDeliveryGuy = Array.isArray(roleInput) ? roleInput.includes('delivery_guy') : roleInput === 'delivery_guy';
+  const isAdmin = roleList.includes('admin');
+  const isWarehouseStaff = roleList.includes('warehouse_staff');
+  const isDeliveryGuy = roleList.includes('delivery_guy') || roleList.includes('driver');
+  const canCreateDeliveryRequest = isAdmin || isWarehouseStaff;
   const [deliveries, setDeliveries] = useState<Delivery[]>(
     () => getCache<Delivery[]>('deliveries') || []
   );
@@ -128,7 +131,7 @@ export default function LogisticsPage() {
   });
   const thirdPartyProviders = ['Lalamove', 'Transportify', 'Grab Express', 'Toktok', 'Other third-party courier'];
   const [deliveryLogs, setDeliveryLogs] = useState<{ id: string; timestamp: string; action: string; details: string }[]>([]);
-  const { data: orders } = useResource<Order[]>('/orders', []);
+  const { data: orders } = useResource<Order[]>(canCreateDeliveryRequest ? '/orders' : '', [], [canCreateDeliveryRequest]);
   const { data: company } = useResource('/company', {
     name: 'Impex Engineering and Industrial Supply',
     address: '6959 Washington St., Pio Del Pilar, Makati City',
@@ -545,7 +548,7 @@ export default function LogisticsPage() {
           <p className="text-muted-foreground">Only deliveries assigned to you are shown here.</p>
         )}
       </div>
-      {canManage && (
+      {canCreateDeliveryRequest && (
         <div className="flex justify-end">
           <Button onClick={() => setIsLalamoveOpen(true)} className="gap-2">
             <Send size={16} />

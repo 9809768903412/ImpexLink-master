@@ -124,7 +124,7 @@ function includePaymentRelations() {
 }
 
 async function buildPaymentScope(req) {
-  if (hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT')) return {};
+  if (hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT') || hasRole(req, 'SALES_AGENT')) return {};
   if (hasRole(req, 'CLIENT')) {
     const access = await resolveClientAccess(prisma, req.user.userId);
     if (!access?.client?.clientId) return { paymentId: -1 };
@@ -177,9 +177,10 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/summary', requireRole(['ADMIN', 'PRESIDENT']), async (_req, res, next) => {
+router.get('/summary', requireRole(['ADMIN', 'PRESIDENT', 'SALES_AGENT']), async (req, res, next) => {
   try {
-    const payments = await prisma.paymentTransaction.findMany();
+    const scopeWhere = await buildPaymentScope(req);
+    const payments = await prisma.paymentTransaction.findMany({ where: scopeWhere });
     const summary = payments.reduce(
       (acc, payment) => {
         const amount = Number(payment.amount || 0);
@@ -233,8 +234,8 @@ router.post('/', async (req, res, next) => {
         const order = await prisma.clientOrder.findUnique({ where: { clientOrderId }, include: { client: true } });
         if (!order || !canAccessClientOwnedRecord(access, order)) return res.status(403).json({ error: 'Forbidden' });
       }
-    } else if (!(hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT'))) {
-      return res.status(403).json({ error: 'Only Admin, President, or Client can create payment records.' });
+    } else if (!(hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT') || hasRole(req, 'SALES_AGENT'))) {
+      return res.status(403).json({ error: 'Only Admin, President, Sales Agent, or Client can create payment records.' });
     }
 
     if (clientOrderId && !isPositiveInt(clientOrderId)) return res.status(400).json({ error: 'Invalid client order' });
@@ -296,10 +297,11 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'PRESIDENT']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN', 'PRESIDENT', 'SALES_AGENT']), async (req, res, next) => {
   try {
     const existing = await prisma.paymentTransaction.findUnique({
       where: { paymentId: Number(req.params.id) },
+      include: { clientOrder: true },
     });
     if (!existing) return res.status(404).json({ error: 'Payment not found' });
     const status = req.body.status ? normalize(req.body.status) : undefined;
@@ -320,19 +322,30 @@ router.put('/:id', requireRole(['ADMIN', 'PRESIDENT']), async (req, res, next) =
         amount: req.body.amount !== undefined ? Number(req.body.amount) : undefined,
         creditDays: req.body.creditDays !== undefined ? Number(req.body.creditDays) : undefined,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-        paidAt: status && ['PAID', 'RECEIVED'].includes(status) ? new Date() : undefined,
+        paidAt: status ? (['PAID', 'RECEIVED'].includes(status) ? new Date() : null) : undefined,
         referenceNumber: req.body.referenceNumber,
         notes: req.body.notes,
       },
       include: includePaymentRelations(),
     });
     await syncLinkedRecordStatus(payment, req.user.userId);
+    if (payment.direction === 'CLIENT_TO_OFFICE' && payment.clientOrder?.createdBy) {
+      await prisma.notification.create({
+        data: {
+          userId: payment.clientOrder.createdBy,
+          type: 'PAYMENT_VERIFIED',
+          title: 'Payment status updated',
+          message: `Payment for ${payment.clientOrder.orderNumber} was marked ${payment.status}.`,
+          link: '/client/payments',
+        },
+      });
+    }
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,
         action: 'UPDATE',
         target: 'Payment',
-        details: `Updated payment ${payment.paymentId}`,
+        details: `Updated payment ${payment.paymentId} to ${payment.status}`,
       },
     });
     res.json(mapPayment(payment));
