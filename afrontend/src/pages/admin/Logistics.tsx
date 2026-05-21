@@ -730,65 +730,71 @@ export default function LogisticsPage() {
           </DialogHeader>
           {selectedDelivery && (
             <div className="space-y-4">
-              {/* DR Preview */}
-              <div className="border rounded-lg p-4 sm:p-6 bg-white">
-                <div className="text-center border-b pb-4 mb-4">
-                  <h3 className="text-xl font-bold text-sidebar">{company.name}</h3>
-                  <p className="text-sm text-muted-foreground">{company.address}</p>
+              {selectedDelivery.status === 'pending' ? (
+                <div className="rounded-lg border bg-muted/40 p-4">
+                  <p className="font-medium">Delivery Receipt is not available yet.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Complete the pre-delivery details and click Begin Delivery before viewing or downloading the receipt.</p>
                 </div>
-                <div className="text-center mb-4">
-                  <h4 className="text-lg font-bold">DELIVERY RECEIPT</h4>
-                  <p className="text-primary font-medium">{selectedDelivery.drNumber}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                  <div>
-                    <p><span className="font-medium">Client:</span> {selectedDelivery.clientName}</p>
-                    <p><span className="font-medium">Project:</span> {selectedDelivery.projectName || 'N/A'}</p>
-                    <p><span className="font-medium">Receiver:</span> {selectedDelivery.receiverName || selectedDelivery.receivedBy || 'Pending'}</p>
-                    <p><span className="font-medium">Address:</span> {selectedDelivery.receiverAddress || 'Pending'}</p>
-                    <p><span className="font-medium">Contact:</span> {selectedDelivery.receiverContactNumber || 'Pending'}</p>
+              ) : (
+                <div className="border rounded-lg p-4 sm:p-6 bg-white">
+                  <div className="text-center border-b pb-4 mb-4">
+                    <h3 className="text-xl font-bold text-sidebar">{company.name}</h3>
+                    <p className="text-sm text-muted-foreground">{company.address}</p>
                   </div>
-                  <div className="text-right">
-                    <p><span className="font-medium">Date:</span> {format(new Date(selectedDelivery.issuedAt), 'MMM dd, yyyy')}</p>
-                    <p><span className="font-medium">ETA:</span> {format(new Date(selectedDelivery.eta), 'MMM dd, yyyy')}</p>
-                    <p><span className="font-medium">Method:</span> {selectedDelivery.deliveryMethod || 'TRUCK'}</p>
-                    <p><span className="font-medium">Delivery Fee:</span> Office account</p>
-                    {selectedDelivery.thirdPartyProvider && (
-                      <p><span className="font-medium">Third-party:</span> {selectedDelivery.thirdPartyProvider} {selectedDelivery.thirdPartyReference || ''}</p>
-                    )}
+                  <div className="text-center mb-4">
+                    <h4 className="text-lg font-bold">DELIVERY RECEIPT</h4>
+                    <p className="text-primary font-medium">{selectedDelivery.drNumber}</p>
                   </div>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-center">Qty</TableHead>
-                      <TableHead>Unit</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedDelivery.items.map((item) => (
-                      <TableRow key={item.itemId}>
-                        <TableCell>{item.itemName}</TableCell>
-                        <TableCell className="text-center">{item.quantity}</TableCell>
-                        <TableCell>{item.unit}</TableCell>
+                  <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                    <div>
+                      <p><span className="font-medium">Client:</span> {selectedDelivery.clientName}</p>
+                      <p><span className="font-medium">Project:</span> {selectedDelivery.projectName || 'N/A'}</p>
+                      <p><span className="font-medium">Receiver:</span> {selectedDelivery.receiverName || selectedDelivery.receivedBy || 'Pending'}</p>
+                      <p><span className="font-medium">Address:</span> {selectedDelivery.receiverAddress || 'Pending'}</p>
+                      <p><span className="font-medium">Contact:</span> {selectedDelivery.receiverContactNumber || 'Pending'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p><span className="font-medium">Date:</span> {format(new Date(selectedDelivery.issuedAt), 'MMM dd, yyyy')}</p>
+                      <p><span className="font-medium">ETA:</span> {format(new Date(selectedDelivery.eta), 'MMM dd, yyyy')}</p>
+                      <p><span className="font-medium">Method:</span> {selectedDelivery.deliveryMethod || 'TRUCK'}</p>
+                      <p><span className="font-medium">Delivery Fee:</span> Office account</p>
+                      {selectedDelivery.thirdPartyProvider && (
+                        <p><span className="font-medium">Third-party:</span> {selectedDelivery.thirdPartyProvider} {selectedDelivery.thirdPartyReference || ''}</p>
+                      )}
+                    </div>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead className="text-center">Qty</TableHead>
+                        <TableHead>Unit</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t text-sm">
-                <div>
-                  <p className="font-medium">Issued By:</p>
-                  <p>{selectedDelivery.issuedBy}</p>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedDelivery.items.map((item) => (
+                        <TableRow key={item.itemId}>
+                          <TableCell>{item.itemName}</TableCell>
+                          <TableCell className="text-center">{item.quantity}</TableCell>
+                          <TableCell>{item.unit}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t text-sm">
+                    <div>
+                      <p className="font-medium">Issued By:</p>
+                      <p>{selectedDelivery.issuedBy}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium">Received By:</p>
+                      <p>{selectedDelivery.receiverName || selectedDelivery.receivedBy || '_______________'}</p>
+                      <p className="text-xs text-muted-foreground">{selectedDelivery.receiverAddress || 'Receiver address'}</p>
+                      <p className="text-xs text-muted-foreground">{selectedDelivery.receiverContactNumber || 'Receiver contact number'}</p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium">Received By:</p>
-                  <p>{selectedDelivery.receiverName || selectedDelivery.receivedBy || '_______________'}</p>
-                  <p className="text-xs text-muted-foreground">{selectedDelivery.receiverAddress || 'Receiver address'}</p>
-                  <p className="text-xs text-muted-foreground">{selectedDelivery.receiverContactNumber || 'Receiver contact number'}</p>
-                </div>
-              </div>
-            </div>
+              )}
 
               <div className="rounded-lg border p-4">
                 <h4 className="font-semibold mb-3">Delivery Timeline</h4>
@@ -823,9 +829,12 @@ export default function LogisticsPage() {
               )}
 
               {/* Status Actions */}
-              {canManage && selectedDelivery.status === 'in-transit' && (
+              {canManage && selectedDelivery.status === 'pending' && (
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
-                  <Label>Confirm Delivery</Label>
+                  <div>
+                    <p className="font-medium">Before Delivery Starts</p>
+                    <p className="text-sm text-muted-foreground">Confirm the receiving role, site details, delivery method, and planned ETA before beginning the trip.</p>
+                  </div>
                   <Select value={receivedBy} onValueChange={setReceivedBy}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select receiver" />
@@ -855,6 +864,43 @@ export default function LogisticsPage() {
                         placeholder="Contact number"
                       />
                     </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Delivery Method</Label>
+                      <Select value={deliveryMethod} onValueChange={setDeliveryMethod}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="TRUCK">Truck</SelectItem>
+                          <SelectItem value="MOTOR">Motor</SelectItem>
+                          <SelectItem value="LALAMOVE">Third Party (Lalamove)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Planned ETA</Label>
+                      <Input
+                        type="datetime-local"
+                        value={deliveryEta}
+                        onChange={(e) => setDeliveryEta(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Textarea
+                    placeholder="Pre-delivery notes, gate instructions, parking/loading reminders..."
+                    value={deliveryNotes}
+                    onChange={(e) => setDeliveryNotes(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {canManage && (selectedDelivery.status === 'in-transit' || selectedDelivery.status === 'delayed') && (
+                <div className="space-y-3 p-4 bg-muted rounded-lg">
+                  <div>
+                    <p className="font-medium">Delay / Exception Handling</p>
+                    <p className="text-sm text-muted-foreground">Use this only when the active delivery has a problem that needs a reason, plan, and updated ETA.</p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
@@ -907,6 +953,50 @@ export default function LogisticsPage() {
                       onChange={(e) => setDeliveryEta(e.target.value)}
                     />
                   </div>
+                </div>
+              )}
+
+              {canManage && selectedDelivery.status === 'in-transit' && (
+                <div className="space-y-3 p-4 bg-muted rounded-lg">
+                  <div>
+                    <p className="font-medium">After Delivery / Proof of Delivery</p>
+                    <p className="text-sm text-muted-foreground">Complete this after the items are handed over at the site.</p>
+                  </div>
+                  <Select value={receivedBy} onValueChange={setReceivedBy}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select receiver" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {receivedByOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Actual Receiver Address</Label>
+                      <Input
+                        value={receiverAddress}
+                        onChange={(e) => setReceiverAddress(e.target.value)}
+                        placeholder="Receiver address or site location"
+                      />
+                    </div>
+                    <div>
+                      <Label>Actual Receiver Contact Number</Label>
+                      <Input
+                        value={receiverContactNumber}
+                        onChange={(e) => setReceiverContactNumber(e.target.value)}
+                        placeholder="Contact number"
+                      />
+                    </div>
+                  </div>
+                  <Textarea
+                    placeholder="POD remarks, handover notes, missing/damaged item notes..."
+                    value={deliveryNotes}
+                    onChange={(e) => setDeliveryNotes(e.target.value)}
+                  />
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" asChild>
                       <label htmlFor="detail-pod-upload" className="cursor-pointer">
@@ -936,10 +1026,12 @@ export default function LogisticsPage() {
                 <Button variant="outline" onClick={() => setSelectedDelivery(null)}>
                   Close
                 </Button>
-                <Button variant="outline" onClick={() => handlePrintDelivery(selectedDelivery)}>
-                  <FileText size={16} className="mr-1" />
-                  Download PDF
-                </Button>
+                {selectedDelivery.status !== 'pending' && (
+                  <Button variant="outline" onClick={() => handlePrintDelivery(selectedDelivery)}>
+                    <FileText size={16} className="mr-1" />
+                    Download PDF
+                  </Button>
+                )}
                 {canManage && selectedDelivery.status === 'pending' && (
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
