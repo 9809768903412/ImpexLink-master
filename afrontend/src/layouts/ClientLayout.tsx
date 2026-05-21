@@ -132,7 +132,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden xl:flex items-center gap-1.5 flex-wrap">
+          <nav className="hidden 2xl:flex items-center gap-1.5 whitespace-nowrap">
             {navItems.map((item) => (
               <NavLink
                 key={item.path}
@@ -206,7 +206,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
             {/* Mobile menu */}
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="xl:hidden h-9 w-9">
+                <Button variant="ghost" size="icon" className="2xl:hidden h-9 w-9">
                   <Menu size={18} />
                 </Button>
               </SheetTrigger>
