@@ -188,6 +188,8 @@ export default function ProjectsPage() {
   const [projectFormDraftAvailable, setProjectFormDraftAvailable] = useState(false);
   const [projectItemsPage, setProjectItemsPage] = useState(1);
   const projectItemsPageSize = 5;
+  const [linkedOrdersPage, setLinkedOrdersPage] = useState(1);
+  const linkedOrdersPageSize = 5;
   const [selectedLinkedOrder, setSelectedLinkedOrder] = useState<Order | null>(null);
   const [showProjectItemsDialog, setShowProjectItemsDialog] = useState(false);
   const [isAssigneeSelectOpen, setIsAssigneeSelectOpen] = useState(false);
@@ -219,6 +221,14 @@ export default function ProjectsPage() {
   const selectedProjectOrders = selectedProject
     ? orders.filter((order) => order.projectId === selectedProject.id)
     : [];
+  const sortedSelectedProjectOrders = selectedProjectOrders
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const totalLinkedOrdersPages = Math.max(1, Math.ceil(sortedSelectedProjectOrders.length / linkedOrdersPageSize));
+  const paginatedLinkedOrders = sortedSelectedProjectOrders.slice(
+    (linkedOrdersPage - 1) * linkedOrdersPageSize,
+    linkedOrdersPage * linkedOrdersPageSize
+  );
   const totalProjectItemsPages = Math.max(1, Math.ceil(selectedProjectItems.length / projectItemsPageSize));
   const paginatedProjectItems = selectedProjectItems.slice(
     (projectItemsPage - 1) * projectItemsPageSize,
@@ -234,6 +244,15 @@ export default function ProjectsPage() {
   );
   const projectItemsVat = Number((projectItemsTotalCost * VAT_RATE).toFixed(2));
   const projectItemsGrandTotal = projectItemsTotalCost + projectItemsVat;
+
+  useEffect(() => {
+    setLinkedOrdersPage(1);
+    setProjectItemsPage(1);
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    if (linkedOrdersPage > totalLinkedOrdersPages) setLinkedOrdersPage(totalLinkedOrdersPages);
+  }, [linkedOrdersPage, totalLinkedOrdersPages]);
 
   const getProjectStats = (projectId: string) => {
     const projectOrders = orders.filter((o) => o.projectId === projectId);
@@ -1189,10 +1208,7 @@ export default function ProjectsPage() {
                   {selectedProjectOrders.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No orders linked to this project yet.</p>
                   ) : (
-                    selectedProjectOrders
-                      .slice()
-                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                      .map((order) => {
+                    paginatedLinkedOrders.map((order) => {
                         const linkedDelivery = deliveries.find((delivery) => delivery.orderId === order.id);
                         return (
                           <button
@@ -1291,6 +1307,9 @@ export default function ProjectsPage() {
                           </button>
                         );
                       })
+                  )}
+                  {selectedProjectOrders.length > linkedOrdersPageSize && (
+                    <PaginationNav page={linkedOrdersPage} totalPages={totalLinkedOrdersPages} onPageChange={setLinkedOrdersPage} maxPages={5} />
                   )}
                 </CardContent>
               </Card>

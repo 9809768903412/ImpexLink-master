@@ -64,6 +64,8 @@ export default function ClientProjectsPage() {
   const pageSize = 6;
   const [materialsPage, setMaterialsPage] = useState(1);
   const materialsPageSize = 5;
+  const [linkedOrdersPage, setLinkedOrdersPage] = useState(1);
+  const linkedOrdersPageSize = 5;
   const [resubmitOpen, setResubmitOpen] = useState(false);
   const [resubmitProject, setResubmitProject] = useState<Project | null>(null);
   const [resubmitName, setResubmitName] = useState('');
@@ -87,6 +89,14 @@ export default function ClientProjectsPage() {
   const selectedProjectOrders = selectedProject
     ? orders.filter((order) => order.projectId === selectedProject.id)
     : [];
+  const sortedSelectedProjectOrders = selectedProjectOrders
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const totalLinkedOrdersPages = Math.max(1, Math.ceil(sortedSelectedProjectOrders.length / linkedOrdersPageSize));
+  const paginatedLinkedOrders = sortedSelectedProjectOrders.slice(
+    (linkedOrdersPage - 1) * linkedOrdersPageSize,
+    linkedOrdersPage * linkedOrdersPageSize
+  );
   const totalMaterialsPages = Math.max(1, Math.ceil(selectedProjectItems.length / materialsPageSize));
   const pagedProjectItems = selectedProjectItems.slice(
     (materialsPage - 1) * materialsPageSize,
@@ -99,6 +109,15 @@ export default function ClientProjectsPage() {
   );
   const projectMaterialsVat = Number((projectMaterialsTotal * 0.12).toFixed(2));
   const projectMaterialsGrandTotal = projectMaterialsTotal + projectMaterialsVat;
+
+  useEffect(() => {
+    setLinkedOrdersPage(1);
+    setMaterialsPage(1);
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    if (linkedOrdersPage > totalLinkedOrdersPages) setLinkedOrdersPage(totalLinkedOrdersPages);
+  }, [linkedOrdersPage, totalLinkedOrdersPages]);
 
   const getProjectLocation = (project: Project) => {
     if (project.location?.trim()) return project.location.trim();
@@ -382,10 +401,7 @@ export default function ClientProjectsPage() {
                   {selectedProjectOrders.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No orders have been placed for this project yet.</p>
                   ) : (
-                    selectedProjectOrders
-                      .slice()
-                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                      .map((order) => {
+                    paginatedLinkedOrders.map((order) => {
                         const linkedDelivery = deliveries.find((delivery) => delivery.orderId === order.id);
                         return (
                           <button
@@ -470,6 +486,9 @@ export default function ClientProjectsPage() {
                           </button>
                         );
                       })
+                  )}
+                  {selectedProjectOrders.length > linkedOrdersPageSize && (
+                    <PaginationNav page={linkedOrdersPage} totalPages={totalLinkedOrdersPages} onPageChange={setLinkedOrdersPage} maxPages={5} />
                   )}
                 </CardContent>
               </Card>
