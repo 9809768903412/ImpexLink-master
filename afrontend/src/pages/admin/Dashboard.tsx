@@ -52,7 +52,7 @@ const rolePriority: UserRole[] = [
 ];
 
 function formatPeso(value: number) {
-  return `â‚±${value.toLocaleString('en-PH', {
+  return `PHP ${value.toLocaleString('en-PH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -694,7 +694,7 @@ export default function StaffDashboard() {
                   <div key={transaction.id} className="rounded-xl border px-4 py-3">
                     <p className="font-medium capitalize">{transaction.type}</p>
                     <p className="text-sm text-muted-foreground">
-                      {transaction.date} â€¢ Balance {transaction.newBalance}
+                      {transaction.date} - Balance {transaction.newBalance}
                     </p>
                   </div>
                 ))
