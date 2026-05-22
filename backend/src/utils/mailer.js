@@ -46,6 +46,15 @@ function hasEmailDeliveryConfig() {
   if (provider === 'smtp') {
     return Boolean(getSmtpConfig().host && getSmtpConfig().user && getSmtpConfig().pass && getFromAddress());
   }
+  if (provider === 'brevo') {
+    return Boolean(cleanEnvValue(process.env.BREVO_API_KEY) && getFromAddress());
+  }
+  if (provider === 'postmark') {
+    return Boolean(cleanEnvValue(process.env.POSTMARK_SERVER_TOKEN) && getFromAddress());
+  }
+  if (provider === 'mailjet') {
+    return Boolean(cleanEnvValue(process.env.MAILJET_API_KEY) && cleanEnvValue(process.env.MAILJET_API_SECRET) && getFromAddress());
+  }
   return Boolean(cleanEnvValue(process.env.RESEND_API_KEY) && getFromAddress());
 }
 
@@ -71,6 +80,9 @@ function getFromAddress() {
     'EMAIL_FROM',
     'MAIL_FROM',
     'SMTP_FROM',
+    'BREVO_FROM',
+    'POSTMARK_FROM',
+    'MAILJET_FROM',
     'RESEND_FROM',
     'SMTP_USER',
     'SMTP_USERNAME',
@@ -98,6 +110,112 @@ function getSmtpConfig() {
     user: firstEnv('SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER', 'EMAIL_USERNAME'),
     pass: firstEnv('SMTP_PASS', 'SMTP_PASSWORD', 'MAIL_PASS', 'MAIL_PASSWORD', 'EMAIL_PASS', 'EMAIL_PASSWORD'),
   };
+}
+
+function parseAddress(address) {
+  const value = cleanEnvValue(address);
+  const match = value.match(/^(.*)<([^>]+)>$/);
+  if (match) {
+    return {
+      name: match[1].trim().replace(/^['"]|['"]$/g, ''),
+      email: match[2].trim(),
+    };
+  }
+  return { name: '', email: value };
+}
+
+async function postJson(url, headers, payload) {
+  if (typeof fetch !== 'function') {
+    throw new Error('Node fetch API is not available for email provider requests');
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify(payload),
+  });
+  const text = await response.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  if (!response.ok) {
+    const message =
+      (body && typeof body === 'object' && (body.message || body.error || body.Message)) ||
+      `Email API request failed with status ${response.status}`;
+    const error = new Error(message);
+    error.statusCode = response.status;
+    error.providerResponse = body;
+    throw error;
+  }
+  return body;
+}
+
+async function sendBrevoEmail({ from, to, subject, text, html }) {
+  const apiKey = cleanEnvValue(process.env.BREVO_API_KEY);
+  if (!apiKey) throw new Error('BREVO_API_KEY is missing');
+  const sender = parseAddress(from);
+  const payload = {
+    sender: sender.name ? { email: sender.email, name: sender.name } : { email: sender.email },
+    to: [{ email: to }],
+    subject,
+    htmlContent: html,
+    textContent: text,
+  };
+  const result = await postJson('https://api.brevo.com/v3/smtp/email', { 'api-key': apiKey }, payload);
+  if (!result?.messageId) {
+    throw new Error('Brevo accepted the request but did not return a message id');
+  }
+  return result;
+}
+
+async function sendPostmarkEmail({ from, to, subject, text, html }) {
+  const token = cleanEnvValue(process.env.POSTMARK_SERVER_TOKEN);
+  if (!token) throw new Error('POSTMARK_SERVER_TOKEN is missing');
+  return postJson(
+    'https://api.postmarkapp.com/email',
+    { 'X-Postmark-Server-Token': token },
+    {
+      From: from,
+      To: to,
+      Subject: subject,
+      TextBody: text,
+      HtmlBody: html,
+      MessageStream: cleanEnvValue(process.env.POSTMARK_MESSAGE_STREAM) || 'outbound',
+    }
+  );
+}
+
+async function sendMailjetEmail({ from, to, subject, text, html }) {
+  const apiKey = cleanEnvValue(process.env.MAILJET_API_KEY);
+  const apiSecret = cleanEnvValue(process.env.MAILJET_API_SECRET);
+  if (!apiKey) throw new Error('MAILJET_API_KEY is missing');
+  if (!apiSecret) throw new Error('MAILJET_API_SECRET is missing');
+  const sender = parseAddress(from);
+  const payload = {
+    Messages: [
+      {
+        From: sender.name ? { Email: sender.email, Name: sender.name } : { Email: sender.email },
+        To: [{ Email: to }],
+        Subject: subject,
+        TextPart: text,
+        HTMLPart: html,
+      },
+    ],
+  };
+  const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+  const result = await postJson('https://api.mailjet.com/v3.1/send', { Authorization: `Basic ${auth}` }, payload);
+  const message = result?.Messages?.[0];
+  if (!message || String(message.Status || '').toLowerCase() !== 'success') {
+    const errors = Array.isArray(message?.Errors) ? message.Errors.map((err) => err.ErrorMessage || err.ErrorCode).join(', ') : '';
+    throw new Error(errors || 'Mailjet did not accept the message for delivery');
+  }
+  return result;
 }
 
 function getSmtpTransporter() {
@@ -145,6 +263,10 @@ async function sendEmail({ to, subject, text, html }) {
     subject,
     hasResendApiKey: Boolean(apiKey),
     resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    hasBrevoApiKey: provider === 'brevo' ? Boolean(cleanEnvValue(process.env.BREVO_API_KEY)) : null,
+    hasPostmarkServerToken: provider === 'postmark' ? Boolean(cleanEnvValue(process.env.POSTMARK_SERVER_TOKEN)) : null,
+    hasMailjetApiKey: provider === 'mailjet' ? Boolean(cleanEnvValue(process.env.MAILJET_API_KEY)) : null,
+    hasMailjetApiSecret: provider === 'mailjet' ? Boolean(cleanEnvValue(process.env.MAILJET_API_SECRET)) : null,
     smtpHost: provider === 'smtp' ? smtpConfig.host : null,
     smtpPort: provider === 'smtp' ? smtpConfig.port : null,
     smtpSecure: provider === 'smtp' ? smtpConfig.secure : null,
@@ -184,6 +306,40 @@ async function sendEmail({ to, subject, text, html }) {
         messageId: result?.messageId || null,
         accepted: result?.accepted || [],
         rejected: result?.rejected || [],
+      });
+      return result;
+    }
+    if (provider === 'brevo') {
+      const result = await sendBrevoEmail({ from, to, subject, text, html });
+      console.log('[mailer] send success', {
+        provider,
+        to,
+        from,
+        subject,
+        messageId: result?.messageId || null,
+      });
+      return result;
+    }
+    if (provider === 'postmark') {
+      const result = await sendPostmarkEmail({ from, to, subject, text, html });
+      console.log('[mailer] send success', {
+        provider,
+        to,
+        from,
+        subject,
+        messageId: result?.MessageID || null,
+      });
+      return result;
+    }
+    if (provider === 'mailjet') {
+      const result = await sendMailjetEmail({ from, to, subject, text, html });
+      const message = result?.Messages?.[0];
+      console.log('[mailer] send success', {
+        provider,
+        to,
+        from,
+        subject,
+        messageId: message?.To?.[0]?.MessageID || message?.To?.[0]?.MessageUUID || null,
       });
       return result;
     }
@@ -280,6 +436,13 @@ function getEmailDiagnostics() {
     ready: hasEmailDeliveryConfig(),
     hasResendApiKey: Boolean(apiKey),
     resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 3)}...` : null,
+    hasBrevoApiKey: Boolean(cleanEnvValue(process.env.BREVO_API_KEY)),
+    brevoApiKeyPrefix: cleanEnvValue(process.env.BREVO_API_KEY) ? `${cleanEnvValue(process.env.BREVO_API_KEY).slice(0, 4)}...` : null,
+    hasPostmarkServerToken: Boolean(cleanEnvValue(process.env.POSTMARK_SERVER_TOKEN)),
+    postmarkTokenPrefix: cleanEnvValue(process.env.POSTMARK_SERVER_TOKEN) ? `${cleanEnvValue(process.env.POSTMARK_SERVER_TOKEN).slice(0, 4)}...` : null,
+    hasMailjetApiKey: Boolean(cleanEnvValue(process.env.MAILJET_API_KEY)),
+    mailjetApiKeyPrefix: cleanEnvValue(process.env.MAILJET_API_KEY) ? `${cleanEnvValue(process.env.MAILJET_API_KEY).slice(0, 4)}...` : null,
+    hasMailjetApiSecret: Boolean(cleanEnvValue(process.env.MAILJET_API_SECRET)),
     smtpHost: smtpConfig.host || null,
     smtpPort: smtpConfig.port || null,
     smtpSecure: smtpConfig.secure,

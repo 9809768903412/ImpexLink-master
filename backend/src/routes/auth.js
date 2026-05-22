@@ -96,6 +96,10 @@ function canUseOtpFallback() {
   );
 }
 
+function requireEmailOtpDelivery() {
+  return envFlag('REQUIRE_EMAIL_OTP_DELIVERY');
+}
+
 async function removePendingProof(pendingPath) {
   if (!pendingPath || !String(pendingPath).startsWith('/pending-proofs/')) return;
   const filename = path.basename(String(pendingPath));
@@ -276,6 +280,15 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
       emailError = sanitizeEmailError(err);
       devOtp = canUseOtpFallback() ? verificationCode : null;
       console.error('Verification email failed:', err.message || err);
+    }
+
+    if (!emailSent && requireEmailOtpDelivery()) {
+      return res.status(503).json({
+        error: 'Verification email could not be sent',
+        message: 'Registration could not continue because the email verification code was not delivered. Please check the email API settings and try again.',
+        emailError,
+        emailDiagnostics: getEmailDiagnostics(),
+      });
     }
 
     return res.status(emailSent ? 201 : 202).json({
@@ -586,6 +599,14 @@ router.post('/resend-verification', async (req, res, next) => {
         devOtp = canUseOtpFallback() ? verificationCode : null;
         console.error('Verification email failed:', err.message || err);
       }
+      if (!emailSent && requireEmailOtpDelivery()) {
+        return res.status(503).json({
+          error: 'Verification email could not be sent',
+          message: 'The verification code could not be delivered. Please check the email API settings and try again.',
+          emailError,
+          emailDiagnostics: getEmailDiagnostics(),
+        });
+      }
       return res.json({
         ok: true,
         emailSent,
@@ -627,6 +648,14 @@ router.post('/resend-verification', async (req, res, next) => {
       emailError = sanitizeEmailError(err);
       devOtp = canUseOtpFallback() ? verificationCode : null;
       console.error('Verification email failed:', err.message || err);
+    }
+    if (!emailSent && requireEmailOtpDelivery()) {
+      return res.status(503).json({
+        error: 'Verification email could not be sent',
+        message: 'The verification code could not be delivered. Please check the email API settings and try again.',
+        emailError,
+        emailDiagnostics: getEmailDiagnostics(),
+      });
     }
     return res.json({
       ok: true,
