@@ -68,25 +68,51 @@ interface AdminLayoutProps {
 }
 
 const dashboardRoles = ADMIN_AREA_ROLES.filter((role) => !['warehouse_staff', 'delivery_guy', 'driver', 'receiver'].includes(role));
-const navItems = [
-  { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true, roles: dashboardRoles },
-  { path: '/admin/inventory', icon: Package, label: 'Inventory', roles: ADMIN_AREA_ROLES.filter(canViewInventory) },
-  { path: '/admin/projects', icon: FolderKanban, label: 'Projects', roles: ADMIN_AREA_ROLES.filter(canViewProjects) },
-  { path: '/admin/requests', icon: ClipboardList, label: 'Material Requests', roles: ADMIN_AREA_ROLES.filter(canViewMaterialRequests) },
-  { path: '/admin/orders', icon: ShoppingCart, label: 'Client Orders', roles: ADMIN_AREA_ROLES.filter(canViewClientOrders) },
-  { path: '/admin/purchase-orders', icon: FileText, label: 'Purchase Orders', roles: ADMIN_AREA_ROLES.filter(canViewPurchaseOrders) },
-  { path: '/admin/companies', icon: Building2, label: 'Companies', roles: ['admin'] },
-  { path: '/admin/suppliers', icon: Factory, label: 'Suppliers', roles: ADMIN_AREA_ROLES.filter(canViewSuppliers) },
-  { path: '/admin/logistics', icon: Truck, label: 'Logistics', roles: ADMIN_AREA_ROLES.filter(canViewLogistics) },
-  { path: '/admin/payments', icon: CreditCard, label: 'Payments', roles: ADMIN_AREA_ROLES.filter(canViewPayments) },
-  { path: '/admin/reports', icon: BarChart3, label: 'Reports', roles: ADMIN_AREA_ROLES.filter(canViewReports) },
-  { path: '/admin/ai-insights', icon: Brain, label: 'AI Insights', roles: ADMIN_AREA_ROLES.filter(canViewAIInsights) },
-  { path: '/admin/audit-logs', icon: History, label: 'Audit Logs', roles: ADMIN_AREA_ROLES.filter(canViewAuditLogs) },
-  { path: '/admin/proofs', icon: Files, label: 'Attachments', roles: ADMIN_AREA_ROLES.filter(canViewProofCenter) },
-  { path: '/admin/messages', icon: MessageSquare, label: 'Messages', roles: ADMIN_AREA_ROLES.filter(canViewMessages) },
-  { path: '/admin/notifications', icon: Bell, label: 'Notifications', roles: ADMIN_AREA_ROLES.filter(canViewNotifications) },
-  { path: '/admin/settings', icon: Settings, label: 'Settings', roles: ADMIN_AREA_ROLES.filter(canAccessSettings) },
+const navSections = [
+  {
+    label: 'Overview',
+    items: [
+      { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true, roles: dashboardRoles },
+      { path: '/admin/reports', icon: BarChart3, label: 'Reports', roles: ADMIN_AREA_ROLES.filter(canViewReports) },
+      { path: '/admin/ai-insights', icon: Brain, label: 'AI Insights', roles: ADMIN_AREA_ROLES.filter(canViewAIInsights) },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { path: '/admin/inventory', icon: Package, label: 'Inventory', roles: ADMIN_AREA_ROLES.filter(canViewInventory) },
+      { path: '/admin/projects', icon: FolderKanban, label: 'Projects', roles: ADMIN_AREA_ROLES.filter(canViewProjects) },
+      { path: '/admin/requests', icon: ClipboardList, label: 'Material Requests', roles: ADMIN_AREA_ROLES.filter(canViewMaterialRequests) },
+      { path: '/admin/orders', icon: ShoppingCart, label: 'Client Orders', roles: ADMIN_AREA_ROLES.filter(canViewClientOrders) },
+      { path: '/admin/purchase-orders', icon: FileText, label: 'Purchase Orders', roles: ADMIN_AREA_ROLES.filter(canViewPurchaseOrders) },
+      { path: '/admin/logistics', icon: Truck, label: 'Logistics', roles: ADMIN_AREA_ROLES.filter(canViewLogistics) },
+      { path: '/admin/payments', icon: CreditCard, label: 'Payments', roles: ADMIN_AREA_ROLES.filter(canViewPayments) },
+    ],
+  },
+  {
+    label: 'Accounts',
+    items: [
+      { path: '/admin/companies', icon: Building2, label: 'Companies', roles: ['admin'] },
+      { path: '/admin/suppliers', icon: Factory, label: 'Suppliers', roles: ADMIN_AREA_ROLES.filter(canViewSuppliers) },
+    ],
+  },
+  {
+    label: 'Records',
+    items: [
+      { path: '/admin/audit-logs', icon: History, label: 'Audit Logs', roles: ADMIN_AREA_ROLES.filter(canViewAuditLogs) },
+      { path: '/admin/proofs', icon: Files, label: 'Attachments', roles: ADMIN_AREA_ROLES.filter(canViewProofCenter) },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { path: '/admin/messages', icon: MessageSquare, label: 'Messages', roles: ADMIN_AREA_ROLES.filter(canViewMessages) },
+      { path: '/admin/notifications', icon: Bell, label: 'Notifications', roles: ADMIN_AREA_ROLES.filter(canViewNotifications) },
+      { path: '/admin/settings', icon: Settings, label: 'Settings', roles: ADMIN_AREA_ROLES.filter(canAccessSettings) },
+    ],
+  },
 ];
+const navItems = navSections.flatMap((section) => section.items);
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const { user, logout } = useAuth();
@@ -151,7 +177,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     return current?.label || 'Dashboard';
   };
 
-  const visibleNavItems = navItems.filter((item) => roleList.some((r) => item.roles.includes(r)));
+  const visibleNavSections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => roleList.some((r) => item.roles.includes(r))),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -204,50 +235,59 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
           {/* Navigation */}
           <ScrollArea className="flex-1 py-4">
-            <nav className="px-3 space-y-1">
-              {visibleNavItems.map((item) => {
-                const isActive = item.exact
-                  ? location.pathname === item.path
-                  : location.pathname.startsWith(item.path) && location.pathname !== '/admin';
+            <nav className="px-3 space-y-4">
+              {visibleNavSections.map((section) => (
+                <div key={section.label} className="space-y-1">
+                  {!sidebarCollapsed && (
+                    <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/45">
+                      {section.label}
+                    </p>
+                  )}
+                  {section.items.map((item) => {
+                    const isActive = item.exact
+                      ? location.pathname === item.path
+                      : location.pathname.startsWith(item.path) && location.pathname !== '/admin';
 
-                const isExactDashboard = item.path === '/admin' && location.pathname === '/admin';
-                const finalActive = item.exact ? isExactDashboard : isActive;
+                    const isExactDashboard = item.path === '/admin' && location.pathname === '/admin';
+                    const finalActive = item.exact ? isExactDashboard : isActive;
 
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setSidebarOpen(false)}
-                    className={cn(
-                      'relative flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors',
-                      sidebarCollapsed ? 'justify-center gap-0' : 'gap-3',
-                      finalActive
-                        ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                        : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
-                    )}
-                    title={sidebarCollapsed ? item.label : undefined}
-                  >
-                    <item.icon size={20} />
-                    {!sidebarCollapsed && <span>{item.label}</span>}
-                    {!sidebarCollapsed && item.label === 'Notifications' && unreadNotifications > 0 && (
-                      <Badge className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5">
-                        {unreadNotifications}
-                      </Badge>
-                    )}
-                    {!sidebarCollapsed && item.label === 'Messages' && unreadMessages > 0 && (
-                      <Badge className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5">
-                        {unreadMessages}
-                      </Badge>
-                    )}
-                    {sidebarCollapsed && item.label === 'Notifications' && unreadNotifications > 0 && (
-                      <span className="absolute top-2 right-2 h-2 w-2 bg-primary rounded-full" />
-                    )}
-                    {sidebarCollapsed && item.label === 'Messages' && unreadMessages > 0 && (
-                      <span className="absolute top-2 right-2 h-2 w-2 bg-primary rounded-full" />
-                    )}
-                  </NavLink>
-                );
-              })}
+                    return (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => setSidebarOpen(false)}
+                        className={cn(
+                          'relative flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                          sidebarCollapsed ? 'justify-center gap-0' : 'gap-3',
+                          finalActive
+                            ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                        )}
+                        title={sidebarCollapsed ? item.label : undefined}
+                      >
+                        <item.icon size={18} />
+                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                        {!sidebarCollapsed && item.label === 'Notifications' && unreadNotifications > 0 && (
+                          <Badge className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5">
+                            {unreadNotifications}
+                          </Badge>
+                        )}
+                        {!sidebarCollapsed && item.label === 'Messages' && unreadMessages > 0 && (
+                          <Badge className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5">
+                            {unreadMessages}
+                          </Badge>
+                        )}
+                        {sidebarCollapsed && item.label === 'Notifications' && unreadNotifications > 0 && (
+                          <span className="absolute top-2 right-2 h-2 w-2 bg-primary rounded-full" />
+                        )}
+                        {sidebarCollapsed && item.label === 'Messages' && unreadMessages > 0 && (
+                          <span className="absolute top-2 right-2 h-2 w-2 bg-primary rounded-full" />
+                        )}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              ))}
             </nav>
           </ScrollArea>
 
