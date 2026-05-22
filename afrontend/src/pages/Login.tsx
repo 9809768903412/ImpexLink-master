@@ -27,6 +27,8 @@ export default function Login() {
   const [resetNewPassword, setResetNewPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
   const [resetStep, setResetStep] = useState<'request' | 'verify'>('request');
+  const [resetNotice, setResetNotice] = useState('');
+  const [resetFallbackOtp, setResetFallbackOtp] = useState<string | null>(null);
   const { login, verifyOtp } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -89,7 +91,7 @@ export default function Login() {
         });
         if (result.devOtp) {
           toast({
-            title: 'Login code (dev)',
+            title: 'Login code',
             description: `Code: ${result.devOtp}`,
           });
         }
@@ -142,7 +144,7 @@ export default function Login() {
       });
       if ((res as any)?.devOtp) {
         toast({
-          title: 'Login code (dev)',
+          title: 'Login code',
           description: `Code: ${(res as any).devOtp}`,
         });
       }
@@ -168,15 +170,26 @@ export default function Login() {
     }
     setIsLoading(true);
     try {
-      await requestPasswordReset(resetEmail);
+      const res = await requestPasswordReset(resetEmail);
+      const message = res?.emailSent === false
+        ? res?.message || 'The reset email could not be delivered. Please try again in a moment.'
+        : res?.message || 'Check your email for the reset code.';
+      setResetNotice(message);
+      setResetFallbackOtp(res?.devOtp ?? null);
       toast({
         title: 'Code resent',
-        description: 'Check your email for the reset code.',
+        description: message,
       });
-    } catch {
+      if (res?.devOtp) {
+        toast({ title: 'Reset code', description: `Code: ${res.devOtp}` });
+      }
+    } catch (error: any) {
       toast({
         title: 'Resend failed',
-        description: 'Please try again in a moment.',
+        description:
+          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          'Please try again in a moment.',
         variant: 'destructive',
       });
     } finally {
@@ -375,6 +388,16 @@ export default function Login() {
                   inputMode="numeric"
                   maxLength={6}
                 />
+                {resetNotice && (
+                  <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                    {resetNotice}
+                    {resetFallbackOtp && (
+                      <div className="mt-2 rounded bg-white/80 px-2 py-1 font-mono text-base font-semibold tracking-[0.25em]">
+                        {resetFallbackOtp}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <Button
                   type="button"
                   variant="link"
@@ -391,7 +414,7 @@ export default function Login() {
                   type="password"
                   value={resetNewPassword}
                   onChange={(e) => setResetNewPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Enter password"
                 />
                 {resetNewPassword && (
                   <div className="mt-2 space-y-1">
@@ -412,7 +435,7 @@ export default function Login() {
                   type="password"
                   value={resetConfirmPassword}
                   onChange={(e) => setResetConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Confirm password"
                 />
               </div>
             </div>
@@ -427,6 +450,8 @@ export default function Login() {
                 setResetOtp('');
                 setResetNewPassword('');
                 setResetConfirmPassword('');
+                setResetNotice('');
+                setResetFallbackOtp(null);
               }}
             >
               Cancel
@@ -438,11 +463,27 @@ export default function Login() {
                     toast({ title: 'Invalid email', description: 'Enter a valid email.', variant: 'destructive' });
                     return;
                   }
-                  const res = await requestPasswordReset(resetEmail);
-                  setResetStep('verify');
-                  toast({ title: 'Reset code sent', description: 'Check your email for the reset code.' });
-                  if ((res as any)?.devOtp) {
-                    toast({ title: 'Reset code (dev)', description: `Code: ${(res as any).devOtp}` });
+                  try {
+                    const res = await requestPasswordReset(resetEmail);
+                    const message = res?.emailSent === false
+                      ? res?.message || 'The reset email could not be delivered. Please try again in a moment.'
+                      : res?.message || 'Check your email for the reset code.';
+                    setResetNotice(message);
+                    setResetFallbackOtp(res?.devOtp ?? null);
+                    setResetStep('verify');
+                    toast({ title: res?.emailSent === false ? 'Reset code pending' : 'Reset code sent', description: message });
+                    if (res?.devOtp) {
+                      toast({ title: 'Reset code', description: `Code: ${res.devOtp}` });
+                    }
+                  } catch (error: any) {
+                    toast({
+                      title: 'Reset email failed',
+                      description:
+                        error?.response?.data?.message ||
+                        error?.response?.data?.error ||
+                        'Please try again in a moment.',
+                      variant: 'destructive',
+                    });
                   }
                 }}
               >
@@ -463,14 +504,27 @@ export default function Login() {
                     toast({ title: 'Mismatch', description: 'Passwords do not match.', variant: 'destructive' });
                     return;
                   }
-                  await resetPassword(resetEmail, resetOtp, resetNewPassword);
-                  toast({ title: 'Password updated', description: 'You can now log in.' });
-                  setShowReset(false);
-                  setResetStep('request');
-                  setResetEmail('');
-                  setResetOtp('');
-                  setResetNewPassword('');
-                  setResetConfirmPassword('');
+                  try {
+                    await resetPassword(resetEmail, resetOtp, resetNewPassword);
+                    toast({ title: 'Password updated', description: 'You can now log in.' });
+                    setShowReset(false);
+                    setResetStep('request');
+                    setResetEmail('');
+                    setResetOtp('');
+                    setResetNewPassword('');
+                    setResetConfirmPassword('');
+                    setResetNotice('');
+                    setResetFallbackOtp(null);
+                  } catch (error: any) {
+                    toast({
+                      title: 'Password reset failed',
+                      description:
+                        error?.response?.data?.error ||
+                        error?.response?.data?.message ||
+                        'Please check the code and try again.',
+                      variant: 'destructive',
+                    });
+                  }
                 }}
               >
                 Reset Password

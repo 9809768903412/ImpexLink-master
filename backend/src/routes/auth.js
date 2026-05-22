@@ -486,6 +486,10 @@ router.post('/verify-email', async (req, res, next) => {
         return res.status(400).json({ error: 'Verification not requested' });
       }
       if (user.verificationExpiresAt.getTime() < Date.now()) {
+        await prisma.user.update({
+          where: { userId: user.userId },
+          data: { verificationCodeHash: null, verificationExpiresAt: null },
+        });
         return res.status(400).json({ error: 'Verification code expired' });
       }
       const valid = await bcrypt.compare(String(otp), user.verificationCodeHash);
@@ -511,6 +515,10 @@ router.post('/verify-email', async (req, res, next) => {
       return res.status(400).json({ error: 'Verification not requested' });
     }
     if (pending.verificationExpiresAt.getTime() < Date.now()) {
+      await prisma.pendingRegistration.update({
+        where: { email },
+        data: { verificationCodeHash: null, verificationExpiresAt: null },
+      });
       return res.status(400).json({ error: 'Verification code expired' });
     }
     const valid = await bcrypt.compare(String(otp), pending.verificationCodeHash);
@@ -700,16 +708,37 @@ router.post('/request-password-reset', async (req, res, next) => {
     });
     let emailSent = true;
     let devOtp = null;
+    let emailError = null;
     try {
       await sendPasswordResetEmail(email, resetCode);
     } catch (err) {
       emailSent = false;
+      emailError = sanitizeEmailError(err);
       if (canUseOtpFallback()) {
         devOtp = resetCode;
       }
       console.error('Reset email failed:', err.message || err);
     }
-    return res.json({ ok: true, emailSent, devOtp });
+    if (!emailSent && requireEmailOtpDelivery()) {
+      return res.status(503).json({
+        error: 'Password reset email could not be sent',
+        message: 'The password reset code could not be delivered. Please check the email API settings and try again.',
+        emailError,
+        emailDiagnostics: getEmailDiagnostics(),
+      });
+    }
+    return res.json({
+      ok: true,
+      emailSent,
+      devOtp,
+      emailDiagnostics: emailSent ? undefined : getEmailDiagnostics(),
+      emailError: emailSent ? undefined : emailError,
+      message: emailSent
+        ? 'Please check your email for the reset code.'
+        : devOtp
+          ? 'Email delivery failed. Use the reset code shown below.'
+          : 'Reset code was generated, but email delivery failed. Please try again in a moment.',
+    });
   } catch (err) {
     return next(err);
   }
@@ -732,6 +761,10 @@ router.post('/reset-password', async (req, res, next) => {
       return res.status(400).json({ error: 'Reset not requested' });
     }
     if (user.resetExpiresAt.getTime() < Date.now()) {
+      await prisma.user.update({
+        where: { userId: user.userId },
+        data: { resetCodeHash: null, resetExpiresAt: null },
+      });
       return res.status(400).json({ error: 'Reset code expired' });
     }
     const valid = await bcrypt.compare(String(otp), user.resetCodeHash);
@@ -772,6 +805,10 @@ router.post('/verify-otp', async (req, res, next) => {
       return res.status(400).json({ error: 'OTP not requested' });
     }
     if (user.otpExpiresAt.getTime() < Date.now()) {
+      await prisma.user.update({
+        where: { userId: user.userId },
+        data: { otpCodeHash: null, otpExpiresAt: null },
+      });
       return res.status(400).json({ error: 'OTP expired' });
     }
     const valid = await bcrypt.compare(String(otp), user.otpCodeHash);

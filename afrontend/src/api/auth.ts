@@ -62,7 +62,14 @@ export async function resendVerification(email: string) {
 }
 
 export async function requestPasswordReset(email: string) {
-  const { data } = await apiClient.post<{ ok: boolean }>('/auth/request-password-reset', { email });
+  const { data } = await apiClient.post<{
+    ok: boolean;
+    emailSent?: boolean;
+    devOtp?: string | null;
+    message?: string;
+    emailError?: { message?: string; code?: string; statusCode?: number };
+    emailDiagnostics?: Record<string, unknown>;
+  }>('/auth/request-password-reset', { email });
   return data;
 }
 

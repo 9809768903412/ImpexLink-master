@@ -15,7 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
 
 export default function Register() {
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('+63 ');
@@ -81,7 +82,8 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: Record<string, string> = {};
-    if (!name.trim()) errors.name = 'Full name is required.';
+    if (!firstName.trim()) errors.firstName = 'First name is required.';
+    if (!lastName.trim()) errors.lastName = 'Last name is required.';
     if (!email.trim()) errors.email = 'Email is required.';
     if (email && !email.includes('@')) errors.email = 'Please enter a valid email address.';
     if (!password) errors.password = 'Password is required.';
@@ -112,6 +114,7 @@ export default function Register() {
     setIsLoading(true);
 
     try {
+      const name = `${firstName.trim()} ${lastName.trim()}`.trim();
       const result = await register(name, email, password, phone, role, companyName, proofDoc);
       if (result.ok && result.pending) {
         const notice = getVerificationNotice(result.emailSent, result.devOtp, result.message);
@@ -276,21 +279,39 @@ export default function Register() {
             <CardContent>
               {!requiresVerification ? (
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="John Doe"
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      if (formErrors.name) setFormErrors((prev) => ({ ...prev, name: '' }));
-                    }}
-                    required
-                    autoComplete="name"
-                  />
-                  {formErrors.name && <p className="text-xs text-destructive">{formErrors.name}</p>}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      placeholder="Juan"
+                      value={firstName}
+                      onChange={(e) => {
+                        setFirstName(e.target.value);
+                        if (formErrors.firstName) setFormErrors((prev) => ({ ...prev, firstName: '' }));
+                      }}
+                      required
+                      autoComplete="given-name"
+                    />
+                    {formErrors.firstName && <p className="text-xs text-destructive">{formErrors.firstName}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      placeholder="Dela Cruz"
+                      value={lastName}
+                      onChange={(e) => {
+                        setLastName(e.target.value);
+                        if (formErrors.lastName) setFormErrors((prev) => ({ ...prev, lastName: '' }));
+                      }}
+                      required
+                      autoComplete="family-name"
+                    />
+                    {formErrors.lastName && <p className="text-xs text-destructive">{formErrors.lastName}</p>}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
