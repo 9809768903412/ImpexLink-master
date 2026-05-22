@@ -37,9 +37,49 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, onClick, disabled, ...props }, ref) => {
+    const [isClickPending, setIsClickPending] = React.useState(false);
+    const pendingRef = React.useRef(false);
+    const releaseTimerRef = React.useRef<number | null>(null);
+    React.useEffect(() => {
+      return () => {
+        if (releaseTimerRef.current) {
+          window.clearTimeout(releaseTimerRef.current);
+        }
+      };
+    }, []);
     const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
+    const handleClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
+      if (pendingRef.current || disabled) {
+        event.preventDefault();
+        return;
+      }
+      const result = (onClick as ((event: React.MouseEvent<HTMLButtonElement>) => unknown) | undefined)?.(event);
+      if (result && typeof (result as Promise<unknown>).then === "function") {
+        pendingRef.current = true;
+        setIsClickPending(true);
+        (result as Promise<unknown>).finally(() => {
+          pendingRef.current = false;
+          setIsClickPending(false);
+        });
+      } else {
+        pendingRef.current = true;
+        releaseTimerRef.current = window.setTimeout(() => {
+          pendingRef.current = false;
+          releaseTimerRef.current = null;
+        }, 500);
+      }
+    };
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        onClick={handleClick}
+        disabled={!asChild ? disabled || isClickPending : undefined}
+        aria-disabled={asChild ? disabled || isClickPending || undefined : undefined}
+        {...props}
+      />
+    );
   },
 );
 Button.displayName = "Button";

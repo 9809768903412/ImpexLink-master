@@ -128,7 +128,9 @@ export default function SettingsPage() {
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userStatusFilter, setUserStatusFilter] = useState('all');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const pendingClients = users.filter((u) => u.role === 'client' && String(u.status).toLowerCase() !== 'active');
+  const clientAccounts = users.filter((u) => u.role === 'client');
+  const companyLinkedClientAccounts = clientAccounts.filter((u) => Boolean(u.companyName || u.clientId));
+  const pendingClients = clientAccounts.filter((u) => String(u.status).toLowerCase() !== 'active');
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = users.filter((u) => {
     const matchesSearch =
@@ -965,6 +967,23 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
+                <div className="grid gap-3 border-b bg-background p-4 md:grid-cols-3">
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm text-muted-foreground">Client Accounts</p>
+                    <p className="mt-1 text-2xl font-semibold">{clientAccounts.length}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Login accounts with the Client role</p>
+                  </div>
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm text-muted-foreground">Company-Linked Accounts</p>
+                    <p className="mt-1 text-2xl font-semibold">{companyLinkedClientAccounts.length}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Client accounts tied to a company record</p>
+                  </div>
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm text-muted-foreground">Staff Accounts</p>
+                    <p className="mt-1 text-2xl font-semibold">{users.length - clientAccounts.length}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Internal Impex users and project roles</p>
+                  </div>
+                </div>
                 <div className="border-b bg-muted/20 p-4">
                   <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <Tabs value={userView} onValueChange={(v) => setUserView(v as 'active' | 'archived')}>
@@ -1015,6 +1034,7 @@ export default function SettingsPage() {
                     <TableRow>
                       <TableHead>User</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Client / Company</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -1023,7 +1043,7 @@ export default function SettingsPage() {
                   <TableBody>
                     {filteredUsers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                           No users found.
                         </TableCell>
                       </TableRow>
@@ -1050,6 +1070,18 @@ export default function SettingsPage() {
                           </div>
                         </TableCell>
                         <TableCell>{u.email}</TableCell>
+                        <TableCell>
+                          {u.role === 'client' ? (
+                            <div>
+                              <p className="text-sm font-medium">{u.companyName || 'No company linked'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {u.clientId ? `Company record #${u.clientId}` : 'Client account only'}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Staff account</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Select
                             value={u.role}

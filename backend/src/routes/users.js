@@ -74,6 +74,17 @@ router.get('/', requireAdmin, async (req, res, next) => {
       }),
       prisma.user.count({ where }),
     ]);
+    const clientEmails = users
+      .filter((user) => extractRoleNames(user).includes('CLIENT'))
+      .map((user) => user.email)
+      .filter(Boolean);
+    const clientRecords = clientEmails.length
+      ? await prisma.client.findMany({
+          where: { deletedAt: null, email: { in: clientEmails } },
+          select: { clientId: true, clientName: true, email: true },
+        })
+      : [];
+    const clientsByEmail = new Map(clientRecords.map((client) => [String(client.email || '').toLowerCase(), client]));
     const data = users.map((user) => ({
       id: user.userId.toString(),
       name: user.fullName,
@@ -86,6 +97,8 @@ router.get('/', requireAdmin, async (req, res, next) => {
       phone: user.phone || null,
       avatarUrl: user.avatarUrl || null,
       proofDocUrl: user.proofDocUrl || null,
+      companyName: clientsByEmail.get(String(user.email || '').toLowerCase())?.clientName || null,
+      clientId: clientsByEmail.get(String(user.email || '').toLowerCase())?.clientId?.toString() || null,
     }));
     if (pagination) {
       return res.json(buildPaginatedResponse(data, total, pagination.page, pagination.pageSize));

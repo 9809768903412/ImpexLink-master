@@ -769,6 +769,10 @@ router.post('/reset-password', async (req, res, next) => {
     }
     const valid = await bcrypt.compare(String(otp), user.resetCodeHash);
     if (!valid) return res.status(401).json({ error: 'Invalid reset code' });
+    const matchesCurrentPassword = await bcrypt.compare(String(newPassword), user.passwordHash);
+    if (matchesCurrentPassword) {
+      return res.status(400).json({ error: 'New password must be different from your current password' });
+    }
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
       where: { userId: user.userId },

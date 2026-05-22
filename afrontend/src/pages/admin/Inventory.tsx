@@ -101,6 +101,10 @@ export default function InventoryPage() {
     () => getCache<InventoryItem[]>('inventory') || []
   );
   const [loadingInventory, setLoadingInventory] = useState(false);
+  const [isCreatingItem, setIsCreatingItem] = useState(false);
+  const [isSavingItem, setIsSavingItem] = useState(false);
+  const [isAdjustingStock, setIsAdjustingStock] = useState(false);
+  const [isSavingStockAction, setIsSavingStockAction] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [newItem, setNewItem] = useState({
     name: '',
@@ -284,12 +288,14 @@ export default function InventoryPage() {
   };
 
   const handleCreateItem = async () => {
+    if (isCreatingItem) return;
     const errors = validateItem(newItem);
     setNewItemErrors(errors);
     if (Object.keys(errors).length > 0) {
       toast({ title: 'Fix validation errors', description: 'Please review the highlighted fields.', variant: 'destructive' });
       return;
     }
+    setIsCreatingItem(true);
     try {
       await apiClient.post('/inventory', {
         itemName: newItem.name,
@@ -314,8 +320,14 @@ export default function InventoryPage() {
         supplierId: '',
       });
       setNewItemErrors({});
-    } catch (err) {
-      toast({ title: 'Failed to add item', description: 'Please try again.', variant: 'destructive' });
+    } catch (err: any) {
+      toast({
+        title: 'Failed to add item',
+        description: err?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCreatingItem(false);
     }
   };
 
@@ -338,12 +350,14 @@ export default function InventoryPage() {
   };
 
   const handleSaveEdit = async () => {
+    if (isSavingItem) return;
     const errors = validateEditItem(editItem);
     setEditItemErrors(errors);
     if (Object.keys(errors).length > 0) {
       toast({ title: 'Fix validation errors', description: 'Please review the highlighted fields.', variant: 'destructive' });
       return;
     }
+    setIsSavingItem(true);
     try {
       await apiClient.put(`/inventory/${editItem.id}`, {
         itemName: editItem.name,
@@ -357,8 +371,14 @@ export default function InventoryPage() {
       await reloadTransactions();
       toast({ title: 'Item updated', description: `${editItem.name} was updated.` });
       setIsEditOpen(false);
-    } catch (err) {
-      toast({ title: 'Failed to update item', description: 'Please try again.', variant: 'destructive' });
+    } catch (err: any) {
+      toast({
+        title: 'Failed to update item',
+        description: err?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingItem(false);
     }
   };
 
@@ -366,6 +386,7 @@ export default function InventoryPage() {
   const [editAdjustNotes, setEditAdjustNotes] = useState('');
 
   const handleAdjustmentFromEdit = async () => {
+    if (isAdjustingStock) return;
     if (!canEditItemInfo) return;
     const qtyValue = Number(editAdjustQty);
     if (!Number.isFinite(qtyValue) || qtyValue < 0) {
@@ -376,6 +397,7 @@ export default function InventoryPage() {
       toast({ title: 'Missing reference', description: 'Reason/notes are required.', variant: 'destructive' });
       return;
     }
+    setIsAdjustingStock(true);
     try {
       await apiClient.put(`/inventory/${editItem.id}/stock`, {
         newBalance: qtyValue,
@@ -387,8 +409,14 @@ export default function InventoryPage() {
       toast({ title: 'Stock adjusted', description: `${editItem.name} updated.` });
       setEditAdjustQty('');
       setEditAdjustNotes('');
-    } catch (err) {
-      toast({ title: 'Adjustment failed', description: 'Please try again.', variant: 'destructive' });
+    } catch (err: any) {
+      toast({
+        title: 'Adjustment failed',
+        description: err?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAdjustingStock(false);
     }
   };
 
@@ -416,6 +444,7 @@ export default function InventoryPage() {
   };
 
   const handleStockAction = async () => {
+    if (isSavingStockAction) return;
     if (!stockAction.item) return;
     const qtyValue = Number(stockAction.qty);
     if (!Number.isFinite(qtyValue) || qtyValue <= 0) {
@@ -442,6 +471,7 @@ export default function InventoryPage() {
         : stockAction.type === 'issue'
           ? 'ISSUE'
           : 'ADJUSTMENT';
+    setIsSavingStockAction(true);
     try {
       await apiClient.put(`/inventory/${stockAction.item.id}/stock`, {
         qtyChange,
@@ -456,8 +486,14 @@ export default function InventoryPage() {
         description: `${stockAction.item.name} updated successfully.`,
       });
       setStockAction((prev) => ({ ...prev, open: false }));
-    } catch (err) {
-      toast({ title: 'Update failed', description: 'Please try again.', variant: 'destructive' });
+    } catch (err: any) {
+      toast({
+        title: 'Update failed',
+        description: err?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingStockAction(false);
     }
   };
 
@@ -921,11 +957,11 @@ export default function InventoryPage() {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setStockAction((prev) => ({ ...prev, open: false }))}>
+            <Button variant="outline" onClick={() => setStockAction((prev) => ({ ...prev, open: false }))} disabled={isSavingStockAction}>
               Cancel
             </Button>
-            <Button onClick={handleStockAction}>
-              Save
+            <Button onClick={handleStockAction} disabled={isSavingStockAction}>
+              {isSavingStockAction ? 'Saving...' : 'Save'}
             </Button>
           </div>
         </DialogContent>
@@ -1073,8 +1109,10 @@ export default function InventoryPage() {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateItem}>Create Item</Button>
+            <Button variant="outline" onClick={() => setIsAddOpen(false)} disabled={isCreatingItem}>Cancel</Button>
+            <Button onClick={handleCreateItem} disabled={isCreatingItem}>
+              {isCreatingItem ? 'Creating...' : 'Create Item'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1231,15 +1269,17 @@ export default function InventoryPage() {
                 </Select>
               </div>
               <div className="flex justify-end">
-                <Button variant="outline" onClick={handleAdjustmentFromEdit} disabled={!canEditItemInfo}>
-                  Apply Adjustment
+                <Button variant="outline" onClick={handleAdjustmentFromEdit} disabled={!canEditItemInfo || isAdjustingStock}>
+                  {isAdjustingStock ? 'Applying...' : 'Apply Adjustment'}
                 </Button>
               </div>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveEdit} disabled={!canEditItemInfo}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSavingItem}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={!canEditItemInfo || isSavingItem}>
+              {isSavingItem ? 'Saving...' : 'Save Changes'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
