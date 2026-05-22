@@ -124,13 +124,12 @@ export default function SettingsPage() {
   const [isResendingVerify, setIsResendingVerify] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState<{ id: string; name: string } | null>(null);
+  const [accountDetailsUser, setAccountDetailsUser] = useState<UserType | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState('all');
   const [userStatusFilter, setUserStatusFilter] = useState('all');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const clientAccounts = users.filter((u) => u.role === 'client');
-  const companyLinkedClientAccounts = clientAccounts.filter((u) => Boolean(u.companyName || u.clientId));
-  const pendingClients = clientAccounts.filter((u) => String(u.status).toLowerCase() !== 'active');
+  const pendingClients = users.filter((u) => u.role === 'client' && String(u.status).toLowerCase() !== 'active');
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = users.filter((u) => {
     const matchesSearch =
@@ -967,23 +966,6 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
-                <div className="grid gap-3 border-b bg-background p-4 md:grid-cols-3">
-                  <div className="rounded-lg border p-4">
-                    <p className="text-sm text-muted-foreground">Client Accounts</p>
-                    <p className="mt-1 text-2xl font-semibold">{clientAccounts.length}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Login accounts with the Client role</p>
-                  </div>
-                  <div className="rounded-lg border p-4">
-                    <p className="text-sm text-muted-foreground">Company-Linked Accounts</p>
-                    <p className="mt-1 text-2xl font-semibold">{companyLinkedClientAccounts.length}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Client accounts tied to a company record</p>
-                  </div>
-                  <div className="rounded-lg border p-4">
-                    <p className="text-sm text-muted-foreground">Staff Accounts</p>
-                    <p className="mt-1 text-2xl font-semibold">{users.length - clientAccounts.length}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Internal Impex users and project roles</p>
-                  </div>
-                </div>
                 <div className="border-b bg-muted/20 p-4">
                   <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <Tabs value={userView} onValueChange={(v) => setUserView(v as 'active' | 'archived')}>
@@ -1034,7 +1016,6 @@ export default function SettingsPage() {
                     <TableRow>
                       <TableHead>User</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead>Client / Company</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -1043,7 +1024,7 @@ export default function SettingsPage() {
                   <TableBody>
                     {filteredUsers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                           No users found.
                         </TableCell>
                       </TableRow>
@@ -1070,18 +1051,6 @@ export default function SettingsPage() {
                           </div>
                         </TableCell>
                         <TableCell>{u.email}</TableCell>
-                        <TableCell>
-                          {u.role === 'client' ? (
-                            <div>
-                              <p className="text-sm font-medium">{u.companyName || 'No company linked'}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {u.clientId ? `Company record #${u.clientId}` : 'Client account only'}
-                              </p>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">Staff account</span>
-                          )}
-                        </TableCell>
                         <TableCell>
                           <Select
                             value={u.role}
@@ -1127,6 +1096,13 @@ export default function SettingsPage() {
                             </Button>
                           ) : (
                             <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setAccountDetailsUser(u)}
+                              >
+                                Details
+                              </Button>
                               {!isPm && !promoteBlocked && (
                                 <Button
                                   variant="outline"
@@ -1311,6 +1287,50 @@ export default function SettingsPage() {
             >
               Archive
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!accountDetailsUser} onOpenChange={() => setAccountDetailsUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Account Details</DialogTitle>
+            <DialogDescription>
+              {accountDetailsUser?.role === 'client'
+                ? 'Client account and linked company information.'
+                : 'Staff account information and assigned system role.'}
+            </DialogDescription>
+          </DialogHeader>
+          {accountDetailsUser && (
+            <div className="space-y-4">
+              <div className="rounded-lg border p-4">
+                <p className="text-sm text-muted-foreground">User</p>
+                <p className="mt-1 font-medium">{accountDetailsUser.name}</p>
+                <p className="text-sm text-muted-foreground">{accountDetailsUser.email}</p>
+              </div>
+              {accountDetailsUser.role === 'client' ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm text-muted-foreground">Client Company</p>
+                    <p className="mt-1 font-medium">{accountDetailsUser.companyName || 'No company linked'}</p>
+                  </div>
+                  <div className="rounded-lg border p-4">
+                    <p className="text-sm text-muted-foreground">Company Record</p>
+                    <p className="mt-1 font-medium">
+                      {accountDetailsUser.clientId ? `#${accountDetailsUser.clientId}` : 'Client account only'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border p-4">
+                  <p className="text-sm text-muted-foreground">Staff Role</p>
+                  <p className="mt-1 font-medium">{ROLE_LABELS[accountDetailsUser.role] || accountDetailsUser.role}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAccountDetailsUser(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
