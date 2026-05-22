@@ -67,14 +67,26 @@ router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
     if (email && !isEmail(email)) {
       return res.status(400).json({ error: 'Invalid email' });
     }
+    const duplicate = await prisma.client.findFirst({
+      where: {
+        deletedAt: null,
+        OR: [
+          { clientName: { equals: String(clientName).trim(), mode: 'insensitive' } },
+          ...(email ? [{ email: { equals: String(email).trim(), mode: 'insensitive' } }] : []),
+        ],
+      },
+    });
+    if (duplicate) {
+      return res.status(409).json({ error: 'A company with the same name or email already exists' });
+    }
     const client = await prisma.client.create({
       data: {
-        clientName,
-        address,
-        email,
-        contactPerson,
-        phone,
-        tin,
+        clientName: String(clientName).trim(),
+        address: address || null,
+        email: email ? String(email).trim() : null,
+        contactPerson: contactPerson || null,
+        phone: phone || null,
+        tin: tin || null,
         visibilityScope: String(visibilityScope || 'company').toUpperCase() === 'USER' ? 'USER' : 'COMPANY',
       },
     });

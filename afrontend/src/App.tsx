@@ -15,6 +15,7 @@ import MaterialRequestsPage from "@/pages/admin/MaterialRequests";
 import ProjectsPage from "@/pages/admin/Projects";
 import ClientOrdersPage from "@/pages/admin/ClientOrders";
 import PurchaseOrdersPage from "@/pages/admin/PurchaseOrders";
+import CompaniesPage from "@/pages/admin/Companies";
 import SuppliersPage from "@/pages/admin/Suppliers";
 import LogisticsPage from "@/pages/admin/Logistics";
 import ReportsPage from "@/pages/admin/Reports";
@@ -114,6 +115,7 @@ function AppRoutes() {
       <Route path="/admin/requests" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewMaterialRequests)}><AdminLayout><MaterialRequestsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewClientOrders)}><AdminLayout><ClientOrdersPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/purchase-orders" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewPurchaseOrders)}><AdminLayout><PurchaseOrdersPage /></AdminLayout></ProtectedRoute>} />
+      <Route path="/admin/companies" element={<ProtectedRoute allowedRoles={['admin']}><AdminLayout><CompaniesPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/suppliers" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewSuppliers)}><AdminLayout><SuppliersPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/logistics" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewLogistics)}><AdminLayout><LogisticsPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/admin/payments" element={<ProtectedRoute allowedRoles={ADMIN_NON_DRIVER_ROLES.filter(canViewPayments)}><AdminLayout><PaymentsPage /></AdminLayout></ProtectedRoute>} />
