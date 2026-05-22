@@ -545,7 +545,7 @@ export default function LogisticsPage() {
       <div>
         <h2 className="text-2xl font-bold text-foreground">Logistics & Deliveries</h2>
         {isDeliveryGuy && !isAdmin && (
-          <p className="text-muted-foreground">Only deliveries assigned to you are shown here.</p>
+          <p className="text-muted-foreground">Delivery records available for driver updates are shown here.</p>
         )}
       </div>
       {canCreateDeliveryRequest && (

@@ -163,7 +163,7 @@ async function buildDeliveryScope(req) {
     scopes.push({ clientOrder: { assignedSalesAgentId: req.user.userId } });
   }
 
-  if (roleList.includes('DRIVER')) {
+  if (roleList.includes('DRIVER') || roleList.includes('DELIVERY_GUY')) {
     return {};
   }
 

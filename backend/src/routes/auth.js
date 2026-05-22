@@ -74,13 +74,25 @@ function getPrimaryRoleName(user, fallbackRoleName) {
   return collectRoleNames(user, fallbackRoleName)[0] || 'CLIENT';
 }
 
+function cleanEnvValue(value) {
+  return String(value || '').trim().replace(/^['"]|['"]$/g, '').trim();
+}
+
+function envFlag(key) {
+  return cleanEnvValue(process.env[key]).toLowerCase() === 'true';
+}
+
+function envValue(key) {
+  return cleanEnvValue(process.env[key]);
+}
+
 function canUseOtpFallback() {
-  if (process.env.REQUIRE_EMAIL_OTP_DELIVERY === 'true') return false;
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_OTP_IN_PRODUCTION !== 'true') return false;
+  if (envFlag('REQUIRE_EMAIL_OTP_DELIVERY')) return false;
+  if (envFlag('ALLOW_TEST_VERIFICATION')) return true;
+  if (envValue('NODE_ENV') === 'production' && !envFlag('ALLOW_DEV_OTP_IN_PRODUCTION')) return false;
   return (
-    (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP !== 'false') ||
-    process.env.ALLOW_DEV_OTP === 'true' ||
-    process.env.ALLOW_TEST_VERIFICATION === 'true'
+    (envValue('NODE_ENV') !== 'production' && envValue('ALLOW_DEV_OTP') !== 'false') ||
+    envFlag('ALLOW_DEV_OTP')
   );
 }
 

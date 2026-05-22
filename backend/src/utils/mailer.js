@@ -52,13 +52,7 @@ function hasEmailDeliveryConfig() {
 function getEmailProvider() {
   const configured = cleanEnvValue(process.env.EMAIL_PROVIDER || process.env.MAIL_PROVIDER).toLowerCase();
   if (configured) return configured;
-  if (
-    firstEnv('SMTP_HOST', 'MAIL_HOST', 'EMAIL_HOST') ||
-    firstEnv('SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER', 'EMAIL_USERNAME')
-  ) {
-    return 'smtp';
-  }
-  return 'resend';
+  return 'smtp';
 }
 
 function getResendClient() {
@@ -100,6 +94,7 @@ function getSmtpConfig() {
     host: firstEnv('SMTP_HOST', 'MAIL_HOST', 'EMAIL_HOST') || 'smtp.hostinger.com',
     port,
     secure,
+    forceIpv4: cleanEnvValue(process.env.SMTP_FORCE_IPV4 || process.env.MAIL_FORCE_IPV4 || 'true') !== 'false',
     user: firstEnv('SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER', 'EMAIL_USERNAME'),
     pass: firstEnv('SMTP_PASS', 'SMTP_PASSWORD', 'MAIL_PASS', 'MAIL_PASSWORD', 'EMAIL_PASS', 'EMAIL_PASSWORD'),
   };
@@ -121,10 +116,14 @@ function getSmtpTransporter() {
     host: config.host,
     port: config.port,
     secure: config.secure,
+    family: config.forceIpv4 ? 4 : undefined,
     requireTLS: !config.secure && config.port === 587,
     auth: {
       user: config.user,
       pass: config.pass,
+    },
+    tls: {
+      servername: config.host,
     },
     connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
     greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
@@ -149,6 +148,7 @@ async function sendEmail({ to, subject, text, html }) {
     smtpHost: provider === 'smtp' ? smtpConfig.host : null,
     smtpPort: provider === 'smtp' ? smtpConfig.port : null,
     smtpSecure: provider === 'smtp' ? smtpConfig.secure : null,
+    smtpForceIpv4: provider === 'smtp' ? smtpConfig.forceIpv4 : null,
     hasSmtpUser: provider === 'smtp' ? Boolean(smtpConfig.user) : null,
     hasSmtpPass: provider === 'smtp' ? Boolean(smtpConfig.pass) : null,
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -170,6 +170,12 @@ async function sendEmail({ to, subject, text, html }) {
         html,
         envelope: smtpConfig.user ? { from: smtpConfig.user, to } : undefined,
       });
+      if (Array.isArray(result?.rejected) && result.rejected.length > 0) {
+        throw new Error(`SMTP rejected recipient(s): ${result.rejected.join(', ')}`);
+      }
+      if (Array.isArray(result?.accepted) && result.accepted.length === 0) {
+        throw new Error('SMTP did not accept any recipient for delivery');
+      }
       console.log('[mailer] send success', {
         provider,
         to,

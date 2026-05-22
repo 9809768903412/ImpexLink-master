@@ -31,9 +31,17 @@ export default function Register() {
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [otp, setOtp] = useState('');
   const [isResending, setIsResending] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState('');
+  const [verificationEmailSent, setVerificationEmailSent] = useState<boolean | null>(null);
+  const [fallbackOtp, setFallbackOtp] = useState<string | null>(null);
   const { register, verifyEmail } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const getVerificationNotice = (emailSent?: boolean, devOtp?: string | null, fallback?: string) => {
+    if (emailSent !== false) return fallback || 'Check your email for a verification code.';
+    if (devOtp) return 'Email delivery is unavailable right now. Use the verification code shown below.';
+    return 'Your registration was saved, but the verification email could not be sent. Please try Resend Code in a moment or ask an admin to check the mail settings.';
+  };
   const getStrength = (value: string) => {
     let score = 0;
     if (value.length >= 8) score += 1;
@@ -106,20 +114,20 @@ export default function Register() {
     try {
       const result = await register(name, email, password, phone, role, companyName, proofDoc);
       if (result.ok && result.pending) {
+        const notice = getVerificationNotice(result.emailSent, result.devOtp, result.message);
         toast({
           title: 'Registration submitted',
-          description:
-            result.emailSent === false
-              ? result.emailError?.message || result.message || 'The account was saved, but email delivery failed.'
-              : result.message || 'Check your email for a verification code.',
-          variant: result.emailSent === false && !result.devOtp ? 'destructive' : undefined,
+          description: notice,
         });
         if (result.devOtp) {
           toast({
-            title: 'Verification code (dev)',
+            title: 'Verification code',
             description: `Code: ${result.devOtp}`,
           });
         }
+        setVerificationNotice(notice);
+        setVerificationEmailSent(result.emailSent !== false);
+        setFallbackOtp(result.devOtp ?? null);
         setRequiresVerification(true);
         setFormErrors({});
         return;
@@ -188,19 +196,20 @@ export default function Register() {
     setIsResending(true);
     try {
       const res = await resendVerification(email);
+      const notice = getVerificationNotice(res?.emailSent, (res as any)?.devOtp, res?.message || 'Please check your email for the verification code.');
       toast({
-        title: 'Code resent',
-        description: res?.emailSent === false
-          ? res?.emailError?.message || res?.message || 'Email delivery failed. Use the code shown below.'
-          : res?.message || 'Please check your email for the verification code.',
-        variant: res?.emailSent === false && !(res as any)?.devOtp ? 'destructive' : undefined,
+        title: res?.emailSent === false ? 'Verification still pending' : 'Code resent',
+        description: notice,
       });
       if ((res as any)?.devOtp) {
         toast({
-          title: 'Verification code (dev)',
+          title: 'Verification code',
           description: `Code: ${(res as any).devOtp}`,
         });
       }
+      setVerificationNotice(notice);
+      setVerificationEmailSent(res?.emailSent !== false);
+      setFallbackOtp((res as any)?.devOtp ?? null);
     } catch {
       toast({
         title: 'Resend failed',
@@ -410,6 +419,23 @@ export default function Register() {
               </form>
               ) : (
                 <form onSubmit={handleVerify} className="space-y-4">
+                  <div
+                    className={`rounded-lg border p-3 text-sm ${
+                      verificationEmailSent === false
+                        ? 'border-amber-200 bg-amber-50 text-amber-900'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                    }`}
+                  >
+                    <p className="font-medium">
+                      {verificationEmailSent === false ? 'Email delivery is still pending' : `Verification code sent to ${email}`}
+                    </p>
+                    {verificationNotice && <p className="mt-1 text-xs leading-relaxed">{verificationNotice}</p>}
+                    {fallbackOtp && (
+                      <div className="mt-3 rounded-md bg-white/80 px-3 py-2 font-mono text-lg font-semibold tracking-[0.25em]">
+                        {fallbackOtp}
+                      </div>
+                    )}
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="otp">Email Verification Code</Label>
                     <Input
@@ -427,7 +453,7 @@ export default function Register() {
                     {isLoading ? 'Verifying...' : 'VERIFY EMAIL'}
                   </Button>
                   <div className="text-center text-sm text-muted-foreground">
-                    Didn’t receive the code?{' '}
+                    Didn't receive the code?{' '}
                     <button
                       type="button"
                       onClick={handleResend}
