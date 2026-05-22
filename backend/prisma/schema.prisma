@@ -664,3 +664,15 @@ model StockTransaction {
   @@index([userId])
   @@map("stock_transactions")
 }
+
+model UploadedFile {
+  fileId       Int      @id @default(autoincrement()) @map("file_id")
+  storageKey   String   @unique @db.VarChar(255) @map("storage_key")
+  originalName String   @db.VarChar(255) @map("original_name")
+  mimeType     String   @db.VarChar(120) @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  data         Bytes
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("uploaded_files")
+}

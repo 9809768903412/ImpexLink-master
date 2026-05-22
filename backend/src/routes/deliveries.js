@@ -10,6 +10,7 @@ const {
   resolveClientAccess,
   buildNestedClientOrderScope,
 } = require('../utils/clientVisibility');
+const { mirrorUploadedFile } = require('../utils/uploadedFiles');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -655,6 +656,7 @@ router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DE
     }
 
     const proofPath = `/uploads/deliveries/${req.file.filename}`;
+    await mirrorUploadedFile({ file: req.file, fileUrl: proofPath });
     const delivery = await prisma.delivery.update({
       where: { deliveryId: existing.deliveryId },
       data: { proofOfDeliveryUrl: proofPath },

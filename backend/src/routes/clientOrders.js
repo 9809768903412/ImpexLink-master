@@ -12,6 +12,7 @@ const {
   canAccessClientOwnedRecord,
 } = require('../utils/clientVisibility');
 const { calculateDeliveryPlan } = require('../utils/deliveryRules');
+const { mirrorUploadedFile } = require('../utils/uploadedFiles');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -798,6 +799,9 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
       return res.status(403).json({ error: 'Forbidden' });
     }
     const paymentProofUrl = req.file ? `/uploads/payments/${req.file.filename}` : null;
+    if (req.file && paymentProofUrl) {
+      await mirrorUploadedFile({ file: req.file, fileUrl: paymentProofUrl });
+    }
     const updated = await prisma.clientOrder.update({
       where: { clientOrderId: Number(req.params.id) },
       data: {

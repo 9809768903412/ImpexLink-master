@@ -16,6 +16,7 @@ const {
 } = require('../utils/mailer');
 const crypto = require('crypto');
 const { resolveLinkedClient, inferCompanyNameFromUser } = require('../utils/clientVisibility');
+const { mirrorUploadedFile } = require('../utils/uploadedFiles');
 
 const router = express.Router();
 
@@ -215,6 +216,9 @@ router.post('/register', upload.single('proofDoc'), async (req, res, next) => {
     if (existing) return res.status(409).json({ error: 'Email already in use' });
 
     const proofDocUrl = req.file ? `/pending-proofs/${req.file.filename}` : null;
+    if (req.file && proofDocUrl) {
+      await mirrorUploadedFile({ file: req.file, fileUrl: proofDocUrl });
+    }
     const passwordHash = await bcrypt.hash(password, 10);
     const verificationCode = String(crypto.randomInt(100000, 999999));
     const verificationCodeHash = await bcrypt.hash(verificationCode, 10);

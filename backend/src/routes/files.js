@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const { findUploadedFileByPath } = require('../utils/uploadedFiles');
 
 const router = express.Router();
 
@@ -67,25 +68,40 @@ function resolveAllowedFile(filePath) {
   return path.resolve(root.dir, relativePath);
 }
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res, next) => {
   if (!req.query.path) {
     return res.status(400).json({ error: 'Missing file path' });
   }
-  const absolutePath = resolveAllowedFile(req.query.path);
-  if (!absolutePath) {
-    return res.status(400).json({ error: 'Invalid file path' });
-  }
-  if (!fs.existsSync(absolutePath)) {
-    return res.status(404).json({ error: 'File not found' });
-  }
+  try {
+    const absolutePath = resolveAllowedFile(req.query.path);
+    if (!absolutePath) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    if (!fs.existsSync(absolutePath)) {
+      const mirrored = await findUploadedFileByPath(req.query.path);
+      if (!mirrored) {
+        return res.status(404).json({
+          error: 'File not found',
+          message: 'This attachment was not found in local storage or the durable attachment store.',
+        });
+      }
+      res.setHeader('Content-Disposition', `inline; filename="${String(mirrored.originalName || 'attachment').replace(/"/g, '')}"`);
+      res.setHeader('Content-Type', mirrored.mimeType || 'application/octet-stream');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      return res.send(Buffer.from(mirrored.data));
+    }
 
-  res.setHeader('Content-Disposition', `inline; filename="${path.basename(absolutePath).replace(/"/g, '')}"`);
-  if (absolutePath.toLowerCase().endsWith('.heic') || absolutePath.toLowerCase().endsWith('.heif')) {
-    res.type('image/heic');
+    res.setHeader('Content-Disposition', `inline; filename="${path.basename(absolutePath).replace(/"/g, '')}"`);
+    if (absolutePath.toLowerCase().endsWith('.heic') || absolutePath.toLowerCase().endsWith('.heif')) {
+      res.type('image/heic');
+    }
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.sendFile(absolutePath);
+  } catch (error) {
+    return next(error);
   }
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'private, max-age=300');
-  return res.sendFile(absolutePath);
 });
 
 module.exports = router;
