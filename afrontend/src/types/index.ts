@@ -234,6 +234,20 @@ export interface Delivery {
   loadKg?: number | null;
   thirdPartyProvider?: string | null;
   thirdPartyReference?: string | null;
+  latestLocation?: DeliveryGpsLocation | null;
+}
+
+export interface DeliveryGpsLocation {
+  id: string;
+  deliveryId: string;
+  deviceId?: string | null;
+  lat: number;
+  lng: number;
+  speedKmph?: number | null;
+  heading?: number | null;
+  satellites?: number | null;
+  recordedAt: string;
+  createdAt?: string;
 }
 
 // Quote Request Types

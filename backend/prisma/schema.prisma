@@ -488,10 +488,30 @@ model Delivery {
 
   clientOrder ClientOrder? @relation(fields: [clientOrderId], references: [clientOrderId])
   assignedDeliveryGuy User? @relation("DeliveryAssignedDeliveryGuy", fields: [assignedDeliveryGuyId], references: [userId])
+  gpsLocations DeliveryGpsLocation[]
 
   @@index([clientOrderId])
   @@index([assignedDeliveryGuyId])
   @@map("deliveries")
+}
+
+model DeliveryGpsLocation {
+  locationId Int      @id @default(autoincrement()) @map("location_id")
+  deliveryId Int      @map("delivery_id")
+  deviceId   String?  @db.VarChar(120) @map("device_id")
+  latitude   Float
+  longitude  Float
+  speedKmph  Float?   @map("speed_kmph")
+  heading    Float?
+  satellites Int?
+  recordedAt DateTime @default(now()) @map("recorded_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  delivery Delivery @relation(fields: [deliveryId], references: [deliveryId], onDelete: Cascade)
+
+  @@index([deliveryId, recordedAt])
+  @@index([deviceId])
+  @@map("delivery_gps_locations")
 }
 
 model AuditLog {

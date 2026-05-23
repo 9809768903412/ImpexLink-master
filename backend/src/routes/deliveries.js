@@ -13,7 +13,6 @@ const {
 const { mirrorUploadedFile } = require('../utils/uploadedFiles');
 
 const router = express.Router();
-router.use(requireAuth);
 
 const proofDir = path.join(__dirname, '..', '..', 'uploads', 'deliveries');
 if (!fs.existsSync(proofDir)) {
@@ -40,6 +39,57 @@ const uploadProof = multer({
     cb(null, true);
   },
 });
+
+function cleanEnv(value) {
+  return String(value || '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+function getGpsDeviceToken() {
+  return cleanEnv(process.env.GPS_DEVICE_TOKEN || process.env.DELIVERY_GPS_TOKEN || '');
+}
+
+function getRequestGpsToken(req) {
+  const auth = String(req.headers.authorization || '');
+  if (auth.toLowerCase().startsWith('bearer ')) {
+    return auth.slice(7).trim();
+  }
+  return String(req.headers['x-gps-token'] || req.body?.token || req.query?.token || '').trim();
+}
+
+function normalizeGpsLocation(row) {
+  if (!row) return null;
+  return {
+    id: row.locationId?.toString?.() || String(row.locationId),
+    deliveryId: row.deliveryId?.toString?.() || String(row.deliveryId),
+    deviceId: row.deviceId || null,
+    lat: Number(row.latitude),
+    lng: Number(row.longitude),
+    speedKmph: row.speedKmph === null || row.speedKmph === undefined ? null : Number(row.speedKmph),
+    heading: row.heading === null || row.heading === undefined ? null : Number(row.heading),
+    satellites: row.satellites === null || row.satellites === undefined ? null : Number(row.satellites),
+    recordedAt: row.recordedAt?.toISOString?.() || row.recordedAt,
+    createdAt: row.createdAt?.toISOString?.() || row.createdAt,
+  };
+}
+
+function parseGpsNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function assertDeliveryVisible(req, deliveryId) {
+  const scopeWhere = await buildDeliveryScope(req);
+  return prisma.delivery.findFirst({
+    where: {
+      AND: [
+        { deliveryId: Number(deliveryId), deletedAt: null },
+        scopeWhere,
+      ],
+    },
+    select: { deliveryId: true },
+  });
+}
 
 function hasRole(req, role) {
   return getRoleList(req.user).includes(String(role).toUpperCase());
@@ -104,6 +154,22 @@ function deliverySelect(includeOptionalColumns = false) {
           thirdPartyReference: true,
         }
       : {}),
+    deliveryLocations: {
+      orderBy: { recordedAt: 'desc' },
+      take: 1,
+      select: {
+        locationId: true,
+        deliveryId: true,
+        deviceId: true,
+        latitude: true,
+        longitude: true,
+        speedKmph: true,
+        heading: true,
+        satellites: true,
+        recordedAt: true,
+        createdAt: true,
+      },
+    },
     assignedDeliveryGuy: { select: { fullName: true } },
     clientOrder: {
       select: {
@@ -217,8 +283,94 @@ function mapDelivery(d) {
     loadKg: d.loadKg === null || d.loadKg === undefined ? null : Number(d.loadKg),
     thirdPartyProvider: d.thirdPartyProvider || null,
     thirdPartyReference: d.thirdPartyReference || null,
+    latestLocation: normalizeGpsLocation(d.deliveryLocations?.[0]),
   };
 }
+
+router.post('/:id/location', async (req, res, next) => {
+  try {
+    const configuredToken = getGpsDeviceToken();
+    if (!configuredToken) {
+      return res.status(503).json({ error: 'GPS ingestion is not configured. Set GPS_DEVICE_TOKEN in the backend environment.' });
+    }
+    if (getRequestGpsToken(req) !== configuredToken) {
+      return res.status(401).json({ error: 'Invalid GPS device token' });
+    }
+
+    const deliveryId = Number(req.params.id);
+    if (!Number.isInteger(deliveryId) || deliveryId <= 0) {
+      return res.status(400).json({ error: 'Invalid delivery id' });
+    }
+
+    const lat = parseGpsNumber(req.body.lat ?? req.body.latitude);
+    const lng = parseGpsNumber(req.body.lng ?? req.body.longitude);
+    if (lat === null || lat < -90 || lat > 90) {
+      return res.status(400).json({ error: 'Latitude must be between -90 and 90' });
+    }
+    if (lng === null || lng < -180 || lng > 180) {
+      return res.status(400).json({ error: 'Longitude must be between -180 and 180' });
+    }
+
+    const delivery = await prisma.delivery.findFirst({
+      where: { deliveryId, deletedAt: null },
+      select: { deliveryId: true },
+    });
+    if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
+
+    const recordedAtRaw = req.body.recordedAt || req.body.timestamp;
+    const recordedAt = recordedAtRaw ? new Date(recordedAtRaw) : new Date();
+    if (Number.isNaN(recordedAt.getTime())) {
+      return res.status(400).json({ error: 'Invalid recordedAt timestamp' });
+    }
+
+    const satellites = req.body.satellites === undefined || req.body.satellites === null || req.body.satellites === ''
+      ? null
+      : Number(req.body.satellites);
+    if (satellites !== null && (!Number.isInteger(satellites) || satellites < 0)) {
+      return res.status(400).json({ error: 'Satellites must be a non-negative integer' });
+    }
+
+    const row = await prisma.deliveryGpsLocation.create({
+      data: {
+        deliveryId,
+        deviceId: req.body.deviceId ? String(req.body.deviceId).slice(0, 120) : null,
+        latitude: lat,
+        longitude: lng,
+        speedKmph: parseGpsNumber(req.body.speedKmph ?? req.body.speed),
+        heading: parseGpsNumber(req.body.heading ?? req.body.course),
+        satellites,
+        recordedAt,
+      },
+    });
+
+    return res.status(201).json({ location: normalizeGpsLocation(row) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.use(requireAuth);
+
+router.get('/:id/location/latest', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY', 'CLIENT', 'SALES_AGENT', 'PROJECT_MANAGER']), async (req, res, next) => {
+  try {
+    const deliveryId = Number(req.params.id);
+    if (!Number.isInteger(deliveryId) || deliveryId <= 0) {
+      return res.status(400).json({ error: 'Invalid delivery id' });
+    }
+
+    const visible = await assertDeliveryVisible(req, deliveryId);
+    if (!visible) return res.status(404).json({ error: 'Delivery not found' });
+
+    const latest = await prisma.deliveryGpsLocation.findFirst({
+      where: { deliveryId },
+      orderBy: { recordedAt: 'desc' },
+    });
+
+    res.json({ location: normalizeGpsLocation(latest) });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY', 'CLIENT']), async (req, res, next) => {
   try {
