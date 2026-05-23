@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Search, Eye, FileText, Check, Trash2, AlertTriangle, PackageCheck } from 'lucide-react';
+import { Plus, Search, FileText, Trash2, AlertTriangle, PackageCheck } from 'lucide-react';
 import type { PurchaseOrder, POStatus, OrderItem, Supplier, InventoryItem, Order } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { printHtml } from '@/utils/print';
@@ -563,21 +563,28 @@ export default function PurchaseOrdersPage() {
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Approved By</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {poLoading && purchaseOrders.length === 0 ? (
                     Array.from({ length: 6 }).map((_, idx) => (
                       <TableRow key={`sk-${idx}`}>
-                        <TableCell colSpan={8}>
+                        <TableCell colSpan={7}>
                           <Skeleton className="h-6 w-full" />
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     pagedPurchaseOrders.map((po) => (
-                    <TableRow key={po.id} className="relative">
+                    <TableRow
+                      key={po.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      title="Open purchase order details"
+                      onClick={() => {
+                        setSelectedPO(po);
+                        setShowPreview(true);
+                      }}
+                    >
                       <TableCell className="font-medium">{po.poNumber}</TableCell>
                       <TableCell>{po.supplierName}</TableCell>
                       <TableCell>{format(new Date(po.date), 'MMM dd, yyyy')}</TableCell>
@@ -591,19 +598,6 @@ export default function PurchaseOrdersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>{po.approvedBy || '-'}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedPO(po);
-                            setShowPreview(true);
-                          }}
-                        >
-                          <Eye size={16} className="mr-1" />
-                          View
-                        </Button>
-                      </TableCell>
                     </TableRow>
                     ))
                   )}
@@ -633,7 +627,12 @@ export default function PurchaseOrdersPage() {
                     .map((po) => (
                       <div
                         key={po.id}
-                        className="border rounded-lg p-4 flex justify-between items-center"
+                        className="cursor-pointer border rounded-lg p-4 flex justify-between items-center hover:bg-muted/50"
+                        title="Open purchase order details"
+                        onClick={() => {
+                          setSelectedPO(po);
+                          setShowPreview(true);
+                        }}
                       >
                         <div>
                           <p className="font-medium">{po.poNumber}</p>
@@ -641,34 +640,7 @@ export default function PurchaseOrdersPage() {
                         </div>
                         <div className="text-right">
                           <p className="font-medium">₱{po.total.toLocaleString()}</p>
-                          <div className="flex gap-2 mt-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedPO(po);
-                                setShowPreview(true);
-                              }}
-                            >
-                              <Eye size={14} className="mr-1" />
-                              View
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="bg-red-600 hover:bg-red-700 text-white"
-                              onClick={() => handleUpdateStatus(po.id, 'draft')}
-                            >
-                              Reject
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                              onClick={() => handleUpdateStatus(po.id, 'approved')}
-                            >
-                              <Check size={14} className="mr-1" />
-                              Approve
-                            </Button>
-                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">Click to review</p>
                         </div>
                       </div>
                     ))}
