@@ -115,17 +115,21 @@ async function getDeliveryColumnSupport() {
         AND column_name IN ('delivery_method', 'batch_number', 'batch_count', 'load_kg', 'third_party_provider', 'third_party_reference')
     `;
     const found = new Set(rows.map((row) => row.column_name));
+    const gpsRows = await prisma.$queryRaw`
+      SELECT to_regclass('public.delivery_gps_locations') AS table_name
+    `;
     deliveryColumnSupport = {
       batches: optionalColumns.every((column) => found.has(column)),
+      gpsLocations: Boolean(gpsRows?.[0]?.table_name),
     };
   } catch (err) {
     console.error('Delivery optional column check failed:', err.message || err);
-    deliveryColumnSupport = { batches: false };
+    deliveryColumnSupport = { batches: false, gpsLocations: false };
   }
   return deliveryColumnSupport;
 }
 
-function deliverySelect(includeOptionalColumns = false) {
+function deliverySelect(includeOptionalColumns = false, includeGpsLocations = false) {
   return {
     deliveryId: true,
     drNumber: true,
@@ -154,22 +158,26 @@ function deliverySelect(includeOptionalColumns = false) {
           thirdPartyReference: true,
         }
       : {}),
-    deliveryLocations: {
-      orderBy: { recordedAt: 'desc' },
-      take: 1,
-      select: {
-        locationId: true,
-        deliveryId: true,
-        deviceId: true,
-        latitude: true,
-        longitude: true,
-        speedKmph: true,
-        heading: true,
-        satellites: true,
-        recordedAt: true,
-        createdAt: true,
-      },
-    },
+    ...(includeGpsLocations
+      ? {
+          deliveryLocations: {
+            orderBy: { recordedAt: 'desc' },
+            take: 1,
+            select: {
+              locationId: true,
+              deliveryId: true,
+              deviceId: true,
+              latitude: true,
+              longitude: true,
+              speedKmph: true,
+              heading: true,
+              satellites: true,
+              recordedAt: true,
+              createdAt: true,
+            },
+          },
+        }
+      : {}),
     assignedDeliveryGuy: { select: { fullName: true } },
     clientOrder: {
       select: {
@@ -317,6 +325,11 @@ router.post('/:id/location', async (req, res, next) => {
     });
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
 
+    const columnSupport = await getDeliveryColumnSupport();
+    if (!columnSupport.gpsLocations) {
+      return res.status(503).json({ error: 'GPS storage is not ready. Run the delivery GPS migration first.' });
+    }
+
     const recordedAtRaw = req.body.recordedAt || req.body.timestamp;
     const recordedAt = recordedAtRaw ? new Date(recordedAtRaw) : new Date();
     if (Number.isNaN(recordedAt.getTime())) {
@@ -360,6 +373,11 @@ router.get('/:id/location/latest', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRI
 
     const visible = await assertDeliveryVisible(req, deliveryId);
     if (!visible) return res.status(404).json({ error: 'Delivery not found' });
+
+    const columnSupport = await getDeliveryColumnSupport();
+    if (!columnSupport.gpsLocations) {
+      return res.json({ location: null, gpsReady: false });
+    }
 
     const latest = await prisma.deliveryGpsLocation.findFirst({
       where: { deliveryId },
@@ -407,7 +425,7 @@ router.get('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_GUY
     const columnSupport = await getDeliveryColumnSupport();
     const [deliveries, total] = await Promise.all([
       prisma.delivery.findMany({
-        select: deliverySelect(columnSupport.batches),
+        select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
         where,
         skip: pagination ? (pagination.page - 1) * pagination.pageSize : undefined,
         take: pagination ? pagination.pageSize : undefined,
@@ -482,7 +500,7 @@ router.post('/', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, nex
         receiverContactNumber: receiverContactNumber || null,
         notes: notes || null,
       },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
 
     await prisma.auditLog.create({
@@ -521,7 +539,7 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_
 
     const existing = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
     if (!existing) return res.status(404).json({ error: 'Delivery not found' });
 
@@ -585,7 +603,7 @@ router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DELIVERY_
             }
           : {}),
       },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
 
     const updatedStatus = requestedStatus;
@@ -694,7 +712,7 @@ router.post('/:id/confirm', requireRole(['CLIENT']), async (req, res, next) => {
     const columnSupport = await getDeliveryColumnSupport();
     const delivery = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
     if (delivery.status !== 'IN_TRANSIT' && delivery.status !== 'DELAYED') {
@@ -718,7 +736,7 @@ router.post('/:id/confirm', requireRole(['CLIENT']), async (req, res, next) => {
         receivedAt: new Date(),
         notes: req.body.notes || delivery.notes,
       },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
 
     await prisma.auditLog.create({
@@ -741,7 +759,7 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
     const columnSupport = await getDeliveryColumnSupport();
     const delivery = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
     if (delivery.status !== 'DELIVERED') {
@@ -761,7 +779,7 @@ router.post('/:id/return', requireRole(['CLIENT']), async (req, res, next) => {
         status: 'RETURN_PENDING',
         notes: req.body.reason,
       },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
 
     const admins = await prisma.user.findMany({
@@ -812,7 +830,7 @@ router.post('/:id/proof', requireRole(['ADMIN', 'WAREHOUSE_STAFF', 'DRIVER', 'DE
     const delivery = await prisma.delivery.update({
       where: { deliveryId: existing.deliveryId },
       data: { proofOfDeliveryUrl: proofPath },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
 
     await prisma.auditLog.create({
@@ -859,7 +877,7 @@ router.put('/:id/restore', requireRole(['ADMIN']), async (req, res, next) => {
     const delivery = await prisma.delivery.update({
       where: { deliveryId },
       data: { deletedAt: null },
-      select: deliverySelect(columnSupport.batches),
+      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
     });
     await prisma.auditLog.create({
       data: {
