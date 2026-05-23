@@ -47,6 +47,7 @@ export default function Login() {
   const resetStrength = getStrength(resetNewPassword);
 
   useEffect(() => {
+    setRememberMe(localStorage.getItem('auth_remember') === 'true');
     const idleNotice = localStorage.getItem('auth_idle_logout');
     if (idleNotice) {
       localStorage.removeItem('auth_idle_logout');

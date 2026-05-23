@@ -194,6 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
     events.forEach((evt) => window.addEventListener(evt, updateActivity, { passive: true }));
     const interval = window.setInterval(() => {
+      if (localStorage.getItem(rememberKey) === 'true') return;
       const last = Number(localStorage.getItem(idleKey) || Date.now());
       if (Date.now() - last > idleMs) {
         localStorage.setItem(idleNoticeKey, String(Date.now()));

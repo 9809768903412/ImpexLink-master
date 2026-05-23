@@ -38,6 +38,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Search, CheckCircle, FileText, MessageSquare, Download } from 'lucide-react';
 import type { Order, OrderStatus, QuoteRequest, User } from '@/types';
 import { toast } from '@/hooks/use-toast';
+import { RecentActivityPanel } from '@/components/RecentActivityPanel';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
 import { getCache, setCache } from '@/hooks/cache';
@@ -752,22 +753,7 @@ export default function ClientOrdersPage() {
                   Total Amount Due: <span className="text-primary">₱{formatPesoAmount(selectedTotals?.total)}</span>
                 </p>
               </div>
-              {isAdmin && (
-                <div className="mt-4 rounded-lg border p-3">
-                  <p className="text-sm font-medium mb-2">Recent Activity</p>
-                  {orderLogs.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No recent activity.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {orderLogs.slice(0, 5).map((log) => (
-                        <div key={log.id} className="text-xs text-muted-foreground">
-                          {new Date(log.timestamp).toLocaleString('en-PH')} • {log.action} • {log.details}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {isAdmin && <RecentActivityPanel logs={orderLogs} />}
               {(selectedOrder.poDocumentUrl || selectedOrder.chequeImage) && (
                 <div className="rounded-lg border p-3 space-y-2">
                   <p className="text-sm font-medium">Uploaded Payment / PO Proof</p>

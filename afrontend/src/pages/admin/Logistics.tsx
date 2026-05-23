@@ -38,6 +38,7 @@ import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { canManageLogistics } from '@/lib/roles';
+import { RecentActivityPanel } from '@/components/RecentActivityPanel';
 import PaginationNav from '@/components/PaginationNav';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
@@ -654,7 +655,7 @@ export default function LogisticsPage() {
                     <TableHead>Client / Project</TableHead>
                     <TableHead>Details</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Tracking</TableHead>
+                    <TableHead className="text-right">GPS</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -672,6 +673,7 @@ export default function LogisticsPage() {
                       key={delivery.id}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => openDeliveryDetails(delivery)}
+                      title="Open delivery details and receipt"
                     >
                       <TableCell className="py-4">
                         <div className="min-w-[140px]">
@@ -717,16 +719,16 @@ export default function LogisticsPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
-                            className="border-primary/20 text-primary"
+                            className="whitespace-nowrap"
                             onClick={(event) => {
                               event.stopPropagation();
                               setTrackingDelivery(delivery);
                             }}
                           >
                             <Navigation size={16} className="mr-1" />
-                            Track
+                            Live GPS
                           </Button>
                         </div>
                       </TableCell>
@@ -850,22 +852,7 @@ export default function LogisticsPage() {
                 </div>
               </div>
 
-              {isAdmin && (
-                <div className="mt-4 rounded-lg border p-3">
-                  <p className="text-sm font-medium mb-2">Recent Activity</p>
-                  {deliveryLogs.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No recent activity.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {deliveryLogs.slice(0, 5).map((log) => (
-                        <div key={log.id} className="text-xs text-muted-foreground">
-                          {new Date(log.timestamp).toLocaleString('en-PH')} • {log.action} • {log.details}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {isAdmin && <RecentActivityPanel logs={deliveryLogs} />}
 
               {/* Status Actions */}
               {canManage && selectedDelivery.status === 'pending' && (
