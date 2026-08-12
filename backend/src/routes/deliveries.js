@@ -164,7 +164,7 @@ async function getDeliveryColumnSupport() {
 `;
     deliveryColumnSupport = {
       batches: optionalColumns.every((column) => found.has(column)),
-      gpsLocations: Boolean(gpsRows?.[0]?.table_name),
+      gpsLocations: Boolean(gpsRows?.[0]?.table_exists),
     };
   } catch (err) {
     console.error("Delivery optional column check failed:", err.message || err);
