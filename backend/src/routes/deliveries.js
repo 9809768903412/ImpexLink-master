@@ -155,8 +155,13 @@ async function getDeliveryColumnSupport() {
     `;
     const found = new Set(rows.map((row) => row.column_name));
     const gpsRows = await prisma.$queryRaw`
-      SELECT to_regclass('public.delivery_gps_locations') AS table_name
-    `;
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = current_schema()
+      AND table_name = 'delivery_gps_locations'
+  ) AS table_exists
+`;
     deliveryColumnSupport = {
       batches: optionalColumns.every((column) => found.has(column)),
       gpsLocations: Boolean(gpsRows?.[0]?.table_name),
@@ -483,12 +488,10 @@ router.post("/:id/location", async (req, res, next) => {
   try {
     const configuredToken = getGpsDeviceToken();
     if (!configuredToken) {
-      return res
-        .status(503)
-        .json({
-          error:
-            "GPS ingestion is not configured. Set GPS_DEVICE_TOKEN in the backend environment.",
-        });
+      return res.status(503).json({
+        error:
+          "GPS ingestion is not configured. Set GPS_DEVICE_TOKEN in the backend environment.",
+      });
     }
     if (getRequestGpsToken(req) !== configuredToken) {
       return res.status(401).json({ error: "Invalid GPS device token" });
@@ -520,12 +523,10 @@ router.post("/:id/location", async (req, res, next) => {
 
     const columnSupport = await getDeliveryColumnSupport();
     if (!columnSupport.gpsLocations) {
-      return res
-        .status(503)
-        .json({
-          error:
-            "GPS storage is not ready. Run the delivery GPS migration first.",
-        });
+      return res.status(503).json({
+        error:
+          "GPS storage is not ready. Run the delivery GPS migration first.",
+      });
     }
 
     const recordedAtRaw = req.body.recordedAt || req.body.timestamp;
@@ -848,12 +849,10 @@ router.put(
         return res.status(404).json({ error: "Delivery not found" });
 
       if (req.body.assignedDeliveryGuyId !== undefined) {
-        return res
-          .status(400)
-          .json({
-            error:
-              "Delivery assignment is disabled in the single-driver workflow",
-          });
+        return res.status(400).json({
+          error:
+            "Delivery assignment is disabled in the single-driver workflow",
+        });
       }
 
       const currentStatus = existing.status;
@@ -871,11 +870,9 @@ router.put(
           (currentStatus === "RETURN_PENDING" &&
             ["RETURNED", "RETURN_REJECTED"].includes(requestedStatus));
         if (!allowed) {
-          return res
-            .status(400)
-            .json({
-              error: `Invalid status transition: ${currentStatus} -> ${requestedStatus}`,
-            });
+          return res.status(400).json({
+            error: `Invalid status transition: ${currentStatus} -> ${requestedStatus}`,
+          });
         }
         if (
           requestedStatus === "IN_TRANSIT" &&
@@ -883,11 +880,9 @@ router.put(
             existing.clientOrder?.status,
           )
         ) {
-          return res
-            .status(400)
-            .json({
-              error: "Order must be approved before delivery can begin.",
-            });
+          return res.status(400).json({
+            error: "Order must be approved before delivery can begin.",
+          });
         }
         if (requestedStatus === "DELIVERED" && !req.body.receivedBy) {
           return res.status(400).json({ error: "Received by is required" });
