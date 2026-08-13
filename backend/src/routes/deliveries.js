@@ -207,7 +207,7 @@ function deliverySelect(
       : {}),
     ...(includeGpsLocations
       ? {
-          deliveryLocations: {
+          gpsLocations: {
             orderBy: { recordedAt: "desc" },
             take: 1,
             select: {
@@ -350,7 +350,7 @@ function mapDelivery(d) {
       d.loadKg === null || d.loadKg === undefined ? null : Number(d.loadKg),
     thirdPartyProvider: d.thirdPartyProvider || null,
     thirdPartyReference: d.thirdPartyReference || null,
-    latestLocation: normalizeGpsLocation(d.deliveryLocations?.[0]),
+    latestLocation: normalizeGpsLocation(d.gpsLocations?.[0]),
   };
 }
 
