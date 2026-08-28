@@ -302,6 +302,7 @@ model Project {
   materialRequests MaterialRequest[]
   clientOrders     ClientOrder[]
   quoteRequests    QuoteRequest[]
+  chatThreads      ChatThread[]
 
   @@index([clientId])
   @@index([assignedPmId])
@@ -551,15 +552,18 @@ model ChatThread {
   title       String?   @db.VarChar(150)
   threadType  String    @default("DIRECT") @map("thread_type") @db.VarChar(30)
   createdById Int?      @map("created_by_id")
+  projectId   Int?      @map("project_id")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
   closedAt    DateTime? @map("closed_at")
 
   createdBy    User?             @relation("ChatThreadCreator", fields: [createdById], references: [userId])
+  project      Project?          @relation(fields: [projectId], references: [projectId], onDelete: SetNull)
   participants ChatParticipant[]
   messages     ChatMessage[]
 
   @@index([createdById])
+  @@index([projectId])
   @@index([updatedAt])
   @@map("chat_threads")
 }

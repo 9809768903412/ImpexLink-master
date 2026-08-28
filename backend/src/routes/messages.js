@@ -7,30 +7,11 @@ const router = express.Router();
 router.use(requireAuth);
 
 const ADMIN_ROLES = ['ADMIN', 'PRESIDENT'];
-const STAFF_ROLES = [
-  'PROJECT_MANAGER',
-  'PROJECT_IN_CHARGE',
-  'SALES_AGENT',
-  'ENGINEER',
-  'PAINT_CHEMIST',
-  'WAREHOUSE_STAFF',
-  'DELIVERY_GUY',
-  'DRIVER',
-  'RECEIVER',
-];
+const GROUP_CREATOR_ROLES = [...ADMIN_ROLES, 'PROJECT_MANAGER'];
 
 function hasAnyRole(user, roles) {
   const userRoles = getRoleList(user);
   return roles.some((role) => userRoles.includes(role));
-}
-
-function roleFilter(roleNames) {
-  return {
-    OR: [
-      { role: { roleName: { in: roleNames } } },
-      { userRoles: { some: { role: { roleName: { in: roleNames } } } } },
-    ],
-  };
 }
 
 function mapUser(user) {
@@ -90,109 +71,127 @@ async function ensureThreadAccess(threadId, userId) {
   return Boolean(participant);
 }
 
-async function getClientMessageRecipientIds(userId) {
-  const client = (await require('../utils/clientVisibility').resolveLinkedClient(prisma, userId))?.client;
+async function getClientContactIds(userId) {
+  const { client } = (await require('../utils/clientVisibility').resolveLinkedClient(prisma, userId)) || {};
   if (!client?.clientId) return [];
   const [projects, orders, deliveries] = await Promise.all([
-    prisma.project.findMany({
-      where: {
-        clientId: client.clientId,
-        deletedAt: null,
-        assignedPmId: { not: null },
-      },
-      select: { assignedPmId: true },
-    }),
-    prisma.clientOrder.findMany({
-      where: {
-        clientId: client.clientId,
-        deletedAt: null,
-        assignedSalesAgentId: { not: null },
-      },
-      select: { assignedSalesAgentId: true },
-    }),
-    prisma.delivery.findMany({
-      where: {
-        deletedAt: null,
-        assignedDeliveryGuyId: { not: null },
-        clientOrder: { clientId: client.clientId },
-      },
-      select: { assignedDeliveryGuyId: true },
-    }),
+    prisma.project.findMany({ where: { clientId: client.clientId, deletedAt: null }, select: { assignedPmId: true } }),
+    prisma.clientOrder.findMany({ where: { clientId: client.clientId, deletedAt: null }, select: { assignedSalesAgentId: true } }),
+    prisma.delivery.findMany({ where: { deletedAt: null, clientOrder: { clientId: client.clientId } }, select: { assignedDeliveryGuyId: true } }),
   ]);
-
-  return [
-    ...new Set(
-      [
-        ...projects.map((project) => project.assignedPmId),
-        ...orders.map((order) => order.assignedSalesAgentId),
-        ...deliveries.map((delivery) => delivery.assignedDeliveryGuyId),
-      ]
-        .filter(Boolean)
-    ),
-  ];
+  return [...new Set([
+    ...projects.map((project) => project.assignedPmId),
+    ...orders.map((order) => order.assignedSalesAgentId),
+    ...deliveries.map((delivery) => delivery.assignedDeliveryGuyId),
+  ].filter(Boolean))];
 }
 
-async function getSalesAgentClientRecipientIds(userId) {
-  const orders = await prisma.clientOrder.findMany({
-    where: {
-      assignedSalesAgentId: Number(userId),
-      deletedAt: null,
-      createdBy: { not: null },
-    },
-    select: { createdBy: true },
+async function getStaffContactIds(userId) {
+  const [orders, deliveries, requests, managedProjects] = await Promise.all([
+    prisma.clientOrder.findMany({
+      where: { deletedAt: null, OR: [{ assignedSalesAgentId: userId }, { createdBy: userId }] },
+      select: { projectId: true, clientId: true, assignedSalesAgentId: true, createdBy: true },
+    }),
+    prisma.delivery.findMany({
+      where: { deletedAt: null, assignedDeliveryGuyId: userId },
+      select: { clientOrder: { select: { projectId: true, clientId: true, assignedSalesAgentId: true, createdBy: true } } },
+    }),
+    prisma.materialRequest.findMany({
+      where: { deletedAt: null, OR: [{ requestedBy: userId }, { assignedProjectManagerId: userId }] },
+      select: { projectId: true, requestedBy: true, assignedProjectManagerId: true },
+    }),
+    prisma.project.findMany({ where: { deletedAt: null, assignedPmId: userId }, select: { projectId: true, clientId: true } }),
+  ]);
+  const projectIds = new Set([
+    ...orders.map((order) => order.projectId),
+    ...deliveries.map((delivery) => delivery.clientOrder?.projectId),
+    ...requests.map((request) => request.projectId),
+    ...managedProjects.map((project) => project.projectId),
+  ].filter(Boolean));
+  const clientIds = new Set([
+    ...orders.map((order) => order.clientId),
+    ...deliveries.map((delivery) => delivery.clientOrder?.clientId),
+    ...managedProjects.map((project) => project.clientId),
+  ].filter(Boolean));
+  const projects = projectIds.size
+    ? await prisma.project.findMany({ where: { projectId: { in: [...projectIds] }, deletedAt: null }, select: { clientId: true, assignedPmId: true } })
+    : [];
+  projects.forEach((project) => {
+    if (project.clientId) clientIds.add(project.clientId);
   });
-  return [...new Set(orders.map((order) => order.createdBy).filter(Boolean))];
+  const clients = clientIds.size
+    ? await prisma.client.findMany({ where: { clientId: { in: [...clientIds] }, deletedAt: null, email: { not: null } }, select: { email: true } })
+    : [];
+  const clientUsers = clients.length
+    ? await prisma.user.findMany({ where: { email: { in: clients.map((client) => client.email) }, deletedAt: null, status: 'ACTIVE' }, select: { userId: true } })
+    : [];
+  return [...new Set([
+    ...orders.flatMap((order) => [order.assignedSalesAgentId, order.createdBy]),
+    ...deliveries.flatMap((delivery) => [delivery.clientOrder?.assignedSalesAgentId, delivery.clientOrder?.createdBy]),
+    ...requests.flatMap((request) => [request.requestedBy, request.assignedProjectManagerId]),
+    ...projects.map((project) => project.assignedPmId),
+    ...clientUsers.map((user) => user.userId),
+  ].filter(Boolean))];
+}
+
+async function getAllowedRecipientIds(req) {
+  const userId = Number(req.user.userId);
+  const roles = getRoleList(req.user);
+  if (roles.some((role) => ADMIN_ROLES.includes(role))) {
+    const users = await prisma.user.findMany({ where: { deletedAt: null, status: 'ACTIVE', userId: { not: userId } }, select: { userId: true } });
+    return users.map((user) => user.userId);
+  }
+  const related = roles.includes('CLIENT') ? await getClientContactIds(userId) : await getStaffContactIds(userId);
+  if (roles.includes('CLIENT')) return [...new Set(related)].filter((id) => id !== userId);
+  const admins = await prisma.user.findMany({
+    where: { deletedAt: null, status: 'ACTIVE', OR: [{ role: { roleName: { in: ADMIN_ROLES } } }, { userRoles: { some: { role: { roleName: { in: ADMIN_ROLES } } } } }] },
+    select: { userId: true },
+  });
+  return [...new Set([...related, ...admins.map((user) => user.userId)])].filter((id) => id !== userId);
+}
+
+async function getProjectContactIds(projectId) {
+  const project = await prisma.project.findUnique({
+    where: { projectId },
+    include: { client: { select: { email: true } } },
+  });
+  if (!project || project.deletedAt) return null;
+  const [orders, deliveries, requests, clientUsers] = await Promise.all([
+    prisma.clientOrder.findMany({ where: { projectId, deletedAt: null }, select: { assignedSalesAgentId: true, createdBy: true } }),
+    prisma.delivery.findMany({ where: { deletedAt: null, clientOrder: { projectId } }, select: { assignedDeliveryGuyId: true } }),
+    prisma.materialRequest.findMany({ where: { projectId, deletedAt: null }, select: { requestedBy: true, assignedProjectManagerId: true } }),
+    project.client?.email
+      ? prisma.user.findMany({ where: { email: project.client.email, deletedAt: null, status: 'ACTIVE' }, select: { userId: true } })
+      : Promise.resolve([]),
+  ]);
+  return new Set([
+    project.assignedPmId,
+    ...orders.flatMap((order) => [order.assignedSalesAgentId, order.createdBy]),
+    ...deliveries.map((delivery) => delivery.assignedDeliveryGuyId),
+    ...requests.flatMap((request) => [request.requestedBy, request.assignedProjectManagerId]),
+    ...clientUsers.map((user) => user.userId),
+  ].filter(Boolean));
 }
 
 async function canMessageUser(req, recipientId) {
-  if (Number(req.user.userId) === Number(recipientId)) return false;
-  const recipient = await prisma.user.findUnique({
-    where: { userId: Number(recipientId), deletedAt: null },
-    include: { role: true, userRoles: { include: { role: true } } },
+  const userId = Number(recipientId);
+  if (!(await getAllowedRecipientIds(req)).includes(userId)) return false;
+  const recipient = await prisma.user.findFirst({
+    where: { userId, deletedAt: null, status: 'ACTIVE' },
+    select: { userId: true },
   });
-  if (!recipient) return false;
-
-  const currentIsAdmin = hasAnyRole(req.user, ADMIN_ROLES);
-  const currentIsClient = hasAnyRole(req.user, ['CLIENT']);
-  const currentIsSalesAgent = hasAnyRole(req.user, ['SALES_AGENT']);
-  const recipientRoles = [
-    recipient.role?.roleName,
-    ...(recipient.userRoles || []).map((entry) => entry.role?.roleName),
-  ].filter(Boolean).map((role) => String(role).toUpperCase());
-  const recipientIsAdmin = recipientRoles.some((role) => ADMIN_ROLES.includes(role));
-  const recipientIsClient = recipientRoles.includes('CLIENT');
-  const recipientIsStaff = recipientRoles.some((role) => STAFF_ROLES.includes(role));
-
-  if (currentIsAdmin) return recipientIsStaff;
-  if (currentIsClient) {
-    if (!recipientIsStaff) return false;
-    const assignedContactIds = await getClientMessageRecipientIds(req.user.userId);
-    return assignedContactIds.includes(Number(recipientId));
-  }
-  if (currentIsSalesAgent && recipientIsClient) {
-    const assignedClientUserIds = await getSalesAgentClientRecipientIds(req.user.userId);
-    return assignedClientUserIds.includes(Number(recipientId));
-  }
-  return recipientIsAdmin && !recipientIsClient;
+  return Boolean(recipient);
 }
 
 router.get('/recipients', async (req, res, next) => {
   try {
     const q = req.query.q ? String(req.query.q) : '';
-    const currentIsAdmin = hasAnyRole(req.user, ADMIN_ROLES);
-    const currentIsClient = hasAnyRole(req.user, ['CLIENT']);
-    const currentIsSalesAgent = hasAnyRole(req.user, ['SALES_AGENT']);
-    const clientContactIds = currentIsClient ? await getClientMessageRecipientIds(req.user.userId) : [];
-    const salesAgentClientUserIds = currentIsSalesAgent ? await getSalesAgentClientRecipientIds(req.user.userId) : [];
-    const allowedRoles = currentIsAdmin ? STAFF_ROLES : currentIsClient ? STAFF_ROLES : currentIsSalesAgent ? ['CLIENT', ...ADMIN_ROLES] : ADMIN_ROLES;
+    const allowedUserIds = await getAllowedRecipientIds(req);
     const users = await prisma.user.findMany({
       where: {
         deletedAt: null,
-        userId: { not: req.user.userId },
-        ...(currentIsClient ? { userId: { in: clientContactIds.length ? clientContactIds : [-1] } } : {}),
-        ...(currentIsSalesAgent ? { userId: { in: [...salesAgentClientUserIds, -1] } } : {}),
+        userId: { in: allowedUserIds },
         status: 'ACTIVE',
-        ...roleFilter(allowedRoles),
         ...(q
           ? {
               OR: [
@@ -320,6 +319,73 @@ router.post('/threads', async (req, res, next) => {
       });
     }
     res.status(directThread ? 200 : 201).json(mapThread(hydrated, req.user.userId));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/threads/group', async (req, res, next) => {
+  try {
+    if (!hasAnyRole(req.user, GROUP_CREATOR_ROLES)) {
+      return res.status(403).json({ error: 'Only admins, presidents, and project managers can create group chats.' });
+    }
+    const title = String(req.body.title || '').trim();
+    const projectId = req.body.projectId ? Number(req.body.projectId) : null;
+    const participantIds = [...new Set((Array.isArray(req.body.participantIds) ? req.body.participantIds : []).map(Number))]
+      .filter((id) => Number.isSafeInteger(id) && id > 0 && id !== Number(req.user.userId));
+    if (!title || title.length > 150) return res.status(400).json({ error: 'A group title of 1 to 150 characters is required.' });
+    if (participantIds.length < 2) return res.status(400).json({ error: 'A group chat needs at least two other participants.' });
+    if (projectId && (!Number.isSafeInteger(projectId) || projectId <= 0)) {
+      return res.status(400).json({ error: 'Invalid project id' });
+    }
+    if (projectId) {
+      const project = await prisma.project.findUnique({ where: { projectId } });
+      if (!project || project.deletedAt) return res.status(404).json({ error: 'Project not found' });
+      if (!hasAnyRole(req.user, ADMIN_ROLES) && project.assignedPmId !== req.user.userId) {
+        return res.status(403).json({ error: 'You can only create group chats for projects assigned to you.' });
+      }
+    }
+    const allowedIds = projectId
+      ? await getProjectContactIds(projectId)
+      : new Set(await getAllowedRecipientIds(req));
+    if (!allowedIds) return res.status(404).json({ error: 'Project not found' });
+    allowedIds.delete(Number(req.user.userId));
+    if (participantIds.some((id) => !allowedIds.has(id))) {
+      return res.status(403).json({ error: 'One or more selected participants are outside your permitted business contacts.' });
+    }
+    const activeParticipantCount = await prisma.user.count({
+      where: { userId: { in: participantIds }, deletedAt: null, status: 'ACTIVE' },
+    });
+    if (activeParticipantCount !== participantIds.length) {
+      return res.status(400).json({ error: 'All group participants must be active users.' });
+    }
+    const thread = await prisma.chatThread.create({
+      data: {
+        title,
+        threadType: projectId ? 'PROJECT' : 'GROUP',
+        projectId,
+        createdById: req.user.userId,
+        participants: {
+          create: [
+            { userId: req.user.userId, lastReadAt: new Date() },
+            ...participantIds.map((userId) => ({ userId })),
+          ],
+        },
+      },
+      include: {
+        participants: { include: { user: { include: { role: true, userRoles: { include: { role: true } } } } } },
+        messages: { include: { sender: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'CREATE',
+        target: 'ChatThread',
+        details: `Created ${projectId ? 'project' : 'group'} chat ${thread.threadId}`,
+      },
+    });
+    res.status(201).json(mapThread(thread, req.user.userId));
   } catch (err) {
     next(err);
   }

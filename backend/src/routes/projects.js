@@ -17,6 +17,18 @@ const normalizeStatus = (value) =>
 
 const hasRole = (req, role) => getRoleList(req.user).includes(String(role).toUpperCase());
 
+async function isActiveProjectManager(userId) {
+  const assignee = await prisma.user.findUnique({
+    where: { userId, deletedAt: null },
+    include: { role: true, userRoles: { include: { role: true } } },
+  });
+  const roles = [
+    assignee?.role?.roleName,
+    ...(assignee?.userRoles || []).map((entry) => entry.role?.roleName),
+  ].map((role) => String(role || '').toUpperCase());
+  return Boolean(assignee && assignee.status === 'ACTIVE' && roles.includes('PROJECT_MANAGER'));
+}
+
 async function readProjectForms() {
   try {
     const raw = await fs.readFile(projectFormsFile, 'utf8');
@@ -199,6 +211,9 @@ router.post('/', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
       assignedPmId = null;
       location = null;
     }
+    if (assignedPmId && !(await isActiveProjectManager(assignedPmId))) {
+      return res.status(400).json({ error: 'Assigned user must be an active Project Manager' });
+    }
 
     const project = await prisma.project.create({
       data: {
@@ -298,6 +313,9 @@ router.put('/:id', requireRole(['ADMIN', 'PROJECT_MANAGER', 'ENGINEER', 'PROJECT
         : rawAssignedPmId !== undefined
           ? Number(rawAssignedPmId)
           : undefined;
+    if (assignedPmId && !(await isActiveProjectManager(assignedPmId))) {
+      return res.status(400).json({ error: 'Assigned user must be an active Project Manager' });
+    }
     const project = await prisma.project.update({
       where: { projectId: Number(req.params.id) },
       data: {
@@ -312,19 +330,6 @@ router.put('/:id', requireRole(['ADMIN', 'PROJECT_MANAGER', 'ENGINEER', 'PROJECT
         assignedPmId,
       },
     });
-
-    if (assignedPmId) {
-      const pmRole = await prisma.role.findUnique({ where: { roleName: 'PROJECT_MANAGER' } });
-      if (pmRole) {
-        await prisma.userRole.upsert({
-          where: {
-            userId_roleId: { userId: assignedPmId, roleId: pmRole.roleId },
-          },
-          update: {},
-          create: { userId: assignedPmId, roleId: pmRole.roleId },
-        });
-      }
-    }
 
     await prisma.auditLog.create({
       data: {

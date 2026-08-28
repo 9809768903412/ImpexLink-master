@@ -76,6 +76,8 @@ export default function AuditLogsPage() {
             userId: userFilter !== 'all' ? userFilter : undefined,
             page: logsPage,
             pageSize: logsPageSize,
+            dateFrom: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate()).toISOString() : undefined,
+            dateTo: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate() + 1, 0, 0, 0, -1).toISOString() : undefined,
           },
         });
         const payload = response.data;
@@ -96,12 +98,9 @@ export default function AuditLogsPage() {
       }
     };
     fetchLogs();
-  }, [actionFilter, logsPage, logsPageSize, searchTerm, userFilter]);
+  }, [actionFilter, dateFilter, logsPage, logsPageSize, searchTerm, userFilter]);
 
-  const filteredLogs = logs.filter((log) => {
-    const matchesDate = !dateFilter || format(new Date(log.timestamp), 'yyyy-MM-dd') === format(dateFilter, 'yyyy-MM-dd');
-    return matchesDate;
-  });
+  const filteredLogs = logs;
 
   const handleExport = () => {
     const rows = filteredLogs
@@ -220,7 +219,12 @@ export default function AuditLogsPage() {
                 <Calendar
                   mode="single"
                   selected={dateFilter}
-                  onSelect={setDateFilter}
+                  fromDate={new Date(2020, 0, 1)}
+                  toDate={new Date()}
+                  onSelect={(date) => {
+                    setDateFilter(date);
+                    setLogsPage(1);
+                  }}
                 />
               </PopoverContent>
             </Popover>
@@ -231,6 +235,7 @@ export default function AuditLogsPage() {
                   setActionFilter('all');
                   setUserFilter('all');
                   setDateFilter(undefined);
+                  setLogsPage(1);
                 }}
               >
                 Clear Filters

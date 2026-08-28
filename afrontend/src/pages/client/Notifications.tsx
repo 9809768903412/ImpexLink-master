@@ -14,6 +14,8 @@ import {
   FolderKanban,
   Check,
   CheckCheck,
+  MailOpen,
+  RefreshCw,
   Trash2,
 } from 'lucide-react';
 import type { Notification, NotificationType } from '@/types';
@@ -51,7 +53,7 @@ export default function ClientNotificationsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   // Filter notifications relevant to clients
-  const { data: allNotificationsRaw, setData: setAllNotifications, loading } = useResource<any>(
+  const { data: allNotificationsRaw, setData: setAllNotifications, loading, reload } = useResource<any>(
     '/notifications',
     [],
     [user?.id],
@@ -64,15 +66,13 @@ export default function ClientNotificationsPage() {
       ? allNotificationsRaw.data
       : [];
   const notifications = allNotifications.filter((n) => clientNotificationTypes.includes(n.type));
-  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [page, setPage] = useState(1);
   const pageSize = 8;
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const filteredNotifications = notifications.filter((n) =>
-    filter === 'all' ? true : !n.read
-  );
+  const filteredNotifications = notifications.filter((n) => filter === 'all' || (filter === 'unread' ? !n.read : n.read));
   const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / pageSize));
   const pagedNotifications = filteredNotifications.slice((page - 1) * pageSize, page * pageSize);
 
@@ -80,31 +80,43 @@ export default function ClientNotificationsPage() {
     setPage(1);
   }, [filter, notifications.length]);
 
-  const handleMarkAsRead = (id: string) => {
+  const handleSetReadState = async (id: string, read: boolean) => {
     setAllNotifications(
-      allNotifications.map((n) => (n.id === id ? { ...n, read: true } : n))
+      allNotifications.map((n) => (n.id === id ? { ...n, read } : n))
     );
-    apiClient.put<Notification>(`/notifications/${id}`, { read: true }).catch(() => {
-      // keep optimistic update
-    });
+    try {
+      await apiClient.put<Notification>(`/notifications/${id}`, { read });
+      await reload();
+    } catch {
+      await reload();
+      toast({ title: `Could not mark notification as ${read ? 'read' : 'unread'}`, variant: 'destructive' });
+    }
   };
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAsRead = (id: string) => handleSetReadState(id, true);
+
+  const handleMarkAllAsRead = async () => {
     setAllNotifications(allNotifications.map((n) => ({ ...n, read: true })));
-    apiClient.post('/notifications/mark-all-read').catch(() => {
-      // keep optimistic update
-    });
-    toast({
-      title: 'All Caught Up!',
-      description: 'All notifications marked as read',
-    });
+    try {
+      await apiClient.post('/notifications/mark-all-read');
+      await reload();
+      toast({ title: 'All Caught Up!', description: 'All notifications marked as read' });
+    } catch {
+      await reload();
+      toast({ title: 'Could not mark all notifications as read', variant: 'destructive' });
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     setAllNotifications(allNotifications.filter((n) => n.id !== id));
-    apiClient.delete(`/notifications/${id}`).catch(() => {
-      // keep optimistic update
-    });
+    try {
+      await apiClient.delete(`/notifications/${id}`);
+      await reload();
+      toast({ title: 'Notification deleted' });
+    } catch {
+      await reload();
+      toast({ title: 'Could not delete notification', variant: 'destructive' });
+    }
   };
 
   const handleOpenNotification = (notification: Notification) => {
@@ -145,12 +157,15 @@ export default function ClientNotificationsPage() {
             Stay updated on your orders, deliveries, and more
           </p>
         </div>
-        {unreadCount > 0 && (
-          <Button variant="outline" onClick={handleMarkAllAsRead}>
-            <CheckCheck size={16} className="mr-2" />
-            Mark All Read
-          </Button>
-        )}
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={() => reload()} title="Refresh notifications"><RefreshCw size={16} /></Button>
+          {unreadCount > 0 && (
+            <Button variant="outline" onClick={handleMarkAllAsRead}>
+              <CheckCheck size={16} className="mr-2" />
+              Mark All Read
+            </Button>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="all" className="space-y-4">
@@ -160,6 +175,9 @@ export default function ClientNotificationsPage() {
           </TabsTrigger>
           <TabsTrigger value="unread" onClick={() => setFilter('unread')}>
             Unread ({unreadCount})
+          </TabsTrigger>
+          <TabsTrigger value="read" onClick={() => setFilter('read')}>
+            Read ({notifications.length - unreadCount})
           </TabsTrigger>
         </TabsList>
 
@@ -181,7 +199,7 @@ export default function ClientNotificationsPage() {
                 <p className="text-muted-foreground">
                   {filter === 'unread'
                     ? "You're all caught up!"
-                    : 'No notifications yet. Place an order to get started!'}
+                    : filter === 'read' ? 'No read notifications yet' : 'No notifications yet. Place an order to get started!'}
                 </p>
               </CardContent>
             </Card>
@@ -236,6 +254,19 @@ export default function ClientNotificationsPage() {
                                 title="Mark as read"
                               >
                                 <Check size={16} />
+                              </Button>
+                            )}
+                            {notification.read && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetReadState(notification.id, false);
+                                }}
+                                title="Mark as unread"
+                              >
+                                <MailOpen size={16} />
                               </Button>
                             )}
                             <Button

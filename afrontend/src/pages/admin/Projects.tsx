@@ -878,7 +878,7 @@ export default function ProjectsPage() {
   }) => {
     const assignableUsers = users.filter((u) => {
       const roleList = u.roles?.length ? u.roles : u.role ? [u.role] : [];
-      return roleList.includes('project_manager');
+      return roleList.includes('project_manager') && u.status === 'ACTIVE';
     });
     const sortedUsers = [...assignableUsers].sort((a, b) => a.name.localeCompare(b.name));
     return (

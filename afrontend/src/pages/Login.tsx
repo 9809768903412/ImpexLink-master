@@ -219,10 +219,26 @@ export default function Login() {
             <div className="flex justify-center mb-8">
               <div className="flex items-center gap-4 rounded-3xl bg-white/5 px-5 py-4 backdrop-blur-sm">
                 <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl bg-white p-3">
-                  <img src="/brand/impex-engineering-logo.jpeg" alt="Impex Engineering" className="h-full w-full object-contain" />
+                  <img
+                    src="/brand/impex-engineering-logo.jpeg"
+                    alt="Impex Engineering"
+                    width={900}
+                    height={900}
+                    fetchPriority="high"
+                    decoding="async"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
                 <div className="flex h-24 w-48 items-center justify-center overflow-hidden rounded-3xl bg-white px-6 py-3">
-                  <img src="/brand/thortex-logo.jpeg" alt="Thortex Philippines" className="h-full w-full object-contain object-center" />
+                  <img
+                    src="/brand/thortex-logo.jpeg"
+                    alt="Thortex Philippines"
+                    width={2650}
+                    height={2048}
+                    fetchPriority="high"
+                    decoding="async"
+                    className="h-full w-full object-contain object-center"
+                  />
                 </div>
               </div>
             </div>

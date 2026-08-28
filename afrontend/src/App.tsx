@@ -2,40 +2,41 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Suspense, lazy } from "react";
 import { HashRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
-import AdminLayout from "@/layouts/AdminLayout";
-import ClientLayout from "@/layouts/ClientLayout";
-import AdminDashboard from "@/pages/admin/Dashboard";
-import InventoryPage from "@/pages/admin/Inventory";
-import MaterialRequestsPage from "@/pages/admin/MaterialRequests";
-import ProjectsPage from "@/pages/admin/Projects";
-import ClientOrdersPage from "@/pages/admin/ClientOrders";
-import PurchaseOrdersPage from "@/pages/admin/PurchaseOrders";
-import CompaniesPage from "@/pages/admin/Companies";
-import SuppliersPage from "@/pages/admin/Suppliers";
-import LogisticsPage from "@/pages/admin/Logistics";
-import ReportsPage from "@/pages/admin/Reports";
-import PaymentsPage from "@/pages/admin/Payments";
-import AIInsightsPage from "@/pages/admin/AIInsights";
-import AuditLogsPage from "@/pages/admin/AuditLogs";
-import ProofCenterPage from "@/pages/admin/ProofCenter";
-import AdminNotificationsPage from "@/pages/admin/Notifications";
-import AdminMessagesPage from "@/pages/admin/Messages";
-import SettingsPage from "@/pages/admin/Settings";
-import ClientDashboard from "@/pages/client/Dashboard";
-import PlaceOrderPage from "@/pages/client/PlaceOrder";
-import MyOrdersPage from "@/pages/client/MyOrders";
-import ClientNotificationsPage from "@/pages/client/Notifications";
-import ClientProfilePage from "@/pages/client/Profile";
-import ClientProjectsPage from "@/pages/client/Projects";
-import ClientInvoicesPage from "@/pages/client/Invoices";
-import ClientPaymentHistoryPage from "@/pages/client/PaymentHistory";
-import ClientMessagesPage from "@/pages/client/Messages";
-import NotFound from "@/pages/NotFound";
+const AdminLayout = lazy(() => import("@/layouts/AdminLayout"));
+const ClientLayout = lazy(() => import("@/layouts/ClientLayout"));
+const AdminDashboard = lazy(() => import("@/pages/admin/Dashboard"));
+const InventoryPage = lazy(() => import("@/pages/admin/Inventory"));
+const MaterialRequestsPage = lazy(() => import("@/pages/admin/MaterialRequests"));
+const ProjectsPage = lazy(() => import("@/pages/admin/Projects"));
+const ClientOrdersPage = lazy(() => import("@/pages/admin/ClientOrders"));
+const PurchaseOrdersPage = lazy(() => import("@/pages/admin/PurchaseOrders"));
+const CompaniesPage = lazy(() => import("@/pages/admin/Companies"));
+const SuppliersPage = lazy(() => import("@/pages/admin/Suppliers"));
+const LogisticsPage = lazy(() => import("@/pages/admin/Logistics"));
+const ReportsPage = lazy(() => import("@/pages/admin/Reports"));
+const PaymentsPage = lazy(() => import("@/pages/admin/Payments"));
+const AIInsightsPage = lazy(() => import("@/pages/admin/AIInsights"));
+const AuditLogsPage = lazy(() => import("@/pages/admin/AuditLogs"));
+const ProofCenterPage = lazy(() => import("@/pages/admin/ProofCenter"));
+const AdminNotificationsPage = lazy(() => import("@/pages/admin/Notifications"));
+const AdminMessagesPage = lazy(() => import("@/pages/admin/Messages"));
+const SettingsPage = lazy(() => import("@/pages/admin/Settings"));
+const ClientDashboard = lazy(() => import("@/pages/client/Dashboard"));
+const PlaceOrderPage = lazy(() => import("@/pages/client/PlaceOrder"));
+const MyOrdersPage = lazy(() => import("@/pages/client/MyOrders"));
+const ClientNotificationsPage = lazy(() => import("@/pages/client/Notifications"));
+const ClientProfilePage = lazy(() => import("@/pages/client/Profile"));
+const ClientProjectsPage = lazy(() => import("@/pages/client/Projects"));
+const ClientInvoicesPage = lazy(() => import("@/pages/client/Invoices"));
+const ClientPaymentHistoryPage = lazy(() => import("@/pages/client/PaymentHistory"));
+const ClientMessagesPage = lazy(() => import("@/pages/client/Messages"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
 import {
   ADMIN_AREA_ROLES,
   canViewInventory,
@@ -155,7 +156,9 @@ const App = () => (
         <Toaster />
         <Sonner />
         <HashRouter>
-          <AppRoutes />
+          <Suspense fallback={<div className="min-h-screen bg-background" aria-busy="true" />}>
+            <AppRoutes />
+          </Suspense>
         </HashRouter>
       </TooltipProvider>
     </AuthProvider>

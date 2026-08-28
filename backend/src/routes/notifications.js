@@ -91,9 +91,20 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
+    if (typeof req.body.read !== 'boolean') {
+      return res.status(400).json({ error: 'read must be a boolean' });
+    }
+    const notificationId = Number(req.params.id);
+    if (!Number.isSafeInteger(notificationId) || notificationId <= 0) {
+      return res.status(400).json({ error: 'Invalid notification id' });
+    }
+    const existing = await prisma.notification.findFirst({
+      where: { notificationId, userId: req.user.userId },
+    });
+    if (!existing) return res.status(404).json({ error: 'Notification not found' });
     const notification = await prisma.notification.update({
-      where: { notificationId: Number(req.params.id) },
-      data: { read: Boolean(req.body.read) },
+      where: { notificationId },
+      data: { read: req.body.read },
     });
     await prisma.auditLog.create({
       data: {
@@ -128,7 +139,15 @@ router.post('/mark-all-read', async (_req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    const notification = await prisma.notification.delete({ where: { notificationId: Number(req.params.id) } });
+    const notificationId = Number(req.params.id);
+    if (!Number.isSafeInteger(notificationId) || notificationId <= 0) {
+      return res.status(400).json({ error: 'Invalid notification id' });
+    }
+    const existing = await prisma.notification.findFirst({
+      where: { notificationId, userId: req.user.userId },
+    });
+    if (!existing) return res.status(404).json({ error: 'Notification not found' });
+    const notification = await prisma.notification.delete({ where: { notificationId } });
     await prisma.auditLog.create({
       data: {
         userId: req.user.userId,

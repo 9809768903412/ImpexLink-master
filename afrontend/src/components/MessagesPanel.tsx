@@ -13,11 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import type { ChatMessage, ChatThread, ChatUser } from '@/types';
+import type { ChatMessage, ChatThread, ChatUser, Project } from '@/types';
 import { cn } from '@/lib/utils';
 
 function initials(name: string) {
@@ -44,8 +45,13 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [recipientId, setRecipientId] = useState('');
   const [recipientSearch, setRecipientSearch] = useState('');
+  const [groupTitle, setGroupTitle] = useState('');
+  const [groupProjectId, setGroupProjectId] = useState('none');
+  const [groupParticipantIds, setGroupParticipantIds] = useState<string[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
 
   const selectedThread = threads.find((thread) => thread.id === selectedThreadId) || null;
@@ -73,6 +79,8 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
     };
   }, [recipients, recipientSearch]);
   const selectedRecipient = recipients.find((recipient) => recipient.id === recipientId) || null;
+  const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const canCreateGroup = roleList.some((role) => ['admin', 'president', 'project_manager'].includes(String(role).toLowerCase()));
 
   const fetchThreads = async () => {
     const response = await apiClient.get('/messages/threads', {
@@ -86,6 +94,16 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
   const fetchRecipients = async () => {
     const response = await apiClient.get('/messages/recipients');
     setRecipients(response.data || []);
+  };
+
+  const openGroupDialog = async () => {
+    try {
+      const response = await apiClient.get('/projects');
+      setProjects(response.data?.data || response.data || []);
+    } catch {
+      setProjects([]);
+    }
+    setNewGroupOpen(true);
   };
 
   const fetchMessages = async (threadId: string) => {
@@ -142,6 +160,33 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
         description: error?.response?.data?.error || 'Please try again.',
         variant: 'destructive',
       });
+    }
+  };
+
+  const startGroupThread = async () => {
+    if (!groupTitle.trim()) {
+      toast({ title: 'Group name required', variant: 'destructive' });
+      return;
+    }
+    if (groupParticipantIds.length < 2) {
+      toast({ title: 'Choose at least two participants', variant: 'destructive' });
+      return;
+    }
+    try {
+      const response = await apiClient.post('/messages/threads/group', {
+        title: groupTitle.trim(),
+        projectId: groupProjectId === 'none' ? undefined : groupProjectId,
+        participantIds: groupParticipantIds,
+      });
+      const thread = response.data as ChatThread;
+      setThreads((prev) => [thread, ...prev.filter((item) => item.id !== thread.id)]);
+      setSelectedThreadId(thread.id);
+      setNewGroupOpen(false);
+      setGroupTitle('');
+      setGroupProjectId('none');
+      setGroupParticipantIds([]);
+    } catch (error: any) {
+      toast({ title: 'Unable to create group', description: error?.response?.data?.error || 'Please try again.', variant: 'destructive' });
     }
   };
 
@@ -235,16 +280,19 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
               : 'Coordinate with sales, warehouse, drivers, project managers, engineers, and office staff.'}
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setNewMessageOpen(true);
-            setRecipientSearch('');
-          }}
-          className="gap-2"
-        >
-          <Plus size={16} />
-          New Message
-        </Button>
+        <div className="flex gap-2">
+          {canCreateGroup && <Button variant="outline" onClick={openGroupDialog}>New Group</Button>}
+          <Button
+            onClick={() => {
+              setNewMessageOpen(true);
+              setRecipientSearch('');
+            }}
+            className="gap-2"
+          >
+            <Plus size={16} />
+            New Message
+          </Button>
+        </div>
       </div>
 
       <Card className="overflow-hidden">
@@ -486,8 +534,46 @@ export default function MessagesPanel({ audience }: { audience: 'admin' | 'clien
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={newGroupOpen} onOpenChange={setNewGroupOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New group chat</DialogTitle>
+            <DialogDescription>Create a business group with permitted contacts. Project groups stay tied to the selected project.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input value={groupTitle} onChange={(event) => setGroupTitle(event.target.value)} placeholder="Group name" maxLength={150} />
+            <Select value={groupProjectId} onValueChange={setGroupProjectId}>
+              <SelectTrigger><SelectValue placeholder="Optional project" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">General business group</SelectItem>
+                {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="max-h-[300px] overflow-y-auto rounded-md border">
+              {recipients.map((recipient) => {
+                const selected = groupParticipantIds.includes(recipient.id);
+                return (
+                  <button
+                    key={recipient.id}
+                    type="button"
+                    onClick={() => setGroupParticipantIds((ids) => selected ? ids.filter((id) => id !== recipient.id) : [...ids, recipient.id])}
+                    className={cn('flex w-full items-center justify-between border-b px-3 py-3 text-left last:border-b-0 hover:bg-muted/50', selected && 'bg-primary/10')}
+                  >
+                    <span><span className="block text-sm font-medium">{recipient.name}</span><span className="text-xs text-muted-foreground">{roleLabel(recipient)}</span></span>
+                    {selected && <Check className="h-4 w-4 text-primary" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setNewGroupOpen(false)}>Cancel</Button>
+            <Button onClick={startGroupThread}>Create Group</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
 

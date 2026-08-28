@@ -33,6 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
 import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
+import { formatPesoAmount } from '@/lib/currency';
 import { ProductImage } from '@/components/ProductImage';
 
 interface CartItem {
@@ -715,7 +716,7 @@ export default function PlaceOrderPage() {
                       <h3 className="min-h-[3.5rem] font-semibold leading-7 line-clamp-2">{item.name}</h3>
                       <p className="min-h-[1.25rem] text-sm text-muted-foreground">{item.category}</p>
                       <p className="text-lg font-bold text-primary">
-                        â‚±{item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        ₱{formatPesoAmount(item.unitPrice)}
                         <span className="text-sm font-normal text-muted-foreground"> / {item.unit}</span>
                       </p>
                     </div>
@@ -762,7 +763,7 @@ export default function PlaceOrderPage() {
                     </div>
                     <div className="flex flex-col sm:items-end gap-2">
                       <p className="text-lg font-bold text-primary">
-                        â‚±{item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        ₱{formatPesoAmount(item.unitPrice)}
                         <span className="text-sm font-normal text-muted-foreground"> / {item.unit}</span>
                       </p>
                       {item.status === 'out-of-stock' ? (
@@ -913,7 +914,7 @@ export default function PlaceOrderPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total Amount</span>
                 <span className="font-bold">
-                  â‚±{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  ₱{formatPesoAmount(total)}
                 </span>
               </div>
             </div>
@@ -975,4 +976,3 @@ export default function PlaceOrderPage() {
     </div>
   );
 }
-

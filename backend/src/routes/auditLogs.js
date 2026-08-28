@@ -13,6 +13,11 @@ router.get('/', async (req, res, next) => {
     const q = req.query.q ? String(req.query.q) : '';
     const action = req.query.action ? String(req.query.action).toUpperCase() : '';
     const userId = req.query.userId ? Number(req.query.userId) : null;
+    const dateFrom = req.query.dateFrom ? new Date(String(req.query.dateFrom)) : null;
+    const dateTo = req.query.dateTo ? new Date(String(req.query.dateTo)) : null;
+    if ((dateFrom && Number.isNaN(dateFrom.getTime())) || (dateTo && Number.isNaN(dateTo.getTime()))) {
+      return res.status(400).json({ error: 'Invalid date range' });
+    }
     const orderedWhere =
       action === 'ORDERED'
         ? {
@@ -41,6 +46,14 @@ router.get('/', async (req, res, next) => {
         action && action !== 'ORDERED' ? { action } : {},
         orderedWhere,
         userId ? { userId } : {},
+        dateFrom || dateTo
+          ? {
+              timestamp: {
+                ...(dateFrom ? { gte: dateFrom } : {}),
+                ...(dateTo ? { lte: dateTo } : {}),
+              },
+            }
+          : {},
       ],
     };
     const [logs, total] = await Promise.all([
