@@ -271,7 +271,7 @@ async function validateDeliveryGuyAssignment(assignedDeliveryGuyId) {
 
 async function buildDeliveryScope(req) {
   const roleList = getRoleList(req.user);
-  if (roleList.includes("ADMIN") || roleList.includes("WAREHOUSE_STAFF")) {
+  if (roleList.includes("ADMIN") || roleList.includes("PRESIDENT") || roleList.includes("WAREHOUSE_STAFF")) {
     return {};
   }
 
@@ -614,7 +614,7 @@ router.get(
 
 router.get(
   "/",
-  requireRole(["ADMIN", "WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY", "CLIENT"]),
+  requireRole(["ADMIN", "PRESIDENT", "WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY", "CLIENT"]),
   async (req, res, next) => {
     try {
       const pagination = parsePagination(req.query);

@@ -113,7 +113,7 @@ function canTransitionOrder(req, currentStatus, requestedStatus) {
 }
 
 async function buildOrderRoleScope(req) {
-  if (hasRole(req, 'ADMIN')) {
+  if (hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT')) {
     return {};
   }
 
@@ -322,7 +322,7 @@ router.get('/', async (req, res, next) => {
     const roleList = Array.isArray(req.user?.roles)
       ? req.user.roles.map((r) => String(r).toUpperCase())
       : [String(req.user?.role || '').toUpperCase()];
-    if (!roleList.includes('ADMIN') && !roleList.includes('CLIENT') && !roleList.includes('SALES_AGENT')) {
+    if (!roleList.includes('ADMIN') && !roleList.includes('PRESIDENT') && !roleList.includes('CLIENT') && !roleList.includes('SALES_AGENT')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const clientId = req.query.clientId ? Number(req.query.clientId) : null;
@@ -343,9 +343,9 @@ router.get('/', async (req, res, next) => {
             }
           : {},
         status ? { status } : {},
-        clientId && roleList.includes('ADMIN') ? { clientId } : {},
+        clientId && (roleList.includes('ADMIN') || roleList.includes('PRESIDENT')) ? { clientId } : {},
         clientName ? { client: { clientName: { contains: clientName, mode: 'insensitive' } } } : {},
-        createdBy && roleList.includes('ADMIN') ? { createdBy } : {},
+        createdBy && (roleList.includes('ADMIN') || roleList.includes('PRESIDENT')) ? { createdBy } : {},
       ],
     };
     const sort = parseSort(req.query, ['createdAt', 'total', 'status']);

@@ -84,36 +84,54 @@ export default function ReportsPage() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     const fetchAll = async () => {
+      setIsLoading(true);
+      setLoadError(null);
       try {
-        const [inventoryRes, ordersRes, deliveriesRes, projectsRes, transactionsRes] = await Promise.all([
-          apiClient.get('/inventory', { params: { page: 1, pageSize: 10000 } }),
-          apiClient.get('/orders', { params: { page: 1, pageSize: 10000 } }),
-          apiClient.get('/deliveries', { params: { page: 1, pageSize: 10000 } }),
-          apiClient.get('/projects', { params: { page: 1, pageSize: 10000 } }),
-          apiClient.get('/transactions', { params: { page: 1, pageSize: 10000 } }),
+        const fetchPaged = async <T,>(path: string): Promise<T[]> => {
+          const first = await apiClient.get(path, { params: { page: 1, pageSize: 100 } });
+          const firstPayload = first.data;
+          if (!firstPayload?.data) return firstPayload || [];
+          const pages = Number(firstPayload.totalPages || 1);
+          if (pages <= 1) return firstPayload.data;
+          const remaining = await Promise.all(
+            Array.from({ length: pages - 1 }, (_, index) =>
+              apiClient.get(path, { params: { page: index + 2, pageSize: 100 } })
+            )
+          );
+          return [
+            ...firstPayload.data,
+            ...remaining.flatMap((response) => response.data?.data || response.data || []),
+          ];
+        };
+        const [inventoryData, ordersData, deliveriesData, projectsData, transactionsData] = await Promise.all([
+          fetchPaged<InventoryItem>('/inventory'),
+          fetchPaged<Order>('/orders'),
+          fetchPaged<Delivery>('/deliveries'),
+          fetchPaged<Project>('/projects'),
+          fetchPaged<StockTransaction>('/transactions'),
         ]);
         if (!mounted) return;
-        const invPayload = inventoryRes.data;
-        const ordersPayload = ordersRes.data;
-        const deliveriesPayload = deliveriesRes.data;
-        const projectsPayload = projectsRes.data;
-        const transactionsPayload = transactionsRes.data;
-        setInventory(invPayload?.data || invPayload || []);
-        setOrders(ordersPayload?.data || ordersPayload || []);
-        setDeliveries(deliveriesPayload?.data || deliveriesPayload || []);
-        setProjects(projectsPayload?.data || projectsPayload || []);
-        setTransactions(transactionsPayload?.data || transactionsPayload || []);
-      } catch {
+        setInventory(inventoryData);
+        setOrders(ordersData);
+        setDeliveries(deliveriesData);
+        setProjects(projectsData);
+        setTransactions(transactionsData);
+      } catch (error: any) {
         if (!mounted) return;
         setInventory([]);
         setOrders([]);
         setDeliveries([]);
         setProjects([]);
         setTransactions([]);
+        setLoadError(error?.response?.data?.error || 'Unable to load report data. Please refresh and try again.');
+      } finally {
+        if (mounted) setIsLoading(false);
       }
     };
     fetchAll();
@@ -662,6 +680,16 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+
+      {loadError ? (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">
+            Report data could not be loaded: {loadError}
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading report data…</p>
+      ) : null}
 
       <Tabs
         value={activeReport}
