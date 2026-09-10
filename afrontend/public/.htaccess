@@ -1,6 +1,16 @@
 RewriteEngine On
 RewriteBase /
 
+# Security headers for the public application. Content-Security-Policy is
+# configured at the hosting layer and intentionally is not overridden here.
+<IfModule mod_headers.c>
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), payment=(), usb=(), interest-cohort=()"
+</IfModule>
+
 # Do not rewrite existing files/directories
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d

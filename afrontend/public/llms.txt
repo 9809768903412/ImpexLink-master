@@ -1,0 +1,17 @@
+# ImpexLink
+
+ImpexLink is the private inventory, purchasing, project, logistics, and client-order management application for Impex Engineering and Industrial Supply.
+
+## Public entry points
+
+- [ImpexLink application](https://impexengineering.org/): Sign in or register for the application.
+- [Client registration](https://impexengineering.org/#/register): Create a client account.
+
+## Product scope
+
+Authenticated users use ImpexLink to manage inventory, projects, material requests, client orders, purchase orders, deliveries, payments, notifications, messages, and audit logs. Access is role-based; private records and operational data require an authorized account.
+
+## Support and access
+
+- [Sign in](https://impexengineering.org/#/login): Existing user access.
+- [Registration](https://impexengineering.org/#/register): Client account registration.

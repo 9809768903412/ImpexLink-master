@@ -36,6 +36,20 @@ const paymentRoutes = require('./routes/payments');
 
 const app = express();
 
+// Keep API responses aligned with the public application's security posture.
+// TLS termination is handled by the production host, so HSTS is emitted only
+// outside local development.
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), payment=(), usb=(), interest-cohort=()');
+  next();
+});
+
 const defaultAllowedOrigins = [
   'https://impexengineering.org',
   'https://www.impexengineering.org',
