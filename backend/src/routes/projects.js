@@ -131,7 +131,14 @@ router.get('/', async (req, res, next) => {
     const orderBy = sort ? { [sort.sortBy]: sort.sortDir } : { projectName: 'asc' };
     const [projects, total] = await Promise.all([
       prisma.project.findMany({
-        include: { client: true, assignedPm: true },
+        include: {
+          client: true,
+          assignedPm: true,
+          clientOrders: {
+            where: { deletedAt: null },
+            select: { total: true },
+          },
+        },
         where,
         skip: pagination ? (pagination.page - 1) * pagination.pageSize : undefined,
         take: pagination ? pagination.pageSize : undefined,
@@ -151,6 +158,8 @@ router.get('/', async (req, res, next) => {
       startDate: p.startDate ? p.startDate.toISOString().split('T')[0] : null,
       endDate: null,
       rejectionReason: p.rejectionReason || null,
+      orderCount: p.clientOrders.length,
+      totalOrderValue: p.clientOrders.reduce((sum, order) => sum + Number(order.total || 0), 0),
     }));
     if (pagination) {
       return res.json(buildPaginatedResponse(data, total, pagination.page, pagination.pageSize));

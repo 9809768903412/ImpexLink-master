@@ -86,7 +86,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const log = await prisma.auditLog.create({
       data: {
@@ -102,7 +102,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const deleted = await prisma.auditLog.delete({ where: { logId: Number(req.params.id) } });
     await prisma.auditLog.create({

@@ -56,8 +56,11 @@ export default function PaymentsPage() {
   const { user } = useAuth();
   const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase());
   const isSalesAgent = roleList.includes('sales_agent');
-  const canRecordPayments = roleList.some((role) => ['admin', 'president', 'sales_agent'].includes(role));
-  const canManageSupplierPayments = roleList.some((role) => ['admin', 'president'].includes(role));
+  const isPresident = roleList.includes('president');
+  const canRecordPayments = roleList.some((role) => ['admin', 'sales_agent'].includes(role));
+  const canUpdatePayments = roleList.some((role) => ['admin', 'sales_agent'].includes(role));
+  const canViewPaymentSummary = roleList.some((role) => ['admin', 'president', 'sales_agent'].includes(role));
+  const canViewSupplierPayments = roleList.some((role) => ['admin', 'president'].includes(role));
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [summary, setSummary] = useState({ clientReceivables: 0, supplierPayables: 0, overdue: 0, cleared: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
@@ -98,20 +101,20 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     fetchPayments().catch(() => setPayments([]));
-    if (canRecordPayments) {
+    if (canViewPaymentSummary) {
       apiClient.get('/payments/summary').then((res) => setSummary(res.data)).catch(() => undefined);
     }
-  }, [search, status, canRecordPayments]);
+  }, [search, status, canViewPaymentSummary]);
 
   useEffect(() => {
     if (canRecordPayments) {
       apiClient.get('/orders', { params: { page: 1, pageSize: 500 } }).then((res) => setOrders(res.data?.data || res.data || [])).catch(() => undefined);
-      if (canManageSupplierPayments) {
+      if (canViewSupplierPayments) {
         apiClient.get('/purchase-orders', { params: { page: 1, pageSize: 500 } }).then((res) => setPurchaseOrders(res.data?.data || res.data || [])).catch(() => undefined);
         apiClient.get('/suppliers').then((res) => setSuppliers(res.data?.data || res.data || [])).catch(() => undefined);
       }
     }
-  }, [canRecordPayments, canManageSupplierPayments]);
+  }, [canRecordPayments, canViewSupplierPayments]);
 
   useEffect(() => setPage(1), [search, status]);
 
@@ -202,7 +205,11 @@ export default function PaymentsPage() {
             Payment Process
           </h2>
           <p className="text-muted-foreground">
-            {isSalesAgent ? 'Monitor payments for client orders assigned to you.' : 'Track Client to Office and Office to Supplier payments.'}
+            {isSalesAgent
+              ? 'Monitor payments for client orders assigned to you.'
+              : isPresident
+                ? 'Executive read-only view of client receivables and supplier payables.'
+                : 'Track Client to Office and Office to Supplier payments.'}
           </p>
         </div>
         {canRecordPayments ? (
@@ -213,10 +220,10 @@ export default function PaymentsPage() {
         ) : null}
       </div>
 
-      {canRecordPayments ? (
-        <div className={`grid gap-4 ${canManageSupplierPayments ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+      {canViewPaymentSummary ? (
+        <div className={`grid gap-4 ${canViewSupplierPayments ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
           <Card><CardHeader><CardDescription>Client receivables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.clientReceivables)}</CardTitle></CardHeader></Card>
-          {canManageSupplierPayments ? <Card><CardHeader><CardDescription>Supplier payables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.supplierPayables)}</CardTitle></CardHeader></Card> : null}
+          {canViewSupplierPayments ? <Card><CardHeader><CardDescription>Supplier payables</CardDescription><CardTitle>PHP {formatPesoAmount(summary.supplierPayables)}</CardTitle></CardHeader></Card> : null}
           <Card><CardHeader><CardDescription>Cleared</CardDescription><CardTitle>PHP {formatPesoAmount(summary.cleared)}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>Overdue</CardDescription><CardTitle>PHP {formatPesoAmount(summary.overdue)}</CardTitle></CardHeader></Card>
         </div>
@@ -356,6 +363,7 @@ export default function PaymentsPage() {
                 <p className="text-xs text-muted-foreground">Notes</p>
                 <p className="mt-1 text-sm">{selectedPayment.notes || 'No notes recorded.'}</p>
               </div>
+              {canUpdatePayments && (
               <div>
                 <Label>Status action</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -376,6 +384,7 @@ export default function PaymentsPage() {
                   })}
                 </div>
               </div>
+              )}
             </div>
           </DialogContent>
         )}
@@ -405,7 +414,7 @@ export default function PaymentsPage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="CLIENT_TO_OFFICE">Client to Office</SelectItem>
-                  {canManageSupplierPayments ? <SelectItem value="OFFICE_TO_SUPPLIER">Office to Supplier</SelectItem> : null}
+                  {canViewSupplierPayments ? <SelectItem value="OFFICE_TO_SUPPLIER">Office to Supplier</SelectItem> : null}
                 </SelectContent>
               </Select>
             </div>

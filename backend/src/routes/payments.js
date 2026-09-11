@@ -248,8 +248,8 @@ router.post('/', async (req, res, next) => {
         return res.status(403).json({ error: 'You can only record payments for your assigned client orders.' });
       }
       clientId = order.clientId || clientId;
-    } else if (!(hasRole(req, 'ADMIN') || hasRole(req, 'PRESIDENT'))) {
-      return res.status(403).json({ error: 'Only Admin, President, Sales Agent, or Client can create payment records.' });
+    } else if (!hasRole(req, 'ADMIN')) {
+      return res.status(403).json({ error: 'Only Admin, Sales Agent, or Client can create payment records.' });
     }
 
     if (clientOrderId && !isPositiveInt(clientOrderId)) return res.status(400).json({ error: 'Invalid client order' });
@@ -311,7 +311,7 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'PRESIDENT', 'SALES_AGENT']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT']), async (req, res, next) => {
   try {
     const existing = await prisma.paymentTransaction.findUnique({
       where: { paymentId: Number(req.params.id) },
