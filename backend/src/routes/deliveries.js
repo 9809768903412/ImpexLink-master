@@ -271,7 +271,7 @@ async function validateDeliveryGuyAssignment(assignedDeliveryGuyId) {
 
 async function buildDeliveryScope(req) {
   const roleList = getRoleList(req.user);
-  if (roleList.includes("ADMIN") || roleList.includes("WAREHOUSE_STAFF")) {
+  if (roleList.includes("ADMIN") || roleList.includes("PRESIDENT") || roleList.includes("WAREHOUSE_STAFF")) {
     return {};
   }
 
@@ -573,6 +573,85 @@ router.post("/:id/location", async (req, res, next) => {
 
 router.use(requireAuth);
 
+// Browser location updates use the signed-in delivery worker's session instead
+// of the hardware GPS token. Keeping this separate prevents a token from being
+// shipped in the public web bundle while preserving the existing device API.
+router.post(
+  "/:id/location/driver",
+  requireRole(["DRIVER", "DELIVERY_GUY"]),
+  async (req, res, next) => {
+    try {
+      const deliveryId = Number(req.params.id);
+      const userId = Number(req.user?.userId);
+      if (!Number.isInteger(deliveryId) || deliveryId <= 0) {
+        return res.status(400).json({ error: "Invalid delivery id" });
+      }
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return res.status(401).json({ error: "Invalid user session" });
+      }
+
+      const lat = parseGpsNumber(req.body.lat ?? req.body.latitude);
+      const lng = parseGpsNumber(req.body.lng ?? req.body.longitude);
+      if (lat === null || lat < -90 || lat > 90) {
+        return res
+          .status(400)
+          .json({ error: "Latitude must be between -90 and 90" });
+      }
+      if (lng === null || lng < -180 || lng > 180) {
+        return res
+          .status(400)
+          .json({ error: "Longitude must be between -180 and 180" });
+      }
+
+      const delivery = await prisma.delivery.findFirst({
+        where: {
+          deliveryId,
+          assignedDeliveryGuyId: userId,
+          status: { in: ["IN_TRANSIT", "DELAYED"] },
+          deletedAt: null,
+        },
+        select: { deliveryId: true },
+      });
+      if (!delivery) {
+        return res.status(403).json({
+          error:
+            "You can only publish GPS for a delivery assigned to you that is in transit.",
+        });
+      }
+
+      const columnSupport = await getDeliveryColumnSupport();
+      if (!columnSupport.gpsLocations) {
+        return res.status(503).json({
+          error:
+            "GPS storage is not ready. Run the delivery GPS migration first.",
+        });
+      }
+
+      const recordedAtRaw = req.body.recordedAt || req.body.timestamp;
+      const recordedAt = recordedAtRaw ? new Date(recordedAtRaw) : new Date();
+      if (Number.isNaN(recordedAt.getTime())) {
+        return res.status(400).json({ error: "Invalid recordedAt timestamp" });
+      }
+
+      const row = await prisma.deliveryGpsLocation.create({
+        data: {
+          deliveryId,
+          deviceId: `web-driver-${userId}`,
+          latitude: lat,
+          longitude: lng,
+          speedKmph: parseGpsNumber(req.body.speedKmph ?? req.body.speed),
+          heading: parseGpsNumber(req.body.heading ?? req.body.course),
+          recordedAt,
+        },
+      });
+
+      return res.status(201).json({ location: normalizeGpsLocation(row) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.get(
   "/:id/location/latest",
   requireRole([
@@ -614,7 +693,7 @@ router.get(
 
 router.get(
   "/",
-  requireRole(["ADMIN", "WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY", "CLIENT"]),
+  requireRole(["ADMIN", "PRESIDENT", "WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY", "CLIENT"]),
   async (req, res, next) => {
     try {
       const pagination = parsePagination(req.query);
