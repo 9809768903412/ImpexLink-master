@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
-  Polyline,
   Popup,
   useMap,
 } from "react-leaflet";
@@ -21,7 +20,6 @@ import {
   Truck,
   Clock3,
   Upload,
-  Route,
   Package,
   UserRound,
   Satellite,
@@ -41,20 +39,6 @@ const STATUS_STYLES: Record<DeliveryStatus, string> = {
   "return-rejected": "bg-slate-100 text-slate-700",
   returned: "bg-red-100 text-red-800",
 };
-
-const BASE_ROUTE: [number, number][] = [
-  [14.5547, 121.0244],
-  [14.5562, 121.0308],
-  [14.5595, 121.0385],
-  [14.5638, 121.0482],
-];
-function getMockRoute(delivery: Delivery): [number, number][] {
-  const hash = Number(delivery.id || 0) % 7;
-  return BASE_ROUTE.map(([lat, lng], index) => [
-    lat + hash * 0.0012 + index * 0.0006,
-    lng + hash * 0.001 + index * 0.0009,
-  ]);
-}
 
 function formatAge(recordedAt?: string | null) {
   if (!recordedAt) return "No GPS update yet";
@@ -150,14 +134,9 @@ export default function LiveTrackingDialog({
   const activeLocation = latestLocation || delivery?.latestLocation || null;
   const hasLiveLocation = Boolean(activeLocation);
   const signalStale = isStale(activeLocation?.recordedAt);
-  const mockRoute = useMemo(
-    () => (delivery ? getMockRoute(delivery) : BASE_ROUTE),
-    [delivery?.id],
-  );
-
-  const marker: [number, number] = activeLocation
+  const marker: [number, number] | null = activeLocation
     ? [Number(activeLocation.lat), Number(activeLocation.lng)]
-    : mockRoute[mockRoute.length - 1];
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -168,66 +147,58 @@ export default function LiveTrackingDialog({
             Live Tracking {delivery?.drNumber ? `• ${delivery.drNumber}` : ""}
           </DialogTitle>
           <DialogDescription>
-            Live GPS tracking powered by OpenStreetMap. Mock route preview is
-            used until the hardware device sends a location.
+            Live delivery location powered by OpenStreetMap. The map appears
+            after the assigned driver starts sharing GPS.
           </DialogDescription>
         </DialogHeader>
 
         {delivery ? (
           <div className="space-y-4">
             <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
-              <div className="overflow-hidden rounded-2xl border bg-white">
-                <div className="h-[360px] w-full">
-                  <MapContainer
-                    center={marker}
-                    zoom={15}
-                    scrollWheelZoom
-                    className="h-full w-full z-0"
-                  >
-                    <FollowGpsMarker position={marker} />
-                    <TileLayer
-                      attribution="&copy; OpenStreetMap contributors"
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    {!hasLiveLocation && (
-                      <Polyline
-                        positions={mockRoute}
-                        pathOptions={{
-                          color: "#C0392B",
-                          weight: 5,
-                          dashArray: "8 8",
-                        }}
-                      />
-                    )}
-                    <CircleMarker
+              <div className="self-start overflow-hidden rounded-2xl border bg-white">
+                {marker ? (
+                  <div className="h-[360px] w-full">
+                    <MapContainer
                       center={marker}
-                      radius={10}
-                      pathOptions={{
-                        color: signalStale
-                          ? "#C2410C"
-                          : hasLiveLocation
-                            ? "#1D4ED8"
-                            : "#991B1B",
-                        fillColor: signalStale
-                          ? "#F97316"
-                          : hasLiveLocation
-                            ? "#3B82F6"
-                            : "#DC2626",
-                        fillOpacity: 1,
-                      }}
+                      zoom={15}
+                      scrollWheelZoom
+                      className="h-full w-full z-0"
                     >
-                      <Popup>
-                        {delivery.drNumber}
-                        <br />
-                        {delivery.clientName}
-                        <br />
-                        {hasLiveLocation
-                          ? `GPS update: ${formatAge(activeLocation?.recordedAt)}`
-                          : "Mock preview"}
-                      </Popup>
-                    </CircleMarker>
-                  </MapContainer>
-                </div>
+                      <FollowGpsMarker position={marker} />
+                      <TileLayer
+                        attribution="&copy; OpenStreetMap contributors"
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <CircleMarker
+                        center={marker}
+                        radius={10}
+                        pathOptions={{
+                          color: signalStale ? "#C2410C" : "#1D4ED8",
+                          fillColor: signalStale ? "#F97316" : "#3B82F6",
+                          fillOpacity: 1,
+                        }}
+                      >
+                        <Popup>
+                          {delivery.drNumber}
+                          <br />
+                          {delivery.clientName}
+                          <br />
+                          GPS update: {formatAge(activeLocation?.recordedAt)}
+                        </Popup>
+                      </CircleMarker>
+                    </MapContainer>
+                  </div>
+                ) : (
+                  <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
+                    <Navigation className="mb-3 h-9 w-9 text-muted-foreground" />
+                    <p className="font-medium">No live GPS location yet</p>
+                    <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                      {locationLoading
+                        ? "Checking for the latest driver location…"
+                        : "The assigned driver must begin the delivery and select Start GPS before a location appears."}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -252,7 +223,7 @@ export default function LiveTrackingDialog({
                         </Badge>
                       ) : (
                         <Badge className="bg-slate-100 text-slate-700">
-                          {locationLoading ? "checking" : "mock preview"}
+                          {locationLoading ? "checking" : "not sharing"}
                         </Badge>
                       )}
                     </div>
@@ -265,7 +236,7 @@ export default function LiveTrackingDialog({
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-muted-foreground">Driver</span>
                       <span className="font-medium">
-                        {delivery.deliveryGuyName || "Manny Dela Cruz"}
+                        {delivery.deliveryGuyName || "Not assigned"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
@@ -300,7 +271,7 @@ export default function LiveTrackingDialog({
                       <UserRound className="mt-0.5 h-4 w-4 text-muted-foreground" />
                       <div>
                         <p className="font-medium">
-                          {delivery.deliveryGuyName || "Manny Dela Cruz"}
+                          {delivery.deliveryGuyName || "Not assigned"}
                         </p>
                         <p className="text-muted-foreground">
                           Assigned delivery operator
@@ -323,21 +294,18 @@ export default function LiveTrackingDialog({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-start gap-2">
-                      <Route className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">
-                          {hasLiveLocation
-                            ? "Hardware GPS feed"
-                            : "Mock route preview"}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {hasLiveLocation
-                            ? `Device ${activeLocation?.deviceId || "unassigned"} reporting to this delivery`
-                            : "Makati dispatch to client delivery point"}
-                        </p>
+                    {hasLiveLocation && (
+                      <div className="flex items-start gap-2">
+                        <Satellite className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium">GPS source</p>
+                          <p className="text-muted-foreground">
+                            Device {activeLocation?.deviceId || "unidentified"}{" "}
+                            reporting to this delivery
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {hasLiveLocation && (
                       <>
                         <div className="flex items-start gap-2">
