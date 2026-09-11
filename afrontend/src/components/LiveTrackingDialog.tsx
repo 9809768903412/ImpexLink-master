@@ -155,8 +155,9 @@ export default function LiveTrackingDialog({
         {delivery ? (
           <div className="space-y-4">
             <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
-              <div className="self-start overflow-hidden rounded-2xl border bg-white">
-                {marker ? (
+              <div className="self-start space-y-4">
+                <div className="overflow-hidden rounded-2xl border bg-white">
+                  {marker ? (
                   <div className="h-[360px] w-full">
                     <MapContainer
                       center={marker}
@@ -198,7 +199,31 @@ export default function LiveTrackingDialog({
                         : "The assigned driver must begin the delivery and select Start GPS before a location appears."}
                     </p>
                   </div>
-                )}
+                  )}
+                </div>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Proof of Delivery</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    {delivery.proofOfDelivery ? (
+                      <a
+                        href={toPublicFileUrl(delivery.proofOfDelivery)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 text-primary underline-offset-4 hover:underline"
+                      >
+                        <Upload className="h-4 w-4" />
+                        View uploaded proof of delivery
+                      </a>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        No proof of delivery uploaded yet.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
 
               <div className="space-y-4">
@@ -363,28 +388,6 @@ export default function LiveTrackingDialog({
               </div>
             </div>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Proof of Delivery</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                {delivery.proofOfDelivery ? (
-                  <a
-                    href={toPublicFileUrl(delivery.proofOfDelivery)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 text-primary underline-offset-4 hover:underline"
-                  >
-                    <Upload className="h-4 w-4" />
-                    View uploaded proof of delivery
-                  </a>
-                ) : (
-                  <p className="text-muted-foreground">
-                    No proof of delivery uploaded yet.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
           </div>
         ) : null}
       </DialogContent>
