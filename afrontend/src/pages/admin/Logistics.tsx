@@ -41,7 +41,6 @@ import { canManageLogistics } from '@/lib/roles';
 import { RecentActivityPanel } from '@/components/RecentActivityPanel';
 import PaginationNav from '@/components/PaginationNav';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
-import DeliveryGpsPublisher from '@/components/DeliveryGpsPublisher';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
 
@@ -1023,12 +1022,6 @@ export default function LogisticsPage() {
                 <Button variant="outline" onClick={() => setSelectedDelivery(null)}>
                   Close
                 </Button>
-                {isDeliveryGuy &&
-                  (!selectedDelivery.assignedDeliveryGuyId ||
-                    selectedDelivery.assignedDeliveryGuyId === user?.id) &&
-                  (selectedDelivery.status === 'in-transit' || selectedDelivery.status === 'delayed') && (
-                    <DeliveryGpsPublisher />
-                  )}
                 {selectedDelivery.status !== 'pending' && (
                   <Button variant="outline" onClick={() => handlePrintDelivery(selectedDelivery)}>
                     <FileText size={16} className="mr-1" />
