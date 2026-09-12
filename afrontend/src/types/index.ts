@@ -86,6 +86,8 @@ export interface Project {
   startDate: string;
   endDate?: string;
   rejectionReason?: string | null;
+  orderCount?: number;
+  totalOrderValue?: number;
 }
 
 // Order Types

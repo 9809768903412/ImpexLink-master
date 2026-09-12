@@ -104,6 +104,8 @@ const mapProject = (project: any): Project => ({
   location: project.location || null,
   status: String(project.status || 'active').toLowerCase() as Project['status'],
   rejectionReason: project.rejectionReason || null,
+  orderCount: Number(project.orderCount || 0),
+  totalOrderValue: Number(project.totalOrderValue || 0),
   startDate: project.startDate
     ? typeof project.startDate === 'string'
       ? project.startDate
@@ -138,22 +140,26 @@ export default function ProjectsPage() {
   const { data: projects, setData: setProjects, loading: projectsLoading } = useResource<Project[]>(
     '/projects',
     [],
-    [sortKey, sortDir, searchTerm, statusFilter],
+    [sortKey, sortDir, searchTerm, statusFilter, user?.id],
     15_000,
     {
       q: searchTerm || undefined,
       status: statusFilter !== 'all' ? statusFilter : undefined,
       sortBy: sortKey,
       sortDir,
+      viewer: user?.id || undefined,
     }
   );
-  const { data: clients } = useResource<Client[]>('/clients', []);
-  const { data: orders } = useResource<Order[]>('/orders', []);
-  const { data: deliveries } = useResource<Delivery[]>('/deliveries', []);
+  const { data: clients } = useResource<Client[]>('/clients', [], [user?.id], 15_000, { viewer: user?.id || undefined });
+  const { data: orders } = useResource<Order[]>('/orders', [], [user?.id], 15_000, { viewer: user?.id || undefined });
+  const { data: deliveries } = useResource<Delivery[]>('/deliveries', [], [user?.id], 15_000, { viewer: user?.id || undefined });
   const { data: inventory } = useResource<any[]>('/inventory', []);
   const { data: materialRequests } = useResource<MaterialRequest[]>('/material-requests', []);
-  const { data: users, reload: reloadUsers } = useResource<UserType[]>('/users', []);
-  const { data: availableProjects } = useResource<Project[]>('/projects', [], [user?.id], 15_000, { picker: true });
+  const { data: users, reload: reloadUsers } = useResource<UserType[]>(isAdmin ? '/users' : '', []);
+  const { data: availableProjects } = useResource<Project[]>('/projects', [], [user?.id], 15_000, {
+    picker: true,
+    viewer: user?.id || undefined,
+  });
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [removeProjectTarget, setRemoveProjectTarget] = useState<Project | null>(null);
   const { data: projectForms, setData: setProjectForms } = useResource<ProjectForm[]>(
@@ -258,11 +264,15 @@ export default function ProjectsPage() {
 
   const getProjectStats = (projectId: string) => {
     const projectOrders = orders.filter((o) => o.projectId === projectId);
+    const project = projects.find((entry) => entry.id === projectId);
     const projectDeliveries = deliveries.filter((d) =>
       projectOrders.some((o) => o.id === d.orderId)
     );
-    const totalValue = projectOrders.reduce((sum, o) => sum + o.total, 0);
-    return { orderCount: projectOrders.length, deliveryCount: projectDeliveries.length, totalValue };
+    const totalValue = projectOrders.length
+      ? projectOrders.reduce((sum, o) => sum + Number(o.total || 0), 0)
+      : Number(project?.totalOrderValue || 0);
+    const orderCount = projectOrders.length || Number(project?.orderCount || 0);
+    return { orderCount, deliveryCount: projectDeliveries.length, totalValue };
   };
 
   const getProjectLocation = (project: Project) => {

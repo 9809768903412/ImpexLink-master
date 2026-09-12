@@ -52,6 +52,7 @@ import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
 export default function SettingsPage() {
   const { user, updateUser, refreshUser } = useAuth();
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
+  const canEditCompany = canManageUsers(roleList);
   const roleOptions = [
     { value: 'president', label: 'President' },
     { value: 'admin', label: 'Admin' },
@@ -68,7 +69,7 @@ export default function SettingsPage() {
   ];
   const [userView, setUserView] = useState<'active' | 'archived'>('active');
   const { data: users, setData: setUsers, reload: reloadUsers } = useResource<UserType[]>(
-    '/users',
+    canManageUsers(roleList) ? '/users' : '',
     [],
     [userView],
     15_000,
@@ -845,7 +846,9 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Company Information</CardTitle>
               <CardDescription>
-                This information appears on invoices, delivery receipts, and purchase orders
+                {canEditCompany
+                  ? 'This information appears on invoices, delivery receipts, and purchase orders'
+                  : 'Read-only company information used on business documents'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -855,6 +858,7 @@ export default function SettingsPage() {
                   value={company.name}
                   onChange={(e) => setCompany({ ...company, name: e.target.value })}
                   className="mt-1"
+                  disabled={!canEditCompany}
                 />
               </div>
               <div>
@@ -863,6 +867,7 @@ export default function SettingsPage() {
                   value={company.address}
                   onChange={(e) => setCompany({ ...company, address: e.target.value })}
                   className="mt-1"
+                  disabled={!canEditCompany}
                 />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -874,6 +879,7 @@ export default function SettingsPage() {
                     className="mt-1"
                     inputMode="numeric"
                     placeholder="100-191-563-00000"
+                    disabled={!canEditCompany}
                   />
                 </div>
                 <div>
@@ -882,6 +888,7 @@ export default function SettingsPage() {
                     value={company.phone}
                     onChange={(e) => setCompany({ ...company, phone: e.target.value })}
                     className="mt-1"
+                    disabled={!canEditCompany}
                   />
                 </div>
                 <div>
@@ -891,6 +898,7 @@ export default function SettingsPage() {
                     value={company.email}
                     onChange={(e) => setCompany({ ...company, email: e.target.value })}
                     className="mt-1"
+                    disabled={!canEditCompany}
                   />
                 </div>
                 <div>
@@ -899,16 +907,19 @@ export default function SettingsPage() {
                     value={company.website}
                     onChange={(e) => setCompany({ ...company, website: e.target.value })}
                     className="mt-1"
+                    disabled={!canEditCompany}
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end pt-4">
-                <Button onClick={handleSaveCompany}>
-                  <Save size={16} className="mr-2" />
-                  Save Company Info
-                </Button>
-              </div>
+              {canEditCompany && (
+                <div className="flex justify-end pt-4">
+                  <Button onClick={handleSaveCompany}>
+                    <Save size={16} className="mr-2" />
+                    Save Company Info
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
