@@ -1,15 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import axios from 'axios';
 import { Navigation, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/api/client';
 import { toast } from '@/hooks/use-toast';
-import type { Delivery } from '@/types';
 
-interface DeliveryGpsPublisherProps {
-  delivery: Delivery;
-}
-
-export default function DeliveryGpsPublisher({ delivery }: DeliveryGpsPublisherProps) {
+export default function DeliveryGpsPublisher() {
   const watchId = useRef<number | null>(null);
   const posting = useRef(false);
   const [isTracking, setIsTracking] = useState(false);
@@ -28,7 +24,7 @@ export default function DeliveryGpsPublisher({ delivery }: DeliveryGpsPublisherP
     if (posting.current) return;
     posting.current = true;
     try {
-      await apiClient.post(`/deliveries/${delivery.id}/location/driver`, {
+      await apiClient.post('/deliveries/active/location/driver', {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
         speedKmph:
@@ -41,11 +37,13 @@ export default function DeliveryGpsPublisher({ delivery }: DeliveryGpsPublisherP
             : null,
         recordedAt: new Date(position.timestamp).toISOString(),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       stopTracking();
       toast({
         title: 'GPS update stopped',
-        description: error?.response?.data?.error || 'Your location could not be saved.',
+        description:
+          (axios.isAxiosError<{ error?: string }>(error) && error.response?.data?.error) ||
+          'Your location could not be saved.',
         variant: 'destructive',
       });
     } finally {
