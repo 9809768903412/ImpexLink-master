@@ -184,7 +184,7 @@ export default function LiveTrackingDialog({
           </DialogTitle>
           <DialogDescription>
             Live delivery location powered by OpenStreetMap. The map appears
-            after the assigned driver starts sharing GPS.
+            after the truck GPS device sends its first reading.
           </DialogDescription>
         </DialogHeader>
 
@@ -237,8 +237,8 @@ export default function LiveTrackingDialog({
                     <p className="font-medium">No live GPS location yet</p>
                     <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                       {locationLoading
-                        ? "Checking for the latest driver location…"
-                        : "The assigned driver must begin the delivery and select Start GPS before a location appears."}
+                        ? "Checking for the latest hardware location…"
+                        : "The map appears after the truck GPS device sends its first location."}
                     </p>
                   </div>
                   )}
