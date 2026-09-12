@@ -1024,9 +1024,10 @@ export default function LogisticsPage() {
                   Close
                 </Button>
                 {isDeliveryGuy &&
-                  selectedDelivery.assignedDeliveryGuyId === user?.id &&
+                  (!selectedDelivery.assignedDeliveryGuyId ||
+                    selectedDelivery.assignedDeliveryGuyId === user?.id) &&
                   (selectedDelivery.status === 'in-transit' || selectedDelivery.status === 'delayed') && (
-                    <DeliveryGpsPublisher delivery={selectedDelivery} />
+                    <DeliveryGpsPublisher />
                   )}
                 {selectedDelivery.status !== 'pending' && (
                   <Button variant="outline" onClick={() => handlePrintDelivery(selectedDelivery)}>

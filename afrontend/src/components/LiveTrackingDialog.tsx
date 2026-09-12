@@ -3,6 +3,7 @@ import {
   MapContainer,
   TileLayer,
   CircleMarker,
+  Polyline,
   Popup,
   useMap,
 } from "react-leaflet";
@@ -59,13 +60,14 @@ function isStale(recordedAt?: string | null) {
 
 function FollowGpsMarker({ position }: { position: [number, number] }) {
   const map = useMap();
+  const [latitude, longitude] = position;
 
   useEffect(() => {
-    map.flyTo(position, map.getZoom(), {
+    map.flyTo([latitude, longitude], map.getZoom(), {
       animate: true,
       duration: 1,
     });
-  }, [map, position[0], position[1]]);
+  }, [latitude, longitude, map]);
 
   return null;
 }
@@ -83,6 +85,26 @@ interface LiveTrackingDialogProps {
   onUploadProof?: (deliveryId: string, file: File) => Promise<void> | void;
 }
 
+const ROUTE_SESSION_GAP_MS = 30 * 60 * 1000;
+
+function getCurrentRouteSegment(locations: DeliveryGpsLocation[]) {
+  let segmentStart = 0;
+
+  for (let index = 1; index < locations.length; index += 1) {
+    const previousTime = new Date(locations[index - 1].recordedAt).getTime();
+    const currentTime = new Date(locations[index].recordedAt).getTime();
+    if (
+      Number.isFinite(previousTime) &&
+      Number.isFinite(currentTime) &&
+      currentTime - previousTime > ROUTE_SESSION_GAP_MS
+    ) {
+      segmentStart = index;
+    }
+  }
+
+  return locations.slice(segmentStart);
+}
+
 export default function LiveTrackingDialog({
   delivery,
   open,
@@ -90,12 +112,14 @@ export default function LiveTrackingDialog({
 }: LiveTrackingDialogProps) {
   const [latestLocation, setLatestLocation] =
     useState<DeliveryGpsLocation | null>(null);
+  const [locationHistory, setLocationHistory] = useState<DeliveryGpsLocation[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !delivery?.id) {
       setLatestLocation(null);
+      setLocationHistory([]);
       setLocationError(null);
       return;
     }
@@ -104,12 +128,17 @@ export default function LiveTrackingDialog({
     const loadLatestLocation = async () => {
       setLocationLoading(true);
       try {
-        const response = await apiClient.get(
-          `/deliveries/${delivery.id}/location/latest`,
+        const response = await apiClient.get<{ locations?: DeliveryGpsLocation[] }>(
+          `/deliveries/${delivery.id}/location/history`,
+          { params: { limit: 200 } },
         );
         if (!cancelled) {
+          const locations = Array.isArray(response.data?.locations)
+            ? response.data.locations
+            : [];
+          setLocationHistory(locations);
           setLatestLocation(
-            response.data?.location || delivery.latestLocation || null,
+            locations[locations.length - 1] || delivery.latestLocation || null,
           );
           setLocationError(null);
         }
@@ -133,7 +162,14 @@ export default function LiveTrackingDialog({
 
   const activeLocation = latestLocation || delivery?.latestLocation || null;
   const hasLiveLocation = Boolean(activeLocation);
+  const isActiveDelivery = delivery
+    ? ["in-transit", "delayed"].includes(delivery.status)
+    : false;
   const signalStale = isStale(activeLocation?.recordedAt);
+  // Do not connect old test data or a prior trip to the current live route.
+  const routePositions: [number, number][] = getCurrentRouteSegment(locationHistory)
+    .map((location) => [Number(location.lat), Number(location.lng)] as [number, number])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
   const marker: [number, number] | null = activeLocation
     ? [Number(activeLocation.lat), Number(activeLocation.lng)]
     : null;
@@ -170,6 +206,12 @@ export default function LiveTrackingDialog({
                         attribution="&copy; OpenStreetMap contributors"
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       />
+                      {routePositions.length >= 2 && (
+                        <Polyline
+                          positions={routePositions}
+                          pathOptions={{ color: "#2563EB", weight: 4 }}
+                        />
+                      )}
                       <CircleMarker
                         center={marker}
                         radius={10}
@@ -239,12 +281,18 @@ export default function LiveTrackingDialog({
                       {hasLiveLocation ? (
                         <Badge
                           className={
-                            signalStale
+                            !isActiveDelivery
+                              ? "bg-slate-100 text-slate-700"
+                              : signalStale
                               ? "bg-orange-100 text-orange-800"
                               : "bg-blue-100 text-blue-800"
                           }
                         >
-                          {signalStale ? "signal stale" : "live active"}
+                          {!isActiveDelivery
+                            ? "historical"
+                            : signalStale
+                              ? "signal stale"
+                              : "live active"}
                         </Badge>
                       ) : (
                         <Badge className="bg-slate-100 text-slate-700">

@@ -22,6 +22,10 @@ const {
 const { mirrorUploadedFile } = require("../utils/uploadedFiles");
 
 const router = express.Router();
+const GPS_ACTIVE_STATUSES = ["IN_TRANSIT", "DELAYED"];
+const GPS_MAX_SPEED_KMPH = 200;
+const GPS_MAX_PAST_AGE_MS = 24 * 60 * 60 * 1000;
+const GPS_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 const proofDir = path.join(__dirname, "..", "..", "uploads", "deliveries");
 if (!fs.existsSync(proofDir)) {
@@ -118,6 +122,90 @@ function parseGpsNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseGpsPayload(body = {}) {
+  const latitude = parseGpsNumber(body.lat ?? body.latitude);
+  const longitude = parseGpsNumber(body.lng ?? body.longitude);
+  const speedKmph = parseGpsNumber(body.speedKmph ?? body.speed);
+  const heading = parseGpsNumber(body.heading ?? body.course);
+  const satellites =
+    body.satellites === undefined ||
+    body.satellites === null ||
+    body.satellites === ""
+      ? null
+      : Number(body.satellites);
+  const recordedAtRaw = body.recordedAt || body.timestamp;
+  const recordedAt = recordedAtRaw ? new Date(recordedAtRaw) : new Date();
+
+  if (latitude === null || latitude < -90 || latitude > 90) {
+    return { error: "Latitude must be between -90 and 90" };
+  }
+  if (longitude === null || longitude < -180 || longitude > 180) {
+    return { error: "Longitude must be between -180 and 180" };
+  }
+  if (speedKmph !== null && (speedKmph < 0 || speedKmph > GPS_MAX_SPEED_KMPH)) {
+    return { error: `Speed must be between 0 and ${GPS_MAX_SPEED_KMPH} km/h` };
+  }
+  if (heading !== null && (heading < 0 || heading >= 360)) {
+    return { error: "Heading must be between 0 and 359.999 degrees" };
+  }
+  if (satellites !== null && (!Number.isInteger(satellites) || satellites < 0 || satellites > 100)) {
+    return { error: "Satellites must be an integer between 0 and 100" };
+  }
+  if (Number.isNaN(recordedAt.getTime())) {
+    return { error: "Invalid recordedAt timestamp" };
+  }
+
+  const ageMs = Date.now() - recordedAt.getTime();
+  if (ageMs > GPS_MAX_PAST_AGE_MS) {
+    return { error: "GPS timestamp is more than 24 hours old" };
+  }
+  if (ageMs < -GPS_MAX_FUTURE_SKEW_MS) {
+    return { error: "GPS timestamp is too far in the future" };
+  }
+
+  return {
+    data: {
+      latitude,
+      longitude,
+      speedKmph,
+      heading,
+      satellites,
+      recordedAt,
+    },
+  };
+}
+
+async function getSoleActiveDeliveryRider() {
+  const riders = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      status: "ACTIVE",
+      OR: [
+        { role: { roleName: { in: ["DRIVER", "DELIVERY_GUY"] } } },
+        {
+          userRoles: {
+            some: { role: { roleName: { in: ["DRIVER", "DELIVERY_GUY"] } } },
+          },
+        },
+      ],
+    },
+    select: { userId: true, fullName: true },
+    orderBy: { userId: "asc" },
+    take: 2,
+  });
+
+  if (riders.length === 0) {
+    return { error: "No active delivery rider account is available" };
+  }
+  if (riders.length > 1) {
+    return {
+      error:
+        "More than one active delivery rider exists. Assign a rider explicitly before starting delivery.",
+    };
+  }
+  return { rider: riders[0] };
 }
 
 async function assertDeliveryVisible(req, deliveryId) {
@@ -371,39 +459,30 @@ router.post("/active/location", async (req, res, next) => {
       });
     }
 
-    const lat = parseGpsNumber(req.body.lat ?? req.body.latitude);
+    const payload = parseGpsPayload(req.body);
+    if (payload.error) return res.status(400).json({ error: payload.error });
 
-    const lng = parseGpsNumber(req.body.lng ?? req.body.longitude);
-
-    if (lat === null || lat < -90 || lat > 90) {
-      return res.status(400).json({
-        error: "Latitude must be between -90 and 90",
-      });
+    const riderResult = await getSoleActiveDeliveryRider();
+    if (riderResult.error) {
+      return res.status(409).json({ error: riderResult.error });
     }
 
-    if (lng === null || lng < -180 || lng > 180) {
-      return res.status(400).json({
-        error: "Longitude must be between -180 and 180",
-      });
-    }
-
-    /*
-     * Retrieve at most two records so the server can detect
-     * whether more than one delivery is currently in transit.
-     */
+    // One truck can carry several orders. A single hardware reading therefore
+    // belongs to every active delivery assigned to the sole delivery rider.
     const activeDeliveries = await prisma.delivery.findMany({
       where: {
-        status: "IN_TRANSIT",
+        status: { in: GPS_ACTIVE_STATUSES },
         deletedAt: null,
+        OR: [
+          { assignedDeliveryGuyId: riderResult.rider.userId },
+          { assignedDeliveryGuyId: null },
+        ],
       },
       select: {
         deliveryId: true,
         drNumber: true,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 2,
+      orderBy: { createdAt: "asc" },
     });
 
     if (activeDeliveries.length === 0) {
@@ -411,15 +490,6 @@ router.post("/active/location", async (req, res, next) => {
         error: "No In Transit delivery is available for GPS tracking",
       });
     }
-
-    if (activeDeliveries.length > 1) {
-      return res.status(409).json({
-        error:
-          "Multiple deliveries are In Transit. The GPS device cannot safely choose one automatically.",
-      });
-    }
-
-    const activeDelivery = activeDeliveries[0];
 
     const columnSupport = await getDeliveryColumnSupport();
 
@@ -430,54 +500,39 @@ router.post("/active/location", async (req, res, next) => {
       });
     }
 
-    const recordedAtRaw = req.body.recordedAt || req.body.timestamp;
+    const deviceId = req.body.deviceId
+      ? String(req.body.deviceId).slice(0, 120)
+      : "unidentified-device";
 
-    const recordedAt = recordedAtRaw ? new Date(recordedAtRaw) : new Date();
-
-    if (Number.isNaN(recordedAt.getTime())) {
-      return res.status(400).json({
-        error: "Invalid recordedAt timestamp",
-      });
-    }
-
-    const satellites =
-      req.body.satellites === undefined ||
-      req.body.satellites === null ||
-      req.body.satellites === ""
-        ? null
-        : Number(req.body.satellites);
-
-    if (
-      satellites !== null &&
-      (!Number.isInteger(satellites) || satellites < 0)
-    ) {
-      return res.status(400).json({
-        error: "Satellites must be a non-negative integer",
-      });
-    }
-
-    const row = await prisma.deliveryGpsLocation.create({
-      data: {
-        deliveryId: activeDelivery.deliveryId,
-        deviceId: req.body.deviceId
-          ? String(req.body.deviceId).slice(0, 120)
-          : "IMPEX-GPS-01",
-        latitude: lat,
-        longitude: lng,
-        speedKmph: parseGpsNumber(req.body.speedKmph ?? req.body.speed),
-        heading: parseGpsNumber(req.body.heading ?? req.body.course),
-        satellites,
-        recordedAt,
-      },
-    });
+    const transactionResults = await prisma.$transaction([
+      prisma.delivery.updateMany({
+        where: {
+          deliveryId: {
+            in: activeDeliveries.map((delivery) => delivery.deliveryId),
+          },
+          assignedDeliveryGuyId: null,
+        },
+        data: { assignedDeliveryGuyId: riderResult.rider.userId },
+      }),
+      ...activeDeliveries.map((delivery) =>
+        prisma.deliveryGpsLocation.create({
+          data: {
+            deliveryId: delivery.deliveryId,
+            deviceId,
+            ...payload.data,
+          },
+        }),
+      ),
+    ]);
+    const rows = transactionResults.slice(1);
 
     return res.status(201).json({
-      message: "GPS location recorded successfully",
-      delivery: {
-        id: activeDelivery.deliveryId.toString(),
-        drNumber: activeDelivery.drNumber,
-      },
-      location: normalizeGpsLocation(row),
+      message: `GPS location recorded for ${rows.length} active ${rows.length === 1 ? "delivery" : "deliveries"}`,
+      deliveries: activeDeliveries.map((delivery) => ({
+        id: delivery.deliveryId.toString(),
+        drNumber: delivery.drNumber,
+      })),
+      location: normalizeGpsLocation(rows[0]),
     });
   } catch (err) {
     next(err);
@@ -502,24 +557,19 @@ router.post("/:id/location", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid delivery id" });
     }
 
-    const lat = parseGpsNumber(req.body.lat ?? req.body.latitude);
-    const lng = parseGpsNumber(req.body.lng ?? req.body.longitude);
-    if (lat === null || lat < -90 || lat > 90) {
-      return res
-        .status(400)
-        .json({ error: "Latitude must be between -90 and 90" });
-    }
-    if (lng === null || lng < -180 || lng > 180) {
-      return res
-        .status(400)
-        .json({ error: "Longitude must be between -180 and 180" });
-    }
+    const payload = parseGpsPayload(req.body);
+    if (payload.error) return res.status(400).json({ error: payload.error });
 
     const delivery = await prisma.delivery.findFirst({
       where: { deliveryId, deletedAt: null },
-      select: { deliveryId: true },
+      select: { deliveryId: true, status: true, assignedDeliveryGuyId: true },
     });
     if (!delivery) return res.status(404).json({ error: "Delivery not found" });
+    if (!GPS_ACTIVE_STATUSES.includes(delivery.status)) {
+      return res.status(409).json({
+        error: "GPS can only be recorded for an in-transit or delayed delivery",
+      });
+    }
 
     const columnSupport = await getDeliveryColumnSupport();
     if (!columnSupport.gpsLocations) {
@@ -529,41 +579,33 @@ router.post("/:id/location", async (req, res, next) => {
       });
     }
 
-    const recordedAtRaw = req.body.recordedAt || req.body.timestamp;
-    const recordedAt = recordedAtRaw ? new Date(recordedAtRaw) : new Date();
-    if (Number.isNaN(recordedAt.getTime())) {
-      return res.status(400).json({ error: "Invalid recordedAt timestamp" });
+    const transactionOperations = [];
+    if (!delivery.assignedDeliveryGuyId) {
+      const riderResult = await getSoleActiveDeliveryRider();
+      if (riderResult.error) {
+        return res.status(409).json({ error: riderResult.error });
+      }
+      transactionOperations.push(
+        prisma.delivery.update({
+          where: { deliveryId },
+          data: { assignedDeliveryGuyId: riderResult.rider.userId },
+        }),
+      );
     }
 
-    const satellites =
-      req.body.satellites === undefined ||
-      req.body.satellites === null ||
-      req.body.satellites === ""
-        ? null
-        : Number(req.body.satellites);
-    if (
-      satellites !== null &&
-      (!Number.isInteger(satellites) || satellites < 0)
-    ) {
-      return res
-        .status(400)
-        .json({ error: "Satellites must be a non-negative integer" });
-    }
-
-    const row = await prisma.deliveryGpsLocation.create({
-      data: {
-        deliveryId,
-        deviceId: req.body.deviceId
-          ? String(req.body.deviceId).slice(0, 120)
-          : null,
-        latitude: lat,
-        longitude: lng,
-        speedKmph: parseGpsNumber(req.body.speedKmph ?? req.body.speed),
-        heading: parseGpsNumber(req.body.heading ?? req.body.course),
-        satellites,
-        recordedAt,
-      },
-    });
+    transactionOperations.push(
+      prisma.deliveryGpsLocation.create({
+        data: {
+          deliveryId,
+          deviceId: req.body.deviceId
+            ? String(req.body.deviceId).slice(0, 120)
+            : "unidentified-device",
+          ...payload.data,
+        },
+      }),
+    );
+    const transactionResults = await prisma.$transaction(transactionOperations);
+    const row = transactionResults[transactionResults.length - 1];
 
     return res.status(201).json({ location: normalizeGpsLocation(row) });
   } catch (err) {
@@ -572,6 +614,85 @@ router.post("/:id/location", async (req, res, next) => {
 });
 
 router.use(requireAuth);
+
+router.post(
+  "/active/location/driver",
+  requireRole(["DRIVER", "DELIVERY_GUY"]),
+  async (req, res, next) => {
+    try {
+      const userId = Number(req.user?.userId);
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return res.status(401).json({ error: "Invalid user session" });
+      }
+
+      const payload = parseGpsPayload(req.body);
+      if (payload.error) return res.status(400).json({ error: payload.error });
+
+      const riderResult = await getSoleActiveDeliveryRider();
+      if (riderResult.error || riderResult.rider.userId !== userId) {
+        return res.status(403).json({
+          error: riderResult.error || "You are not the active delivery rider",
+        });
+      }
+
+      const deliveries = await prisma.delivery.findMany({
+        where: {
+          status: { in: GPS_ACTIVE_STATUSES },
+          deletedAt: null,
+          OR: [
+            { assignedDeliveryGuyId: userId },
+            { assignedDeliveryGuyId: null },
+          ],
+        },
+        select: { deliveryId: true, drNumber: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (deliveries.length === 0) {
+        return res.status(404).json({ error: "No active delivery is ready for GPS tracking" });
+      }
+
+      const columnSupport = await getDeliveryColumnSupport();
+      if (!columnSupport.gpsLocations) {
+        return res.status(503).json({
+          error: "GPS storage is not ready. Run the delivery GPS migration first.",
+        });
+      }
+
+      const transactionResults = await prisma.$transaction([
+        prisma.delivery.updateMany({
+          where: {
+            deliveryId: {
+              in: deliveries.map((delivery) => delivery.deliveryId),
+            },
+            assignedDeliveryGuyId: null,
+          },
+          data: { assignedDeliveryGuyId: userId },
+        }),
+        ...deliveries.map((delivery) =>
+          prisma.deliveryGpsLocation.create({
+            data: {
+              deliveryId: delivery.deliveryId,
+              deviceId: `web-driver-${userId}`,
+              ...payload.data,
+            },
+          }),
+        ),
+      ]);
+      const rows = transactionResults.slice(1);
+
+      return res.status(201).json({
+        message: `GPS location recorded for ${rows.length} active ${rows.length === 1 ? "delivery" : "deliveries"}`,
+        deliveries: deliveries.map((delivery) => ({
+          id: delivery.deliveryId.toString(),
+          drNumber: delivery.drNumber,
+        })),
+        location: normalizeGpsLocation(rows[0]),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // Browser location updates use the signed-in delivery worker's session instead
 // of the hardware GPS token. Keeping this separate prevents a token from being
@@ -590,32 +711,36 @@ router.post(
         return res.status(401).json({ error: "Invalid user session" });
       }
 
-      const lat = parseGpsNumber(req.body.lat ?? req.body.latitude);
-      const lng = parseGpsNumber(req.body.lng ?? req.body.longitude);
-      if (lat === null || lat < -90 || lat > 90) {
-        return res
-          .status(400)
-          .json({ error: "Latitude must be between -90 and 90" });
-      }
-      if (lng === null || lng < -180 || lng > 180) {
-        return res
-          .status(400)
-          .json({ error: "Longitude must be between -180 and 180" });
-      }
+      const payload = parseGpsPayload(req.body);
+      if (payload.error) return res.status(400).json({ error: payload.error });
 
       const delivery = await prisma.delivery.findFirst({
         where: {
           deliveryId,
-          assignedDeliveryGuyId: userId,
           status: { in: ["IN_TRANSIT", "DELAYED"] },
           deletedAt: null,
         },
-        select: { deliveryId: true },
+        select: { deliveryId: true, assignedDeliveryGuyId: true },
       });
       if (!delivery) {
         return res.status(403).json({
           error:
-            "You can only publish GPS for a delivery assigned to you that is in transit.",
+            "You can only publish GPS for an in-transit or delayed delivery.",
+        });
+      }
+      if (delivery.assignedDeliveryGuyId && delivery.assignedDeliveryGuyId !== userId) {
+        return res.status(403).json({ error: "This delivery is assigned to another rider" });
+      }
+      if (!delivery.assignedDeliveryGuyId) {
+        const riderResult = await getSoleActiveDeliveryRider();
+        if (riderResult.error || riderResult.rider.userId !== userId) {
+          return res.status(403).json({
+            error: riderResult.error || "You are not the active delivery rider",
+          });
+        }
+        await prisma.delivery.update({
+          where: { deliveryId },
+          data: { assignedDeliveryGuyId: userId },
         });
       }
 
@@ -627,21 +752,11 @@ router.post(
         });
       }
 
-      const recordedAtRaw = req.body.recordedAt || req.body.timestamp;
-      const recordedAt = recordedAtRaw ? new Date(recordedAtRaw) : new Date();
-      if (Number.isNaN(recordedAt.getTime())) {
-        return res.status(400).json({ error: "Invalid recordedAt timestamp" });
-      }
-
       const row = await prisma.deliveryGpsLocation.create({
         data: {
           deliveryId,
           deviceId: `web-driver-${userId}`,
-          latitude: lat,
-          longitude: lng,
-          speedKmph: parseGpsNumber(req.body.speedKmph ?? req.body.speed),
-          heading: parseGpsNumber(req.body.heading ?? req.body.course),
-          recordedAt,
+          ...payload.data,
         },
       });
 
@@ -656,6 +771,7 @@ router.get(
   "/:id/location/latest",
   requireRole([
     "ADMIN",
+    "PRESIDENT",
     "WAREHOUSE_STAFF",
     "DRIVER",
     "DELIVERY_GUY",
@@ -685,6 +801,53 @@ router.get(
       });
 
       res.json({ location: normalizeGpsLocation(latest) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.get(
+  "/:id/location/history",
+  requireRole([
+    "ADMIN",
+    "PRESIDENT",
+    "WAREHOUSE_STAFF",
+    "DRIVER",
+    "DELIVERY_GUY",
+    "CLIENT",
+    "SALES_AGENT",
+    "PROJECT_MANAGER",
+  ]),
+  async (req, res, next) => {
+    try {
+      const deliveryId = Number(req.params.id);
+      if (!Number.isInteger(deliveryId) || deliveryId <= 0) {
+        return res.status(400).json({ error: "Invalid delivery id" });
+      }
+
+      const visible = await assertDeliveryVisible(req, deliveryId);
+      if (!visible) return res.status(404).json({ error: "Delivery not found" });
+
+      const columnSupport = await getDeliveryColumnSupport();
+      if (!columnSupport.gpsLocations) {
+        return res.json({ locations: [], gpsReady: false });
+      }
+
+      const requestedLimit = Number(req.query.limit || 200);
+      const limit = Number.isInteger(requestedLimit)
+        ? Math.min(Math.max(requestedLimit, 2), 500)
+        : 200;
+      const rows = await prisma.deliveryGpsLocation.findMany({
+        where: { deliveryId },
+        orderBy: { recordedAt: "desc" },
+        take: limit,
+      });
+
+      return res.json({
+        locations: rows.reverse().map(normalizeGpsLocation),
+        gpsReady: true,
+      });
     } catch (err) {
       next(err);
     }
@@ -987,9 +1150,19 @@ router.put(
         }
       }
 
+      let autoAssignedDeliveryGuyId;
+      if (requestedStatus === "IN_TRANSIT" && !existing.assignedDeliveryGuyId) {
+        const riderResult = await getSoleActiveDeliveryRider();
+        if (riderResult.error) {
+          return res.status(409).json({ error: riderResult.error });
+        }
+        autoAssignedDeliveryGuyId = riderResult.rider.userId;
+      }
+
       const delivery = await prisma.delivery.update({
         where: { deliveryId: Number(req.params.id) },
         data: {
+          assignedDeliveryGuyId: autoAssignedDeliveryGuyId,
           status: requestedStatus || undefined,
           eta: req.body.eta ? new Date(req.body.eta) : undefined,
           receivedBy: req.body.receivedBy,
