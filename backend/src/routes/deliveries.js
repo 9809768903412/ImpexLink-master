@@ -503,6 +503,7 @@ router.post("/active/location", async (req, res, next) => {
     const deviceId = req.body.deviceId
       ? String(req.body.deviceId).slice(0, 120)
       : "unidentified-device";
+    console.info(`[GPS] Hardware upload received from ${deviceId}`);
 
     const transactionResults = await prisma.$transaction([
       prisma.delivery.updateMany({
@@ -525,6 +526,9 @@ router.post("/active/location", async (req, res, next) => {
       ),
     ]);
     const rows = transactionResults.slice(1);
+    console.info(
+      `[GPS] Stored reading from ${deviceId} for ${rows.length} active ${rows.length === 1 ? "delivery" : "deliveries"}`,
+    );
 
     return res.status(201).json({
       message: `GPS location recorded for ${rows.length} active ${rows.length === 1 ? "delivery" : "deliveries"}`,

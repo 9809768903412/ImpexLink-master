@@ -48,12 +48,23 @@ Successful requests return HTTP `201`. Expected non-success responses include:
 
 ## Arduino IDE
 
-The example in `hardware/esp32-gps-tracker/esp32-gps-tracker.ino` targets an
-ESP32 with a UART GPS module supported by TinyGPSPlus. Install the TinyGPSPlus
-library in Arduino IDE, replace the Wi-Fi and token placeholders, and install
-the TLS root certificate used by the API domain.
+The example in `hardware/esp32-gps-tracker/esp32-gps-tracker.ino` matches the
+pictured build: an ESP32 DevKit-class board, an NMEA UART GPS module such as the
+NEO-M8N, and a pocket Wi-Fi connection. Install the TinyGPSPlus library in
+Arduino IDE, then replace only the Wi-Fi and token placeholders. The verified
+Let's Encrypt root certificate for the API is already included.
+
+Use a 2.4 GHz pocket Wi-Fi network because the classic ESP32 does not support
+5 GHz Wi-Fi. Wire GPS `TX` to ESP32 `GPIO 16` (`RX2`), GPS `RX` to `GPIO 17`
+(`TX2`, optional if configuration commands are not sent), and connect a common
+ground. Confirm the GPS breakout board's allowed input voltage before powering
+it; the ESP32 UART pins themselves use 3.3 V logic.
+
+Open Arduino IDE's Serial Monitor at `115200` baud after flashing. Every 15
+seconds it reports whether the module has a valid GPS fix, whether Wi-Fi is
+connected, and the API's HTTP status and response. It never prints the GPS
+device token.
 
 An Arduino Uno without networking cannot call this endpoint by itself. Boards
 using SIM800/SIM7600 or another cellular modem need a modem-specific transport
 version of the same HTTPS request.
-
