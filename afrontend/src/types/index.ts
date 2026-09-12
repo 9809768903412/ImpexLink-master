@@ -227,6 +227,14 @@ export interface Delivery {
   receivedAt?: string;
   proofOfDelivery?: string;
   notes?: string;
+  delayType?:
+    | 'traffic'
+    | 'vehicle-issue'
+    | 'receiver-unavailable'
+    | 'weather'
+    | 'third-party'
+    | 'missing-item'
+    | null;
   returnRejectionReason?: string | null;
   assignedDeliveryGuyId?: string | null;
   deliveryGuyName?: string | null;
