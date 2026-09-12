@@ -1,11 +1,12 @@
 const express = require('express');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { requireAuth, requireRole, getRoleList } = require('../middleware/auth');
-const { isNonNegativeNumber, isPositiveInt } = require('../utils/validate');
+const { isPositiveInt } = require('../utils/validate');
 const {
   resolveClientAccess,
   buildClientOrderScope,
@@ -13,6 +14,11 @@ const {
 } = require('../utils/clientVisibility');
 const { calculateDeliveryPlan } = require('../utils/deliveryRules');
 const { mirrorUploadedFile } = require('../utils/uploadedFiles');
+const {
+  calculateOrderTotals,
+  canTransitionOrderForRoles,
+  splitItemsIntoDeliveryBatches,
+} = require('../utils/orderWorkflow');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -47,9 +53,9 @@ function paymentDueDateFromOrder(orderDate = new Date(), creditDays = 30) {
   return date;
 }
 
-async function ensureClientOrderPayment(order, userId, overrides = {}) {
+async function ensureClientOrderPayment(order, userId, overrides = {}, db = prisma) {
   if (!order?.clientOrderId) return null;
-  const existing = await prisma.paymentTransaction.findFirst({
+  const existing = await db.paymentTransaction.findFirst({
     where: {
       direction: 'CLIENT_TO_OFFICE',
       clientOrderId: order.clientOrderId,
@@ -77,12 +83,12 @@ async function ensureClientOrderPayment(order, userId, overrides = {}) {
     createdById: existing?.createdById || userId || order.createdBy || null,
   };
   if (existing) {
-    return prisma.paymentTransaction.update({
+    return db.paymentTransaction.update({
       where: { paymentId: existing.paymentId },
       data,
     });
   }
-  return prisma.paymentTransaction.create({
+  return db.paymentTransaction.create({
     data: {
       direction: 'CLIENT_TO_OFFICE',
       ...data,
@@ -91,25 +97,7 @@ async function ensureClientOrderPayment(order, userId, overrides = {}) {
 }
 
 function canTransitionOrder(req, currentStatus, requestedStatus) {
-  if (!requestedStatus || requestedStatus === currentStatus) return true;
-  if (hasRole(req, 'ADMIN')) return true;
-
-  if (hasRole(req, 'SALES_AGENT')) {
-    return currentStatus === 'APPROVED' && requestedStatus === 'PROCESSING';
-  }
-
-  if (hasRole(req, 'WAREHOUSE_STAFF')) {
-    return (
-      (currentStatus === 'APPROVED' && requestedStatus === 'PROCESSING') ||
-      (currentStatus === 'PROCESSING' && requestedStatus === 'SHIPPED')
-    );
-  }
-
-  if (hasRole(req, 'CLIENT')) {
-    return false;
-  }
-
-  return false;
+  return canTransitionOrderForRoles(getRoleList(req.user), currentStatus, requestedStatus);
 }
 
 async function buildOrderRoleScope(req) {
@@ -152,6 +140,10 @@ async function buildOrderRoleScope(req) {
 
   if (hasRole(req, 'PROJECT_MANAGER')) {
     scopes.push({ project: { assignedPmId: req.user.userId } });
+  }
+
+  if (hasRole(req, 'WAREHOUSE_STAFF')) {
+    scopes.push({ status: { in: ['APPROVED', 'PROCESSING', 'SHIPPED'] } });
   }
 
   if (scopes.length === 0) {
@@ -238,6 +230,9 @@ function mapOrder(o) {
     createdBy: o.createdBy?.toString() || null,
     assignedSalesAgentId: o.assignedSalesAgentId?.toString() || null,
     assignedSalesAgentName: o.assignedSalesAgent?.fullName || null,
+    requirementsConfirmedAt: o.requirementsConfirmedAt?.toISOString() || null,
+    requirementsConfirmedBy: o.requirementsConfirmedBy?.toString() || null,
+    coordinationNotes: o.coordinationNotes || null,
     specialInstructions: o.specialInstructions || '',
     cancelReason: o.cancelReason || null,
   };
@@ -269,26 +264,25 @@ async function validateOrderStock(items = []) {
   return { ok: true };
 }
 
-async function createDeliveryBatchesForOrder(order, userId, status = 'PENDING') {
-  const existingDelivery = await prisma.delivery.findFirst({
+async function createDeliveryBatchesForOrder(order, userId, db = prisma) {
+  const existingDelivery = await db.delivery.findFirst({
     where: { clientOrderId: order.clientOrderId, deletedAt: null },
   });
   if (existingDelivery) return;
 
   const plan = calculateDeliveryPlan(order.items || []);
+  const batchItems = splitItemsIntoDeliveryBatches(order.items || [], plan.batchCount);
   const drSuffix = order.orderNumber?.replace(/^ORD-/, '') || String(Date.now());
   const defaultEta = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  const deliveryStatus = status === 'DELIVERED' ? 'DELIVERED' : 'PENDING';
-
   for (let batch = 1; batch <= plan.batchCount; batch += 1) {
     const method = plan.method === 'THIRD_PARTY' ? 'LALAMOVE' : plan.method;
-    const delivery = await prisma.delivery.create({
+    const delivery = await db.delivery.create({
       data: {
         drNumber: plan.batchCount > 1 ? `DR-${drSuffix}-B${batch}` : `DR-${drSuffix}`,
         clientOrderId: order.clientOrderId,
         assignedDeliveryGuyId: null,
-        status: deliveryStatus,
-        itemsCount: order.items?.length || 0,
+        status: 'PENDING',
+        itemsCount: batchItems[batch - 1].reduce((sum, item) => sum + item.quantity, 0),
         eta: defaultEta,
         deliveryMethod: method,
         batchNumber: batch,
@@ -301,7 +295,16 @@ async function createDeliveryBatchesForOrder(order, userId, status = 'PENDING') 
         ].filter(Boolean).join(' '),
       },
     });
-    await prisma.auditLog.create({
+    if (batchItems[batch - 1].length > 0) {
+      await db.deliveryItem.createMany({
+        data: batchItems[batch - 1].map((item) => ({
+          deliveryId: delivery.deliveryId,
+          orderItemId: item.orderItemId,
+          quantity: item.quantity,
+        })),
+      });
+    }
+    await db.auditLog.create({
       data: {
         userId,
         action: 'CREATE',
@@ -310,6 +313,16 @@ async function createDeliveryBatchesForOrder(order, userId, status = 'PENDING') 
       },
     });
   }
+}
+
+async function generateOrderNumber(db = prisma) {
+  const year = new Date().getFullYear();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = `ORD-${year}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const existing = await db.clientOrder.findUnique({ where: { orderNumber: candidate } });
+    if (!existing) return candidate;
+  }
+  throw new Error('Unable to generate a unique order number');
 }
 
 router.get('/', async (req, res, next) => {
@@ -322,7 +335,7 @@ router.get('/', async (req, res, next) => {
     const roleList = Array.isArray(req.user?.roles)
       ? req.user.roles.map((r) => String(r).toUpperCase())
       : [String(req.user?.role || '').toUpperCase()];
-    if (!roleList.includes('ADMIN') && !roleList.includes('PRESIDENT') && !roleList.includes('CLIENT') && !roleList.includes('SALES_AGENT')) {
+    if (!roleList.includes('ADMIN') && !roleList.includes('PRESIDENT') && !roleList.includes('CLIENT') && !roleList.includes('SALES_AGENT') && !roleList.includes('WAREHOUSE_STAFF')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const clientId = req.query.clientId ? Number(req.query.clientId) : null;
@@ -379,38 +392,68 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
   try {
-    const { orderNumber, clientId, projectId, items, subtotal, vat, total, status, paymentStatus, specialInstructions, cancelReason } = req.body;
-    if (!orderNumber) return res.status(400).json({ error: 'Order number is required' });
+    const { clientId, projectId, items, specialInstructions } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'At least one item is required' });
     }
     if (items.some((item) => Number(item.quantity || 0) <= 0)) {
       return res.status(400).json({ error: 'Quantity must be greater than 0' });
     }
-    if (items.some((item) => Number(item.unitPrice || 0) < 0)) {
-      return res.status(400).json({ error: 'Unit price must be 0 or greater' });
+    if (!projectId || !isPositiveInt(projectId)) {
+      return res.status(400).json({ error: 'An active project is required' });
     }
-    const stockCheck = await validateOrderStock(items);
-    if (!stockCheck.ok) {
-      return res.status(400).json({ error: stockCheck.error });
+
+    const normalizedItems = items.map((item) => ({
+      productId: Number(item.productId ?? item.itemId),
+      quantity: Number(item.quantity),
+    }));
+    if (normalizedItems.some((item) => !Number.isInteger(item.productId) || item.productId <= 0)) {
+      return res.status(400).json({ error: 'Each order item must reference a valid product' });
     }
-    if (subtotal !== undefined && !isNonNegativeNumber(subtotal)) {
-      return res.status(400).json({ error: 'Subtotal must be 0 or greater' });
+    if (new Set(normalizedItems.map((item) => item.productId)).size !== normalizedItems.length) {
+      return res.status(400).json({ error: 'Duplicate products are not allowed in one order' });
     }
-    if (vat !== undefined && !isNonNegativeNumber(vat)) {
-      return res.status(400).json({ error: 'VAT must be 0 or greater' });
-    }
-    if (total !== undefined && !isNonNegativeNumber(total)) {
-      return res.status(400).json({ error: 'Total must be 0 or greater' });
-    }
-    if (projectId !== undefined && projectId !== null && !isPositiveInt(projectId)) {
-      return res.status(400).json({ error: 'Invalid project id' });
-    }
+
     let resolvedClientId = clientId ? Number(clientId) : null;
     if (hasRole(req, 'CLIENT')) {
       const access = await resolveClientAccess(prisma, req.user.userId);
       resolvedClientId = access?.client?.clientId || null;
     }
+    if (!resolvedClientId || !Number.isInteger(resolvedClientId)) {
+      return res.status(400).json({ error: 'A valid client is required' });
+    }
+
+    const [project, products] = await Promise.all([
+      prisma.project.findFirst({
+        where: {
+          projectId: Number(projectId),
+          clientId: resolvedClientId,
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+      }),
+      prisma.product.findMany({
+        where: {
+          productId: { in: normalizedItems.map((item) => item.productId) },
+          deletedAt: null,
+        },
+      }),
+    ]);
+    if (!project) {
+      return res.status(400).json({ error: 'Project must be active and belong to this client' });
+    }
+    const productsById = new Map(products.map((product) => [product.productId, product]));
+    if (products.length !== normalizedItems.length) {
+      return res.status(400).json({ error: 'One or more products are no longer available' });
+    }
+    const authoritativeItems = normalizedItems.map((item) => ({
+      ...item,
+      unitPrice: Number(productsById.get(item.productId).unitPrice),
+    }));
+    const stockCheck = await validateOrderStock(authoritativeItems);
+    if (!stockCheck.ok) return res.status(400).json({ error: stockCheck.error });
+    const totals = calculateOrderTotals(authoritativeItems);
+
     if (req.body.assignedSalesAgentId !== undefined && !hasRole(req, 'ADMIN')) {
       return res.status(403).json({ error: 'Only admin can assign a sales agent' });
     }
@@ -420,58 +463,36 @@ router.post('/', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
         : req.body.assignedSalesAgentId === 'unassigned'
         ? null
         : await validateSalesAgentAssignment(req.body.assignedSalesAgentId);
-    const requestedStatus = status ? normalizeOrderStatusForWrite(status) : 'PENDING';
-    if (!hasRole(req, 'ADMIN') && requestedStatus !== 'PENDING') {
-      return res.status(403).json({ error: 'Only admin can create an order as approved or processed.' });
-    }
-    if (!hasRole(req, 'ADMIN') && paymentStatus && String(paymentStatus).toUpperCase() !== 'PENDING') {
-      return res.status(403).json({ error: 'Only admin can set payment approval status.' });
-    }
-
-    const order = await prisma.clientOrder.create({
-      data: {
-        orderNumber,
-        clientId: resolvedClientId,
-        projectId: projectId ? Number(projectId) : null,
-        assignedSalesAgentId,
-        subtotal,
-        vat,
-        total,
-        status: requestedStatus,
-        paymentStatus: paymentStatus ? paymentStatus.toUpperCase() : 'PENDING',
-        createdBy: req.user.userId,
-        specialInstructions: specialInstructions || null,
-        cancelReason: cancelReason || null,
-        items: {
-          create: Array.isArray(items)
-            ? items.map((item) => ({
-                productId: item.itemId ? Number(item.itemId) : Number(item.productId),
-                quantity: Number(item.quantity || 0),
-                unitPrice: Number(item.unitPrice || 0),
-              }))
-            : [],
+    const order = await prisma.$transaction(async (tx) => {
+      const orderNumber = await generateOrderNumber(tx);
+      const created = await tx.clientOrder.create({
+        data: {
+          orderNumber,
+          clientId: resolvedClientId,
+          projectId: Number(projectId),
+          assignedSalesAgentId,
+          ...totals,
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
+          createdBy: req.user.userId,
+          specialInstructions: specialInstructions || null,
+          items: { create: authoritativeItems },
         },
-      },
-      include: { project: true, items: { include: { product: { include: { category: true } } } } },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.userId,
-        action: 'CREATE',
-        target: 'ClientOrder',
-        details: `Created order ${order.orderNumber}`,
-      },
-    });
-
-    await ensureClientOrderPayment(order, req.user.userId);
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.userId,
-        action: 'CREATE',
-        target: 'Payment',
-        details: `Created client receivable for order ${order.orderNumber}`,
-      },
+        include: {
+          project: true,
+          client: true,
+          assignedSalesAgent: true,
+          items: { include: { product: true } },
+        },
+      });
+      await tx.auditLog.create({
+        data: { userId: req.user.userId, action: 'CREATE', target: 'ClientOrder', details: `Created order ${orderNumber}` },
+      });
+      await ensureClientOrderPayment(created, req.user.userId, {}, tx);
+      await tx.auditLog.create({
+        data: { userId: req.user.userId, action: 'CREATE', target: 'Payment', details: `Created client receivable for order ${orderNumber}` },
+      });
+      return created;
     });
 
     // Notify admins of new order
@@ -498,7 +519,7 @@ router.post('/', requireRole(['ADMIN', 'CLIENT']), async (req, res, next) => {
       });
     }
 
-    res.status(201).json(order);
+    res.status(201).json(mapOrder(order));
   } catch (err) {
     next(err);
   }
@@ -549,7 +570,6 @@ router.put('/:id/assignment', requireRole(['ADMIN']), async (req, res, next) => 
         details: `Updated sales agent assignment for ${responseOrder.orderNumber}`,
       },
     });
-
     if (assignedSalesAgentId && assignedSalesAgentId !== existing.assignedSalesAgentId) {
       await prisma.notification.create({
         data: {
@@ -571,36 +591,71 @@ router.put('/:id/assignment', requireRole(['ADMIN']), async (req, res, next) => 
   }
 });
 
-router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
+router.put('/:id/coordination', requireRole(['SALES_AGENT']), async (req, res, next) => {
   try {
-    if (hasRole(req, 'CLIENT')) {
-      const access = await resolveClientAccess(prisma, req.user.userId);
-      const order = await prisma.clientOrder.findUnique({
-        where: { clientOrderId: Number(req.params.id) },
-        include: { client: true },
-      });
-      if (!order) {
-        return res.status(404).json({ error: 'Order not found' });
-      }
-      if (!canAccessClientOwnedRecord(access, order)) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-      return res.status(403).json({ error: 'Clients cannot approve or override order/payment status. Please upload payment proof instead.' });
+    const order = await prisma.clientOrder.findUnique({
+      where: { clientOrderId: Number(req.params.id) },
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.assignedSalesAgentId !== req.user.userId) {
+      return res.status(403).json({ error: 'Only the assigned sales agent can confirm requirements.' });
     }
+    if (order.status !== 'PENDING') {
+      return res.status(400).json({ error: 'Requirements must be confirmed before admin approval.' });
+    }
+    const notes = String(req.body.notes || '').trim();
+    if (!notes) return res.status(400).json({ error: 'Coordination notes are required.' });
 
-    if (hasRole(req, 'SALES_AGENT') && !hasRole(req, 'ADMIN')) {
-      const scopedOrder = await prisma.clientOrder.findUnique({
-        where: { clientOrderId: Number(req.params.id) },
+    await prisma.clientOrder.update({
+      where: { clientOrderId: order.clientOrderId },
+      data: {
+        requirementsConfirmedAt: new Date(),
+        requirementsConfirmedBy: req.user.userId,
+        coordinationNotes: notes,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'CONFIRM',
+        target: 'ClientOrderRequirements',
+        details: `Confirmed customer requirements for ${order.orderNumber}`,
+      },
+    });
+    const admins = await prisma.user.findMany({
+      where: { role: { roleName: 'ADMIN' }, deletedAt: null },
+      select: { userId: true },
+    });
+    if (admins.length > 0) {
+      await prisma.notification.createMany({
+        data: admins.map((admin) => ({
+          userId: admin.userId,
+          type: 'ORDER_APPROVAL',
+          title: 'Requirements confirmed',
+          message: `${order.orderNumber} is ready for admin review.`,
+          link: `/admin/orders?orderId=${order.clientOrderId}`,
+        })),
       });
-      if (!scopedOrder) {
-        return res.status(404).json({ error: 'Order not found' });
-      }
-      if (scopedOrder.assignedSalesAgentId !== req.user.userId) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
     }
-    if (req.body.assignedSalesAgentId !== undefined && !hasRole(req, 'ADMIN')) {
-      return res.status(403).json({ error: 'Only admin can change the assigned sales agent' });
+    const responseOrder = await prisma.clientOrder.findUnique({
+      where: { clientOrderId: order.clientOrderId },
+      include: {
+        project: true,
+        client: true,
+        assignedSalesAgent: true,
+        items: { include: { product: true } },
+      },
+    });
+    res.json(mapOrder(responseOrder));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:id', requireRole(['ADMIN', 'WAREHOUSE_STAFF']), async (req, res, next) => {
+  try {
+    if (req.body.assignedSalesAgentId !== undefined) {
+      return res.status(400).json({ error: 'Use the order assignment endpoint to change the sales agent' });
     }
 
     const status = req.body.status ? normalizeOrderStatusForWrite(req.body.status) : undefined;
@@ -616,115 +671,92 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
         return res.status(400).json({ error: 'Invalid payment status' });
       }
     }
-    const cancelReason =
-      status === 'CANCELLED'
-        ? req.body.cancelReason || 'Cancelled'
-        : req.body.cancelReason;
+    if (status === 'CANCELLED' && !String(req.body.cancelReason || '').trim()) {
+      return res.status(400).json({ error: 'Cancellation reason is required' });
+    }
     const existing = await prisma.clientOrder.findUnique({
       where: { clientOrderId: Number(req.params.id) },
-      include: { items: { include: { product: { include: { category: true } } } } },
+      include: {
+        project: true,
+        items: { include: { product: { include: { category: true } } } },
+      },
     });
     if (!existing) return res.status(404).json({ error: 'Order not found' });
     if (status && !canTransitionOrder(req, existing.status, status)) {
       return res.status(403).json({ error: 'You cannot move this order to that stage.' });
     }
-    const assignedSalesAgentId =
-      req.body.assignedSalesAgentId === undefined
-        ? undefined
-        : req.body.assignedSalesAgentId === 'unassigned'
-        ? null
-        : await validateSalesAgentAssignment(req.body.assignedSalesAgentId);
-
-    await prisma.clientOrder.update({
-      where: { clientOrderId: Number(req.params.id) },
-      data: {
-        status,
-        paymentStatus: req.body.paymentStatus ? req.body.paymentStatus.toUpperCase() : undefined,
-        cancelReason: cancelReason || undefined,
-        assignedSalesAgentId,
-      },
-    });
-
-    if (req.body.paymentStatus) {
-      await ensureClientOrderPayment(
-        { ...existing, paymentStatus: req.body.paymentStatus.toUpperCase() },
-        req.user.userId,
-      );
+    if (status === 'APPROVED' && (!existing.assignedSalesAgentId || !existing.requirementsConfirmedAt)) {
+      return res.status(400).json({
+        error: 'Assign a sales agent and wait for requirements confirmation before approval.',
+      });
+    }
+    if (status === 'APPROVED') {
+      if (!existing.project || existing.project.deletedAt || existing.project.status !== 'ACTIVE' || existing.project.clientId !== existing.clientId) {
+        return res.status(400).json({ error: 'The linked project is no longer active or valid for this client.' });
+      }
+      const stockCheck = await validateOrderStock(existing.items);
+      if (!stockCheck.ok) return res.status(409).json({ error: stockCheck.error });
+    }
+    if (status === 'SHIPPED' && !['VERIFIED', 'PAID'].includes(existing.paymentStatus)) {
+      return res.status(400).json({ error: 'Payment must be verified before the order is ready for delivery.' });
     }
 
-    const nextStatus = (status || existing.status).toUpperCase();
-    const shouldDeduct = ['APPROVED', 'PROCESSING'].includes(nextStatus);
-    const shouldCreateDelivery = ['APPROVED', 'PROCESSING', 'SHIPPED', 'DELIVERED'].includes(nextStatus);
-    if (shouldDeduct) {
-      const existingIssue = await prisma.stockTransaction.findFirst({
-        where: {
-          type: 'ISSUE',
-          notes: { contains: `Order ${existing.orderNumber}` },
+    const paymentStatus = req.body.paymentStatus ? req.body.paymentStatus.toUpperCase() : undefined;
+    await prisma.$transaction(async (tx) => {
+      if (status === 'PROCESSING') {
+        const existingIssue = await tx.stockTransaction.findFirst({
+          where: { type: 'ISSUE', notes: { contains: `Order ${existing.orderNumber}` } },
+        });
+        if (!existingIssue) {
+          for (const item of existing.items) {
+            if (!item.productId) throw new Error('ORDER_PRODUCT_MISSING');
+            const result = await tx.product.updateMany({
+              where: { productId: item.productId, deletedAt: null, qtyOnHand: { gte: item.quantity } },
+              data: { qtyOnHand: { decrement: item.quantity } },
+            });
+            if (result.count !== 1) throw new Error(`INSUFFICIENT_STOCK:${item.product?.itemName || item.productId}`);
+            const product = await tx.product.findUnique({ where: { productId: item.productId } });
+            const productStatus = product.qtyOnHand <= 0
+              ? 'OUT_OF_STOCK'
+              : product.qtyOnHand <= product.lowStockThreshold
+                ? 'LOW_STOCK'
+                : 'AVAILABLE';
+            await tx.product.update({ where: { productId: item.productId }, data: { status: productStatus } });
+            await tx.stockTransaction.create({
+              data: {
+                productId: item.productId,
+                type: 'ISSUE',
+                qtyChange: -item.quantity,
+                newBalance: product.qtyOnHand,
+                userId: req.user.userId,
+                notes: `Project: ${existing.project?.projectName || 'Unknown'} | Order ${existing.orderNumber}`,
+              },
+            });
+          }
+          await tx.auditLog.create({
+            data: { userId: req.user.userId, action: 'UPDATE', target: 'Stock', details: `Issued stock for order ${existing.orderNumber}` },
+          });
+        }
+      }
+
+      await tx.clientOrder.update({
+        where: { clientOrderId: existing.clientOrderId },
+        data: {
+          status,
+          paymentStatus,
+          cancelReason: status === 'CANCELLED' ? String(req.body.cancelReason).trim() : undefined,
         },
       });
-      if (!existingIssue && existing.items?.length) {
-        const stockCheck = await validateOrderStock(existing.items);
-        if (!stockCheck.ok) {
-          return res.status(400).json({ error: stockCheck.error });
-        }
-        for (const item of existing.items) {
-          if (!item.productId) continue;
-          const product = item.product;
-          if (!product) continue;
-          const newBalance = product.qtyOnHand - item.quantity;
-          const statusValue =
-            newBalance <= 0
-              ? 'OUT_OF_STOCK'
-              : newBalance <= product.lowStockThreshold
-              ? 'LOW_STOCK'
-              : 'AVAILABLE';
-          await prisma.product.update({
-            where: { productId: product.productId },
-            data: { qtyOnHand: newBalance, status: statusValue },
-          });
-          await prisma.stockTransaction.create({
-            data: {
-              productId: product.productId,
-              type: 'ISSUE',
-              qtyChange: -item.quantity,
-              newBalance,
-              userId: req.user.userId,
-              notes: `Project: ${existing.project?.projectName || 'Unknown'} | Order ${existing.orderNumber}`,
-            },
-          });
-        }
-        await prisma.auditLog.create({
-          data: {
-            userId: req.user.userId,
-            action: 'UPDATE',
-            target: 'Stock',
-            details: `Issued stock for order ${existing.orderNumber}`,
-          },
-        });
+      if (paymentStatus) {
+        await ensureClientOrderPayment({ ...existing, paymentStatus }, req.user.userId, {}, tx);
       }
-    }
-
-    if (shouldCreateDelivery) {
-      const existingDelivery = await prisma.delivery.findFirst({
-        where: { clientOrderId: existing.clientOrderId, deletedAt: null },
+      if (status === 'SHIPPED') {
+        await createDeliveryBatchesForOrder(existing, req.user.userId, tx);
+      }
+      await tx.auditLog.create({
+        data: { userId: req.user.userId, action: 'UPDATE', target: 'ClientOrder', details: `Updated order ${existing.orderNumber}` },
       });
-      if (!existingDelivery) {
-        await createDeliveryBatchesForOrder(existing, req.user.userId, nextStatus);
-      } else {
-        if ((nextStatus === 'APPROVED' || nextStatus === 'PROCESSING') && existingDelivery.status !== 'PENDING') {
-          await prisma.delivery.update({
-            where: { deliveryId: existingDelivery.deliveryId },
-            data: { status: 'PENDING' },
-          });
-        }
-        if (nextStatus === 'DELIVERED' && existingDelivery.status !== 'DELIVERED') {
-          await prisma.delivery.update({
-            where: { deliveryId: existingDelivery.deliveryId },
-            data: { status: 'DELIVERED', receivedAt: new Date() },
-          });
-        }
-      }
-    }
+    }, { isolationLevel: 'Serializable' });
 
     // Notify client on admin/staff updates
     if (existing.clientId) {
@@ -753,15 +785,6 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
       }
     }
 
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.userId,
-        action: 'UPDATE',
-        target: 'ClientOrder',
-        details: `Updated order ${existing.orderNumber}`,
-      },
-    });
-
     const responseOrder = await prisma.clientOrder.findUnique({
       where: { clientOrderId: Number(req.params.id) },
       include: {
@@ -774,6 +797,15 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
 
     res.json(mapOrder(responseOrder));
   } catch (err) {
+    if (err.message === 'ORDER_PRODUCT_MISSING') {
+      return res.status(400).json({ error: 'An order product no longer exists.' });
+    }
+    if (err.message?.startsWith('INSUFFICIENT_STOCK:')) {
+      return res.status(409).json({ error: `${err.message.split(':')[1]} no longer has enough stock.` });
+    }
+    if (err.code === 'P2034') {
+      return res.status(409).json({ error: 'Inventory changed while processing. Please retry.' });
+    }
     next(err);
   }
 });
@@ -782,7 +814,6 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
   try {
     const referenceNumber = String(req.body?.referenceNumber || '').trim();
     const paymentMethod = String(req.body?.paymentMethod || req.body?.method || 'CHEQUE').trim().toUpperCase();
-    const amount = req.body?.amount !== undefined && req.body?.amount !== '' ? Number(req.body.amount) : undefined;
     const notes = String(req.body?.notes || '').trim();
     if (!['CHEQUE', 'AUTO_DEPOSIT'].includes(paymentMethod)) {
       return res.status(400).json({ error: 'Client payment method must be Cheque or Auto Deposit.' });
@@ -814,7 +845,7 @@ router.post('/:id/payment-proof', requireRole(['CLIENT']), upload.single('proof'
     await ensureClientOrderPayment(updated, req.user.userId, {
       status: 'PENDING',
       method: paymentMethod,
-        amount: amount === undefined || Number.isNaN(amount) ? undefined : amount,
+        amount: Number(order.total || 0),
         referenceNumber: referenceNumber || undefined,
         notes:
           notes ||

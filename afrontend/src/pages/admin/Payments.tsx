@@ -56,8 +56,8 @@ export default function PaymentsPage() {
   const { user } = useAuth();
   const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase());
   const isSalesAgent = roleList.includes('sales_agent');
-  const canRecordPayments = roleList.some((role) => ['admin', 'president', 'sales_agent'].includes(role));
-  const canManageSupplierPayments = roleList.some((role) => ['admin', 'president'].includes(role));
+  const canRecordPayments = roleList.includes('admin');
+  const canManageSupplierPayments = roleList.includes('admin');
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [summary, setSummary] = useState({ clientReceivables: 0, supplierPayables: 0, overdue: 0, cleared: 0 });
   const [orders, setOrders] = useState<Order[]>([]);
@@ -251,12 +251,12 @@ export default function PaymentsPage() {
                 <TableHead>Due</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
-                {isSalesAgent ? <TableHead className="text-right">Quick Update</TableHead> : null}
+                {canRecordPayments ? <TableHead className="text-right">Quick Update</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {paged.length === 0 ? (
-                <TableRow><TableCell colSpan={isSalesAgent ? 6 : 5} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canRecordPayments ? 6 : 5} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
               ) : paged.map((payment) => (
                 <TableRow
                   key={payment.id}
@@ -271,7 +271,7 @@ export default function PaymentsPage() {
                   <TableCell>{payment.dueDate ? format(new Date(payment.dueDate), 'MMM dd, yyyy') : '-'}</TableCell>
                   <TableCell><Badge variant="outline" className={`capitalize ${statusBadgeClass(payment.status)}`}>{payment.status}</Badge></TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
-                  {isSalesAgent ? (
+                  {canRecordPayments ? (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button
@@ -356,7 +356,7 @@ export default function PaymentsPage() {
                 <p className="text-xs text-muted-foreground">Notes</p>
                 <p className="mt-1 text-sm">{selectedPayment.notes || 'No notes recorded.'}</p>
               </div>
-              <div>
+              {canRecordPayments ? <div>
                 <Label>Status action</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {['pending', 'received', 'paid', 'overdue', 'cancelled'].map((nextStatus) => {
@@ -375,7 +375,7 @@ export default function PaymentsPage() {
                     );
                   })}
                 </div>
-              </div>
+              </div> : null}
             </div>
           </DialogContent>
         )}

@@ -112,6 +112,7 @@ export default function ClientOrdersPage() {
   const [cancelReasonDraft, setCancelReasonDraft] = useState('Cancelled by admin');
   const [orderActionErrors, setOrderActionErrors] = useState<Record<string, string>>({});
   const [assignedSalesAgentDraft, setAssignedSalesAgentDraft] = useState<string>('unassigned');
+  const [coordinationNotes, setCoordinationNotes] = useState('');
   const selectedTotals = selectedOrder
     ? calcTotalsFromItems(
         selectedOrder.items.map((item) => ({ quantity: item.quantity, unitPrice: item.unitPrice }))
@@ -221,6 +222,7 @@ export default function ClientOrdersPage() {
     if (!selectedOrder) return;
     setCancelReasonDraft(selectedOrder.cancelReason || 'Cancelled by admin');
     setAssignedSalesAgentDraft(selectedOrder.assignedSalesAgentId || 'unassigned');
+    setCoordinationNotes(selectedOrder.coordinationNotes || '');
   }, [selectedOrder]);
 
   const handleSaveSalesAgentAssignment = async () => {
@@ -246,7 +248,29 @@ export default function ClientOrdersPage() {
     }
   };
 
-  const handleUpdateOrderStatus = (orderId: string, newStatus: OrderStatus, reason?: string) => {
+  const handleConfirmRequirements = async () => {
+    if (!selectedOrder || !isSalesAgent || selectedOrder.assignedSalesAgentId !== user?.id) return;
+    if (!coordinationNotes.trim()) {
+      toast({ title: 'Notes required', description: 'Summarize what was confirmed with the client.', variant: 'destructive' });
+      return;
+    }
+    try {
+      const response = await apiClient.put<Order>(`/orders/${selectedOrder.id}/coordination`, {
+        notes: coordinationNotes.trim(),
+      });
+      setOrders((current) => current.map((order) => (order.id === selectedOrder.id ? response.data : order)));
+      setSelectedOrder(response.data);
+      toast({ title: 'Requirements confirmed', description: 'Admin can now complete the order review.' });
+    } catch (error: any) {
+      toast({
+        title: 'Unable to confirm requirements',
+        description: error?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: OrderStatus, reason?: string) => {
     if (newStatus === 'cancelled' && (!reason || !reason.trim())) {
       setOrderActionErrors({ cancelReason: 'Cancellation reason is required.' });
       toast({
@@ -256,16 +280,20 @@ export default function ClientOrdersPage() {
       });
       return;
     }
-    setOrders(orders.map((o) => (o.id === orderId ? { ...o, status: newStatus, cancelReason: reason } : o)));
-    apiClient.put<Order>(`/orders/${orderId}`, { status: newStatus, cancelReason: reason }).catch(() => {
-      // keep optimistic update
-    });
-    toast({
-      title: 'Order Updated',
-      description: `Order status changed to ${newStatus}`,
-    });
-    setSelectedOrder(null);
-    setOrderActionErrors({});
+    try {
+      const response = await apiClient.put<Order>(`/orders/${orderId}`, { status: newStatus, cancelReason: reason });
+      setOrders((current) => current.map((order) => (order.id === orderId ? response.data : order)));
+      setSelectedOrder(null);
+      setOrderActionErrors({});
+      toast({ title: 'Order updated', description: `Order status changed to ${newStatus}.` });
+    } catch (error: any) {
+      toast({
+        title: 'Unable to update order',
+        description: error?.response?.data?.error || 'Please refresh and try again.',
+        variant: 'destructive',
+      });
+      await fetchOrders();
+    }
   };
 
   // Archived/restore removed for orders per latest direction
@@ -280,15 +308,13 @@ export default function ClientOrdersPage() {
     setSelectedOrderIds(allSelected ? [] : allIds);
   };
 
-  const applyBulkStatus = () => {
+  const applyBulkStatus = async () => {
     if (selectedOrderIds.length === 0) return;
     const allowedBulkStatuses: OrderStatus[] = isAdmin
-      ? ['approved', 'processing', 'ready-for-delivery', 'delivered', 'cancelled']
+      ? ['approved']
       : isWarehouseStaff
         ? ['processing', 'ready-for-delivery']
-        : isSalesAgent
-          ? ['processing']
-          : [];
+        : [];
     if (!allowedBulkStatuses.includes(bulkStatus)) {
       toast({
         title: 'Status restricted',
@@ -297,15 +323,19 @@ export default function ClientOrdersPage() {
       });
       return;
     }
-    setOrders((prev) =>
-      prev.map((o) => (selectedOrderIds.includes(o.id) ? { ...o, status: bulkStatus } : o))
-    );
-    selectedOrderIds.forEach((id) => {
-      apiClient.put(`/orders/${id}`, { status: bulkStatus }).catch(() => {
-        // keep optimistic update
+    try {
+      await Promise.all(selectedOrderIds.map((id) => apiClient.put(`/orders/${id}`, { status: bulkStatus })));
+      setSelectedOrderIds([]);
+      await fetchOrders();
+      toast({ title: 'Orders updated', description: `Selected orders moved to ${bulkStatus}.` });
+    } catch (error: any) {
+      await fetchOrders();
+      toast({
+        title: 'Some orders were not updated',
+        description: error?.response?.data?.error || 'Review each order and try again.',
+        variant: 'destructive',
       });
-    });
-    setSelectedOrderIds([]);
+    }
   };
 
   const handleRespondToQuote = () => {
@@ -519,10 +549,9 @@ export default function ClientOrdersPage() {
                     <SelectValue placeholder="Set status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="processing">Processing</SelectItem>
-                    <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
+                    {isAdmin && <SelectItem value="approved">Approved</SelectItem>}
+                    {isWarehouseStaff && <SelectItem value="processing">Processing</SelectItem>}
+                    {isWarehouseStaff && <SelectItem value="ready-for-delivery">Ready for Delivery</SelectItem>}
                   </SelectContent>
                 </Select>
                 <Button variant="outline" onClick={() => setSelectedOrderIds([])}>
@@ -780,6 +809,23 @@ export default function ClientOrdersPage() {
                   Cancelled: {selectedOrder.cancelReason || 'No reason provided'}
                 </div>
               )}
+              {isSalesAgent && selectedOrder.status === 'pending' && selectedOrder.assignedSalesAgentId === user?.id && (
+                <div className="rounded-lg border p-3 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Customer Coordination</p>
+                    <p className="text-xs text-muted-foreground">Record the requirements confirmed with the client. This does not approve payment or inventory.</p>
+                  </div>
+                  <Textarea
+                    value={coordinationNotes}
+                    onChange={(event) => setCoordinationNotes(event.target.value)}
+                    placeholder="Confirmed quantities, delivery requirements, and agreed changes…"
+                    disabled={Boolean(selectedOrder.requirementsConfirmedAt)}
+                  />
+                  <Button onClick={handleConfirmRequirements} disabled={Boolean(selectedOrder.requirementsConfirmedAt)}>
+                    {selectedOrder.requirementsConfirmedAt ? 'Requirements Confirmed' : 'Confirm Requirements'}
+                  </Button>
+                </div>
+              )}
               {isAdmin && (
                 <div className="rounded-lg border p-3 space-y-3">
                   <div>
@@ -816,6 +862,10 @@ export default function ClientOrdersPage() {
                   <p className="text-xs text-muted-foreground">
                     Current assignment: {selectedOrder.assignedSalesAgentName || 'Unassigned'}
                   </p>
+                  <div className="rounded-md bg-muted/50 p-2 text-xs">
+                    Server review: project, ownership, catalog prices, totals, and stock were validated at submission.<br />
+                    Sales coordination: {selectedOrder.requirementsConfirmedAt ? 'Confirmed' : 'Waiting for assigned Sales Agent'}
+                  </div>
                 </div>
               )}
               {canManageOrders && isAdmin && selectedOrder.status === 'pending' && (
@@ -866,13 +916,14 @@ export default function ClientOrdersPage() {
                     <Button
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
                       onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'approved')}
+                      disabled={!selectedOrder.assignedSalesAgentId || !selectedOrder.requirementsConfirmedAt}
                     >
                       Approve
                     </Button>
                   )}
                 </>
               )}
-                {canManageOrders && (isAdmin || isWarehouseStaff || isSalesAgent) && selectedOrder.status === 'approved' && (
+                {canManageOrders && isWarehouseStaff && selectedOrder.status === 'approved' && (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'processing')}
@@ -880,7 +931,7 @@ export default function ClientOrdersPage() {
                     Start Processing
                   </Button>
                 )}
-                {canManageOrders && (isAdmin || isWarehouseStaff) && selectedOrder.status === 'processing' && (
+                {canManageOrders && isWarehouseStaff && selectedOrder.status === 'processing' && (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'ready-for-delivery')}

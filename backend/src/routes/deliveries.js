@@ -11,7 +11,6 @@ const {
 const { requireAuth, requireRole, getRoleList } = require("../middleware/auth");
 const {
   isPositiveInt,
-  isNonNegativeNumber,
   isValidDateString,
   isNonEmptyString,
 } = require("../utils/validate");
@@ -20,6 +19,8 @@ const {
   buildNestedClientOrderScope,
 } = require("../utils/clientVisibility");
 const { mirrorUploadedFile } = require("../utils/uploadedFiles");
+const { deriveOrderStatusFromDeliveries } = require("../utils/orderWorkflow");
+const { TRUCK_MAX_KG } = require("../utils/deliveryRules");
 
 const router = express.Router();
 const GPS_ACTIVE_STATUSES = ["IN_TRANSIT", "DELAYED"];
@@ -238,6 +239,41 @@ function hasRole(req, role) {
   return getRoleList(req.user).includes(String(role).toUpperCase());
 }
 
+async function getSoleTruckOccupancy(excludedDeliveryId, db = prisma) {
+  return db.delivery.findMany({
+    where: {
+      deliveryId: { not: Number(excludedDeliveryId) },
+      deletedAt: null,
+      deliveryMethod: "TRUCK",
+      OR: [
+        { status: { in: GPS_ACTIVE_STATUSES } },
+        { status: "PENDING", loadedAt: { not: null } },
+      ],
+    },
+    select: {
+      deliveryId: true,
+      clientOrderId: true,
+      drNumber: true,
+      status: true,
+      loadKg: true,
+    },
+    orderBy: { deliveryId: "asc" },
+  });
+}
+
+async function syncOrderFromDeliveryBatches(clientOrderId, db = prisma) {
+  if (!clientOrderId) return;
+  const deliveries = await db.delivery.findMany({
+    where: { clientOrderId, deletedAt: null },
+    select: { status: true, deletedAt: true },
+  });
+  if (deliveries.length === 0) return;
+  await db.clientOrder.update({
+    where: { clientOrderId },
+    data: { status: deriveOrderStatusFromDeliveries(deliveries) },
+  });
+}
+
 let deliveryColumnSupport = null;
 
 async function getDeliveryColumnSupport() {
@@ -300,6 +336,8 @@ function deliverySelect(
     receiverAddress: true,
     receiverContactNumber: true,
     receivedAt: true,
+    loadedAt: true,
+    loadedBy: true,
     notes: true,
     ...(includeDelayType ? { delayType: true } : {}),
     proofOfDeliveryUrl: true,
@@ -336,6 +374,12 @@ function deliverySelect(
           },
         }
       : {}),
+    items: {
+      select: {
+        quantity: true,
+        orderItem: { include: { product: true } },
+      },
+    },
     assignedDeliveryGuy: { select: { fullName: true } },
     clientOrder: {
       select: {
@@ -421,6 +465,9 @@ async function buildDeliveryScope(req) {
 }
 
 function mapDelivery(d) {
+  const deliveryItems = d.items?.length
+    ? d.items.map((item) => ({ ...item.orderItem, quantity: item.quantity }))
+    : d.clientOrder?.items || [];
   return {
     id: d.deliveryId.toString(),
     drNumber: d.drNumber,
@@ -430,7 +477,7 @@ function mapDelivery(d) {
     clientName: d.clientOrder?.client?.clientName || "Client",
     clientContactPerson: d.clientOrder?.client?.contactPerson || null,
     projectName: d.clientOrder?.project?.projectName || null,
-    items: (d.clientOrder?.items || []).map((item) => ({
+    items: deliveryItems.map((item) => ({
       itemId: item.productId?.toString() || "",
       itemName: item.product?.itemName || "",
       unit: item.product?.unit || "",
@@ -449,6 +496,8 @@ function mapDelivery(d) {
     receiverContactNumber:
       d.receiverContactNumber || d.clientOrder?.client?.phone || null,
     receivedAt: d.receivedAt ? d.receivedAt.toISOString() : null,
+    loadedAt: d.loadedAt ? d.loadedAt.toISOString() : null,
+    loadedBy: d.loadedBy?.toString() || null,
     notes: d.notes || null,
     delayType: d.delayType || null,
     returnRejectionReason: d.returnRejectionReason || null,
@@ -846,7 +895,6 @@ router.post(
         clientOrderId,
         status,
         eta,
-        itemsCount,
         deliveryMethod,
         loadKg,
         thirdPartyProvider,
@@ -860,11 +908,22 @@ router.post(
         return res.status(400).json({ error: "DR number is required" });
       if (!clientOrderId || !isPositiveInt(clientOrderId))
         return res.status(400).json({ error: "Client order is required" });
+      const linkedOrder = await prisma.clientOrder.findUnique({
+        where: { clientOrderId: Number(clientOrderId) },
+        include: {
+          deliveries: { where: { deletedAt: null }, select: { deliveryId: true } },
+          items: { select: { itemId: true, quantity: true } },
+        },
+      });
+      if (!linkedOrder) return res.status(404).json({ error: "Client order not found" });
+      if (linkedOrder.status !== "SHIPPED") {
+        return res.status(400).json({ error: "The order must be ready for delivery first." });
+      }
+      if (linkedOrder.deliveries.length > 0) {
+        return res.status(409).json({ error: "Delivery records are created automatically when an order is ready." });
+      }
       if (eta && !isValidDateString(eta)) {
         return res.status(400).json({ error: "Invalid ETA" });
-      }
-      if (itemsCount !== undefined && !isNonNegativeNumber(itemsCount)) {
-        return res.status(400).json({ error: "Invalid items count" });
       }
       if (status) {
         const s = status.toUpperCase().replace("-", "_");
@@ -896,7 +955,13 @@ router.post(
           assignedDeliveryGuyId: null,
           status: status ? status.toUpperCase().replace("-", "_") : "PENDING",
           eta: eta ? new Date(eta) : defaultEta,
-          itemsCount,
+          itemsCount: linkedOrder.items.reduce((sum, item) => sum + item.quantity, 0),
+          items: {
+            create: linkedOrder.items.map((item) => ({
+              orderItemId: item.itemId,
+              quantity: item.quantity,
+            })),
+          },
           ...(columnSupport.batches
             ? {
                 deliveryMethod: deliveryMethod
@@ -995,6 +1060,8 @@ router.put(
       const requestedStatus = req.body.status
         ? req.body.status.toUpperCase().replace(/[-\s]+/g, "_")
         : null;
+      const isDriver = hasRole(req, "DRIVER") || hasRole(req, "DELIVERY_GUY");
+      const isAdmin = hasRole(req, "ADMIN");
       const requestedDelayType = req.body.delayType
         ? String(req.body.delayType).trim().toLowerCase()
         : null;
@@ -1004,6 +1071,13 @@ router.put(
         return res.status(400).json({ error: "ETA must be a valid date and time" });
       }
       if (requestedStatus) {
+        const isReturnDecision = ["RETURNED", "RETURN_REJECTED"].includes(requestedStatus);
+        if (isReturnDecision && !isAdmin) {
+          return res.status(403).json({ error: "Only admin can approve or reject returns." });
+        }
+        if (!isReturnDecision && !isDriver) {
+          return res.status(403).json({ error: "Only the delivery rider can update an active delivery." });
+        }
         const allowed =
           (currentStatus === "PENDING" &&
             requestedStatus === "IN_TRANSIT") ||
@@ -1013,8 +1087,6 @@ router.put(
             ["IN_TRANSIT", "DELIVERED", "DELAYED"].includes(
               requestedStatus,
             )) ||
-          (currentStatus === "DELIVERED" &&
-            requestedStatus === "RETURN_PENDING") ||
           (currentStatus === "RETURN_PENDING" &&
             ["RETURNED", "RETURN_REJECTED"].includes(requestedStatus));
         if (!allowed) {
@@ -1024,19 +1096,20 @@ router.put(
         }
         if (
           requestedStatus === "IN_TRANSIT" &&
-          !["APPROVED", "PROCESSING", "SHIPPED"].includes(
-            existing.clientOrder?.status,
-          )
+          existing.clientOrder?.status !== "SHIPPED"
         ) {
           return res.status(400).json({
-            error: "Order must be approved before delivery can begin.",
+            error: "Order must be packed and ready for delivery before the trip can begin.",
           });
+        }
+        if (requestedStatus === "IN_TRANSIT" && currentStatus === "PENDING" && !existing.loadedAt) {
+          return res.status(400).json({ error: "Confirm that this delivery batch is loaded before beginning the trip." });
         }
         if (requestedStatus === "DELIVERED" && !req.body.receivedBy) {
           return res.status(400).json({ error: "Received by is required" });
         }
-        if (requestedStatus === "RETURN_PENDING" && !req.body.notes) {
-          return res.status(400).json({ error: "Return reason is required" });
+        if (requestedStatus === "DELIVERED" && !existing.proofOfDeliveryUrl) {
+          return res.status(400).json({ error: "Proof of delivery is required before completion." });
         }
         if (requestedStatus === "DELAYED" && !req.body.notes) {
           return res.status(400).json({ error: "Delay reason is required" });
@@ -1082,7 +1155,17 @@ router.put(
         if (riderResult.error) {
           return res.status(409).json({ error: riderResult.error });
         }
+        if (riderResult.rider.userId !== req.user.userId) {
+          return res.status(403).json({ error: "Only the active delivery rider can begin this delivery." });
+        }
         autoAssignedDeliveryGuyId = riderResult.rider.userId;
+      }
+      if (
+        isDriver &&
+        existing.assignedDeliveryGuyId &&
+        existing.assignedDeliveryGuyId !== req.user.userId
+      ) {
+        return res.status(403).json({ error: "This delivery is assigned to another rider." });
       }
 
       const delivery = await prisma.delivery.update({
@@ -1128,27 +1211,22 @@ router.put(
       });
 
       const updatedStatus = requestedStatus;
-      if (updatedStatus && existing.clientOrderId) {
-        const orderStatus =
-          updatedStatus === "IN_TRANSIT"
-            ? "SHIPPED"
-            : updatedStatus === "DELIVERED"
-              ? "DELIVERED"
-              : null;
-        if (orderStatus) {
-          await prisma.clientOrder.update({
-            where: { clientOrderId: existing.clientOrderId },
-            data: { status: orderStatus },
-          });
-        }
+      if (updatedStatus === "DELIVERED") {
+        await syncOrderFromDeliveryBatches(existing.clientOrderId);
       }
 
       if (
         updatedStatus === "RETURNED" &&
         existing.status === "RETURN_PENDING" &&
-        existing.clientOrder?.items?.length
+        (existing.items?.length || existing.clientOrder?.items?.length)
       ) {
-        for (const item of existing.clientOrder.items) {
+        const returnedItems = existing.items?.length
+          ? existing.items.map((item) => ({
+              ...item.orderItem,
+              quantity: item.quantity,
+            }))
+          : existing.clientOrder.items;
+        for (const item of returnedItems) {
           if (!item.productId) continue;
           const product = await prisma.product.findUnique({
             where: { productId: item.productId },
@@ -1258,6 +1336,79 @@ router.put(
   },
 );
 
+router.post(
+  "/:id/load",
+  requireRole(["WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY"]),
+  async (req, res, next) => {
+    try {
+      const columnSupport = await getDeliveryColumnSupport();
+      const existing = await prisma.delivery.findUnique({
+        where: { deliveryId: Number(req.params.id) },
+        select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations, columnSupport.delayType),
+      });
+      if (!existing) return res.status(404).json({ error: "Delivery not found" });
+      if (existing.status !== "PENDING" || existing.clientOrder?.status !== "SHIPPED") {
+        return res.status(400).json({ error: "Only ready, pending delivery batches can be marked loaded." });
+      }
+      if (existing.loadedAt) {
+        return res.status(409).json({ error: "This delivery batch is already marked as loaded." });
+      }
+      if (existing.deliveryMethod === "TRUCK") {
+        const truckOccupancy = await getSoleTruckOccupancy(existing.deliveryId);
+        const activeTrip = truckOccupancy.find((delivery) =>
+          GPS_ACTIVE_STATUSES.includes(delivery.status),
+        );
+        if (activeTrip) {
+          return res.status(409).json({
+            error: `The truck has already departed for ${activeTrip.drNumber}. Finish the active trip before loading more orders.`,
+          });
+        }
+        const earlierBatch = truckOccupancy.find(
+          (delivery) => delivery.clientOrderId === existing.clientOrderId,
+        );
+        if (earlierBatch) {
+          return res.status(409).json({
+            error: `Another batch for this order is already loaded (${earlierBatch.drNumber}). Complete it before loading the next batch.`,
+          });
+        }
+        const loadedKg = truckOccupancy.reduce(
+          (total, delivery) => total + Number(delivery.loadKg || 0),
+          0,
+        );
+        const nextLoadKg = Number(existing.loadKg || 0);
+        if (loadedKg + nextLoadKg > TRUCK_MAX_KG) {
+          return res.status(409).json({
+            error: `This batch would exceed the ${TRUCK_MAX_KG} kg truck capacity. Dispatch the currently loaded orders first.`,
+          });
+        }
+      }
+      if ((hasRole(req, "DRIVER") || hasRole(req, "DELIVERY_GUY")) && !hasRole(req, "WAREHOUSE_STAFF")) {
+        const riderResult = await getSoleActiveDeliveryRider();
+        if (riderResult.error) return res.status(409).json({ error: riderResult.error });
+        if (riderResult.rider.userId !== req.user.userId) {
+          return res.status(403).json({ error: "Only the active delivery rider can confirm loading." });
+        }
+      }
+      const updated = await prisma.delivery.update({
+        where: { deliveryId: existing.deliveryId },
+        data: { loadedAt: new Date(), loadedBy: req.user.userId },
+        select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations, columnSupport.delayType),
+      });
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.userId,
+          action: "CONFIRM",
+          target: "DeliveryLoad",
+          details: `Confirmed vehicle loading for ${updated.drNumber}`,
+        },
+      });
+      res.json(mapDelivery(updated));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.post("/:id/confirm", requireRole(["CLIENT"]), async (req, res, next) => {
   try {
     const columnSupport = await getDeliveryColumnSupport();
@@ -1287,6 +1438,9 @@ router.post("/:id/confirm", requireRole(["CLIENT"]), async (req, res, next) => {
     if (!isNonEmptyString(receivedBy)) {
       return res.status(400).json({ error: "Received by is required" });
     }
+    if (!delivery.proofOfDeliveryUrl) {
+      return res.status(400).json({ error: "Proof of delivery is required before confirmation." });
+    }
 
     const updated = await prisma.delivery.update({
       where: { deliveryId: delivery.deliveryId },
@@ -1311,6 +1465,8 @@ router.post("/:id/confirm", requireRole(["CLIENT"]), async (req, res, next) => {
         details: `Client confirmed delivery ${updated.drNumber}`,
       },
     });
+
+    await syncOrderFromDeliveryBatches(delivery.clientOrderId);
 
     res.json(mapDelivery(updated));
   } catch (err) {
@@ -1391,19 +1547,25 @@ router.post("/:id/return", requireRole(["CLIENT"]), async (req, res, next) => {
 
 router.post(
   "/:id/proof",
-  requireRole(["ADMIN", "WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY"]),
+  requireRole(["DRIVER", "DELIVERY_GUY"]),
   uploadProof.single("proof"),
   async (req, res, next) => {
     try {
       const columnSupport = await getDeliveryColumnSupport();
       const existing = await prisma.delivery.findUnique({
         where: { deliveryId: Number(req.params.id) },
-        select: { deliveryId: true },
+        select: { deliveryId: true, status: true, assignedDeliveryGuyId: true },
       });
       if (!existing)
         return res.status(404).json({ error: "Delivery not found" });
       if (!req.file) {
         return res.status(400).json({ error: "Proof file is required" });
+      }
+      if (!GPS_ACTIVE_STATUSES.includes(existing.status)) {
+        return res.status(400).json({ error: "Proof can only be uploaded during an active delivery." });
+      }
+      if (existing.assignedDeliveryGuyId !== req.user.userId) {
+        return res.status(403).json({ error: "Only the assigned delivery rider can upload proof." });
       }
 
       const proofPath = `/uploads/deliveries/${req.file.filename}`;

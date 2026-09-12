@@ -414,25 +414,28 @@ model MaterialRequestItem {
 }
 
 model ClientOrder {
-  clientOrderId        Int               @id @default(autoincrement()) @map("client_order_id")
-  orderNumber          String            @unique @map("order_number") @db.VarChar(50)
-  projectId            Int?              @map("project_id")
-  clientId             Int?              @map("client_id")
-  assignedSalesAgentId Int?              @map("assigned_sales_agent_id")
-  subtotal             Decimal?          @db.Decimal(12, 2)
-  vat                  Decimal?          @db.Decimal(12, 2)
-  total                Decimal?          @db.Decimal(12, 2)
-  status               ClientOrderStatus @default(PENDING)
-  paymentStatus        PaymentStatus     @default(PENDING) @map("payment_status")
-  paymentProofUrl      String?           @map("payment_proof_url") @db.Text
-  chequeVerification   String?           @map("cheque_verification") @db.VarChar(20)
-  orderDate            DateTime          @default(now()) @map("order_date") @db.Date
-  createdAt            DateTime          @default(now()) @map("created_at")
-  updatedAt            DateTime          @updatedAt @map("updated_at")
-  createdBy            Int?              @map("created_by")
-  specialInstructions  String?           @map("special_instructions") @db.Text
-  cancelReason         String?           @map("cancel_reason") @db.Text
-  deletedAt            DateTime?         @map("deleted_at")
+  clientOrderId           Int               @id @default(autoincrement()) @map("client_order_id")
+  orderNumber             String            @unique @map("order_number") @db.VarChar(50)
+  projectId               Int?              @map("project_id")
+  clientId                Int?              @map("client_id")
+  assignedSalesAgentId    Int?              @map("assigned_sales_agent_id")
+  requirementsConfirmedAt DateTime?         @map("requirements_confirmed_at")
+  requirementsConfirmedBy Int?              @map("requirements_confirmed_by")
+  coordinationNotes       String?           @map("coordination_notes") @db.Text
+  subtotal                Decimal?          @db.Decimal(12, 2)
+  vat                     Decimal?          @db.Decimal(12, 2)
+  total                   Decimal?          @db.Decimal(12, 2)
+  status                  ClientOrderStatus @default(PENDING)
+  paymentStatus           PaymentStatus     @default(PENDING) @map("payment_status")
+  paymentProofUrl         String?           @map("payment_proof_url") @db.Text
+  chequeVerification      String?           @map("cheque_verification") @db.VarChar(20)
+  orderDate               DateTime          @default(now()) @map("order_date") @db.Date
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+  createdBy               Int?              @map("created_by")
+  specialInstructions     String?           @map("special_instructions") @db.Text
+  cancelReason            String?           @map("cancel_reason") @db.Text
+  deletedAt               DateTime?         @map("deleted_at")
 
   project            Project?             @relation(fields: [projectId], references: [projectId])
   client             Client?              @relation(fields: [clientId], references: [clientId])
@@ -454,8 +457,9 @@ model ClientOrderItem {
   quantity      Int
   unitPrice     Decimal? @map("unit_price") @db.Decimal(12, 2)
 
-  clientOrder ClientOrder? @relation(fields: [clientOrderId], references: [clientOrderId], onDelete: Cascade)
-  product     Product?     @relation(fields: [productId], references: [productId])
+  clientOrder   ClientOrder?   @relation(fields: [clientOrderId], references: [clientOrderId], onDelete: Cascade)
+  product       Product?       @relation(fields: [productId], references: [productId])
+  deliveryItems DeliveryItem[]
 
   @@index([clientOrderId])
   @@index([productId])
@@ -472,6 +476,8 @@ model Delivery {
   itemsCount            Int?           @map("items_count")
   createdAt             DateTime       @default(now()) @map("created_at")
   receivedAt            DateTime?      @map("received_at")
+  loadedAt              DateTime?      @map("loaded_at")
+  loadedBy              Int?           @map("loaded_by")
   receivedBy            String?        @map("received_by")
   receiverName          String?        @map("receiver_name") @db.VarChar(150)
   receiverAddress       String?        @map("receiver_address") @db.Text
@@ -491,10 +497,26 @@ model Delivery {
   clientOrder         ClientOrder?          @relation(fields: [clientOrderId], references: [clientOrderId])
   assignedDeliveryGuy User?                 @relation("DeliveryAssignedDeliveryGuy", fields: [assignedDeliveryGuyId], references: [userId])
   gpsLocations        DeliveryGpsLocation[]
+  items               DeliveryItem[]
 
   @@index([clientOrderId])
   @@index([assignedDeliveryGuyId])
   @@map("deliveries")
+}
+
+model DeliveryItem {
+  deliveryItemId Int @id @default(autoincrement()) @map("delivery_item_id")
+  deliveryId     Int @map("delivery_id")
+  orderItemId    Int @map("client_order_item_id")
+  quantity       Int
+
+  delivery  Delivery        @relation(fields: [deliveryId], references: [deliveryId], onDelete: Cascade)
+  orderItem ClientOrderItem @relation(fields: [orderItemId], references: [itemId], onDelete: Cascade)
+
+  @@unique([deliveryId, orderItemId])
+  @@index([deliveryId])
+  @@index([orderItemId])
+  @@map("delivery_items")
 }
 
 model DeliveryGpsLocation {
