@@ -127,6 +127,7 @@ export default function LiveTrackingDialog({
     let cancelled = false;
     const loadLatestLocation = async () => {
       setLocationLoading(true);
+      console.info(`[GPS] Checking hardware location for delivery ${delivery.id}`);
       try {
         const response = await apiClient.get<{ locations?: DeliveryGpsLocation[] }>(
           `/deliveries/${delivery.id}/location/history`,
@@ -140,10 +141,20 @@ export default function LiveTrackingDialog({
           setLatestLocation(
             locations[locations.length - 1] || delivery.latestLocation || null,
           );
+          const newestLocation = locations[locations.length - 1];
+          console.info(
+            newestLocation
+              ? `[GPS] Hardware location received for delivery ${delivery.id} at ${newestLocation.recordedAt}`
+              : `[GPS] No hardware location recorded for delivery ${delivery.id}`,
+          );
           setLocationError(null);
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
+          console.error(
+            `[GPS] Hardware location check failed for delivery ${delivery.id}`,
+            error,
+          );
           setLatestLocation(delivery.latestLocation || null);
           setLocationError("GPS data is not available right now.");
         }
