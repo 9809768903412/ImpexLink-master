@@ -302,28 +302,17 @@ export default function PlaceOrderPage() {
       });
       return;
     }
-    const newOrderNumber = `ORD-2025-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-    const orderItems: OrderItem[] = cart.map((cartItem) => ({
+    const orderItems = cart.map((cartItem) => ({
       itemId: cartItem.item.id,
-      itemName: cartItem.item.name,
-      unit: cartItem.item.unit,
       quantity: cartItem.quantity,
-      unitPrice: cartItem.item.unitPrice,
-      amount: cartItem.item.unitPrice * cartItem.quantity,
     }));
     try {
-      await apiClient.post<Order>('/orders', {
-        orderNumber: newOrderNumber,
-        clientId: user?.clientId,
+      const response = await apiClient.post<Order>('/orders', {
         projectId: selectedProjectId || undefined,
         items: orderItems,
-        subtotal,
-        vat,
-        total,
-        status: 'pending',
-        paymentStatus: 'pending',
         specialInstructions,
       });
+      setOrderNumber(response.data.orderNumber);
     } catch (err: any) {
       toast({
         title: 'Order failed',
@@ -335,7 +324,6 @@ export default function PlaceOrderPage() {
     setCart([]);
     persistCart([]);
     setCartQtyInput({});
-    setOrderNumber(newOrderNumber);
     setIsCartOpen(false);
     setIsConfirmationOpen(true);
     toast({

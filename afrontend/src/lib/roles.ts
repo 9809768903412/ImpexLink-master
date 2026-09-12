@@ -74,10 +74,10 @@ export const canApproveMaterialRequests = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin'].includes(r));
 
 export const canViewClientOrders = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'sales_agent', 'warehouse_staff'].includes(r));
 
 export const canManageClientOrders = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff'].includes(r));
 
 export const canViewPurchaseOrders = (role?: RoleInput) => hasRole(role, 'admin');
 

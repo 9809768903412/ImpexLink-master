@@ -57,8 +57,8 @@ export default function PaymentsPage() {
   const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase());
   const isSalesAgent = roleList.includes('sales_agent');
   const isPresident = roleList.includes('president');
-  const canRecordPayments = roleList.some((role) => ['admin', 'sales_agent'].includes(role));
-  const canUpdatePayments = roleList.some((role) => ['admin', 'sales_agent'].includes(role));
+  const canRecordPayments = roleList.includes('admin');
+  const canUpdatePayments = roleList.includes('admin');
   const canViewPaymentSummary = roleList.some((role) => ['admin', 'president', 'sales_agent'].includes(role));
   const canViewSupplierPayments = roleList.some((role) => ['admin', 'president'].includes(role));
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
@@ -258,12 +258,12 @@ export default function PaymentsPage() {
                 <TableHead>Due</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
-                {isSalesAgent ? <TableHead className="text-right">Quick Update</TableHead> : null}
+                {canRecordPayments ? <TableHead className="text-right">Quick Update</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {paged.length === 0 ? (
-                <TableRow><TableCell colSpan={isSalesAgent ? 6 : 5} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canRecordPayments ? 6 : 5} className="py-8 text-center text-muted-foreground">No payment records yet.</TableCell></TableRow>
               ) : paged.map((payment) => (
                 <TableRow
                   key={payment.id}
@@ -278,7 +278,7 @@ export default function PaymentsPage() {
                   <TableCell>{payment.dueDate ? format(new Date(payment.dueDate), 'MMM dd, yyyy') : '-'}</TableCell>
                   <TableCell><Badge variant="outline" className={`capitalize ${statusBadgeClass(payment.status)}`}>{payment.status}</Badge></TableCell>
                   <TableCell className="text-right">PHP {formatPesoAmount(payment.amount)}</TableCell>
-                  {isSalesAgent ? (
+                  {canRecordPayments ? (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button

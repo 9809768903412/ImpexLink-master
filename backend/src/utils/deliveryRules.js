@@ -49,14 +49,9 @@ function calculateDeliveryPlan(items = []) {
     Math.ceil(load.paintCans / TRUCK_MAX_PAINT_CANS),
     Math.ceil(load.totalKg / TRUCK_MAX_KG),
   );
-  const perBatchKg = load.totalKg / batchCount;
-  const perBatchPaintCans = load.paintCans / batchCount;
-  const method =
-    perBatchKg <= MOTORCYCLE_MAX_KG && perBatchPaintCans <= 1
-      ? 'MOTOR'
-      : perBatchKg > TRUCK_MAX_KG || perBatchPaintCans > TRUCK_MAX_PAINT_CANS
-      ? 'THIRD_PARTY'
-      : 'TRUCK';
+  // The company operates one internal truck. Smaller orders still use that
+  // truck; third-party delivery remains an explicit exception chosen by staff.
+  const method = 'TRUCK';
 
   const warnings = [];
   if (load.maxLineQty > MAX_ITEM_QTY_PER_DELIVERY) {
@@ -68,9 +63,7 @@ function calculateDeliveryPlan(items = []) {
   if (load.totalKg > TRUCK_MAX_KG) {
     warnings.push(`Estimated load exceeds ${TRUCK_MAX_KG}kg L300 truck capacity.`);
   }
-  if (method === 'THIRD_PARTY') {
-    warnings.push('Third-party/Lalamove delivery is recommended for this load.');
-  } else if (batchCount > 1) {
+  if (batchCount > 1) {
     warnings.push(`Order should be split into ${batchCount} delivery batches.`);
   }
 

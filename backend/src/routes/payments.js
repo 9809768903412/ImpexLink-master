@@ -3,7 +3,7 @@ const prisma = require('../utils/prisma');
 const { requireAuth, requireRole, getRoleList } = require('../middleware/auth');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { isNonNegativeNumber, isPositiveInt } = require('../utils/validate');
-const { resolveClientAccess, canAccessClientOwnedRecord } = require('../utils/clientVisibility');
+const { resolveClientAccess } = require('../utils/clientVisibility');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -204,7 +204,7 @@ router.get('/summary', requireRole(['ADMIN', 'PRESIDENT', 'SALES_AGENT']), async
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const direction = normalize(req.body.direction || 'CLIENT_TO_OFFICE');
     const method = normalize(req.body.method);
@@ -231,29 +231,19 @@ router.post('/', async (req, res, next) => {
     const supplierId = req.body.supplierId ? Number(req.body.supplierId) : null;
     const supplierOrderId = req.body.supplierOrderId ? Number(req.body.supplierOrderId) : null;
 
-    if (hasRole(req, 'CLIENT')) {
-      if (direction !== 'CLIENT_TO_OFFICE') return res.status(403).json({ error: 'Clients can only record client payments.' });
-      const access = await resolveClientAccess(prisma, req.user.userId);
-      if (!access?.client?.clientId) return res.status(403).json({ error: 'No client account found.' });
-      clientId = access.client.clientId;
-      if (clientOrderId) {
-        const order = await prisma.clientOrder.findUnique({ where: { clientOrderId }, include: { client: true } });
-        if (!order || !canAccessClientOwnedRecord(access, order)) return res.status(403).json({ error: 'Forbidden' });
-      }
-    } else if (hasRole(req, 'SALES_AGENT')) {
-      if (direction !== 'CLIENT_TO_OFFICE') return res.status(403).json({ error: 'Sales Agents can only record client payments for assigned orders.' });
-      if (!clientOrderId) return res.status(400).json({ error: 'Client order is required.' });
-      const order = await prisma.clientOrder.findUnique({ where: { clientOrderId } });
-      if (!order || order.assignedSalesAgentId !== req.user.userId) {
-        return res.status(403).json({ error: 'You can only record payments for your assigned client orders.' });
-      }
-      clientId = order.clientId || clientId;
-    } else if (!hasRole(req, 'ADMIN')) {
-      return res.status(403).json({ error: 'Only Admin, Sales Agent, or Client can create payment records.' });
-    }
-
     if (clientOrderId && !isPositiveInt(clientOrderId)) return res.status(400).json({ error: 'Invalid client order' });
     if (supplierOrderId && !isPositiveInt(supplierOrderId)) return res.status(400).json({ error: 'Invalid supplier order' });
+    let authoritativeAmount = Number(req.body.amount || 0);
+    if (direction === 'CLIENT_TO_OFFICE') {
+      if (!clientOrderId) return res.status(400).json({ error: 'Client order is required.' });
+      const clientOrder = await prisma.clientOrder.findUnique({ where: { clientOrderId } });
+      if (!clientOrder) return res.status(404).json({ error: 'Client order not found.' });
+      if (['RECEIVED', 'PAID'].includes(status) && !clientOrder.paymentProofUrl) {
+        return res.status(400).json({ error: 'Payment proof is required before verification.' });
+      }
+      clientId = clientOrder.clientId;
+      authoritativeAmount = Number(clientOrder.total || 0);
+    }
 
     const existing =
       (direction === 'CLIENT_TO_OFFICE' && clientOrderId)
@@ -261,14 +251,11 @@ router.post('/', async (req, res, next) => {
         : (direction === 'OFFICE_TO_SUPPLIER' && supplierOrderId)
         ? await prisma.paymentTransaction.findFirst({ where: { direction, supplierOrderId } })
         : null;
-    const effectiveStatus =
-      hasRole(req, 'CLIENT') && existing && ['RECEIVED', 'PAID'].includes(existing.status)
-        ? existing.status
-        : status;
+    const effectiveStatus = status;
     const paymentData = {
       method,
       status: effectiveStatus,
-      amount: Number(req.body.amount || 0),
+      amount: authoritativeAmount,
       creditDays,
       dueDate: req.body.dueDate ? new Date(req.body.dueDate) : dueDateFromCreditDays(creditDays),
       paidAt: ['PAID', 'RECEIVED'].includes(effectiveStatus) ? existing?.paidAt || new Date() : null,
@@ -311,20 +298,23 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT']), async (req, res, next) => {
+router.put('/:id', requireRole(['ADMIN']), async (req, res, next) => {
   try {
     const existing = await prisma.paymentTransaction.findUnique({
       where: { paymentId: Number(req.params.id) },
       include: { clientOrder: true },
     });
     if (!existing) return res.status(404).json({ error: 'Payment not found' });
-    if (hasRole(req, 'SALES_AGENT')) {
-      if (existing.direction !== 'CLIENT_TO_OFFICE' || existing.clientOrder?.assignedSalesAgentId !== req.user.userId) {
-        return res.status(403).json({ error: 'You can only update payments for your assigned client orders.' });
-      }
-    }
     const status = req.body.status ? normalize(req.body.status) : undefined;
     if (status && !STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid payment status' });
+    if (
+      existing.direction === 'CLIENT_TO_OFFICE' &&
+      status &&
+      ['RECEIVED', 'PAID'].includes(status) &&
+      !existing.clientOrder?.paymentProofUrl
+    ) {
+      return res.status(400).json({ error: 'Payment proof is required before verification.' });
+    }
     const method = req.body.method ? normalize(req.body.method) : undefined;
     const direction = normalize(existing.direction);
     if (method && direction === 'CLIENT_TO_OFFICE' && !CLIENT_METHODS.includes(method)) {
@@ -338,7 +328,12 @@ router.put('/:id', requireRole(['ADMIN', 'SALES_AGENT']), async (req, res, next)
       data: {
         status,
         method,
-        amount: req.body.amount !== undefined ? Number(req.body.amount) : undefined,
+        amount:
+          existing.direction === 'CLIENT_TO_OFFICE'
+            ? Number(existing.clientOrder?.total || existing.amount)
+            : req.body.amount !== undefined
+              ? Number(req.body.amount)
+              : undefined,
         creditDays: req.body.creditDays !== undefined ? Number(req.body.creditDays) : undefined,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
         paidAt: status ? (['PAID', 'RECEIVED'].includes(status) ? new Date() : null) : undefined,

@@ -37,7 +37,6 @@ import { apiClient } from '@/api/client';
 import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
-import { canManageLogistics } from '@/lib/roles';
 import { RecentActivityPanel } from '@/components/RecentActivityPanel';
 import PaginationNav from '@/components/PaginationNav';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
@@ -93,10 +92,11 @@ export default function LogisticsPage() {
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
   const roleList = (Array.isArray(roleInput) ? roleInput : roleInput ? [roleInput] : []).map((role) => String(role).toLowerCase());
-  const canManage = canManageLogistics(roleInput);
   const isAdmin = roleList.includes('admin');
   const isWarehouseStaff = roleList.includes('warehouse_staff');
   const isDeliveryGuy = roleList.includes('delivery_guy') || roleList.includes('driver');
+  const canExecuteDelivery = isDeliveryGuy;
+  const canConfirmLoading = isWarehouseStaff || isDeliveryGuy;
   const canCreateDeliveryRequest = isAdmin || isWarehouseStaff;
   const [deliveries, setDeliveries] = useState<Delivery[]>(
     () => getCache<Delivery[]>('deliveries') || []
@@ -232,6 +232,14 @@ export default function LogisticsPage() {
       });
       return;
     }
+    if (newStatus === 'delivered' && !currentDelivery?.proofOfDelivery) {
+      toast({
+        title: 'Proof required',
+        description: 'Upload proof of delivery before confirming completion.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (newStatus === 'in-transit' && !isResumingDelivery) {
       if (!receivedByValue.trim()) {
         toast({
@@ -294,7 +302,6 @@ export default function LogisticsPage() {
       if (d.id === delId) {
         const updates: Partial<Delivery> = { status: newStatus };
         if (newStatus === 'in-transit') {
-          updates.receivedBy = receivedByValue;
           updates.receiverName = receivedByValue;
           updates.receiverAddress = receiverAddress;
           updates.receiverContactNumber = receiverContactNumber;
@@ -434,22 +441,29 @@ export default function LogisticsPage() {
       toast({ title: 'Missing order', description: 'Select a client order for this Lalamove request.', variant: 'destructive' });
       return;
     }
-    const order = orders.find((item) => item.id === lalamoveForm.clientOrderId);
+    const delivery = deliveries.find(
+      (item) => item.orderId === lalamoveForm.clientOrderId && item.status === 'pending'
+    );
+    if (!delivery) {
+      toast({
+        title: 'Delivery not ready',
+        description: 'Warehouse must mark the order ready before its delivery method can be scheduled.',
+        variant: 'destructive',
+      });
+      return;
+    }
     try {
-      const response = await apiClient.post<Delivery>('/deliveries', {
-        drNumber: `DR-LALA-${Date.now().toString().slice(-6)}`,
-        clientOrderId: lalamoveForm.clientOrderId,
+      const response = await apiClient.put<Delivery>(`/deliveries/${delivery.id}`, {
         deliveryMethod: lalamoveForm.deliveryMethod,
         thirdPartyProvider: lalamoveForm.deliveryMethod === 'LALAMOVE' ? lalamoveForm.provider || 'Lalamove' : null,
         thirdPartyReference: lalamoveForm.deliveryMethod === 'LALAMOVE' ? lalamoveForm.reference || null : null,
         loadKg: lalamoveForm.loadKg ? Number(lalamoveForm.loadKg) : null,
-        itemsCount: order?.items?.length || 0,
         notes: lalamoveForm.notes || 'Third-party delivery request',
       });
-      setDeliveries((current) => [response.data, ...current]);
+      setDeliveries((current) => current.map((item) => (item.id === delivery.id ? response.data : item)));
       setIsLalamoveOpen(false);
       setLalamoveForm({ clientOrderId: '', deliveryMethod: 'LALAMOVE', provider: 'Lalamove', reference: '', loadKg: '', notes: '' });
-      toast({ title: 'Delivery request created', description: `${response.data.drNumber} is now in delivery tracking.` });
+      toast({ title: 'Delivery method updated', description: `${response.data.drNumber} is ready for dispatch.` });
     } catch (err: any) {
       toast({
         title: 'Unable to create request',
@@ -475,13 +489,28 @@ export default function LogisticsPage() {
 
   const openDeliveryDetails = (delivery: Delivery) => {
     setSelectedDelivery(delivery);
-    setReceivedBy(delivery.receivedBy || '');
+    setReceivedBy(delivery.status === 'pending' ? delivery.receiverName || '' : delivery.receivedBy || '');
     setReceiverAddress(delivery.receiverAddress || '');
     setReceiverContactNumber(delivery.receiverContactNumber || '');
     setDeliveryNotes(delivery.notes || '');
     setDeliveryEta(delivery.eta ? new Date(delivery.eta).toISOString().slice(0, 16) : '');
     setDeliveryMethod(delivery.deliveryMethod || 'TRUCK');
     setDelayCase(delivery.delayType || 'traffic');
+  };
+
+  const handleConfirmLoading = async (delivery: Delivery) => {
+    try {
+      const response = await apiClient.post<Delivery>(`/deliveries/${delivery.id}/load`);
+      setDeliveries((current) => current.map((item) => (item.id === delivery.id ? response.data : item)));
+      syncSelectedDelivery(response.data);
+      toast({ title: 'Vehicle loaded', description: `${delivery.drNumber} can now begin delivery.` });
+    } catch (error: any) {
+      toast({
+        title: 'Unable to confirm loading',
+        description: error?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const getDelayRecommendation = (delivery: Delivery | null) => {
@@ -567,7 +596,7 @@ export default function LogisticsPage() {
         <div className="flex justify-end">
           <Button onClick={() => setIsLalamoveOpen(true)} className="gap-2">
             <Send size={16} />
-            New Delivery Request
+            Schedule Delivery Method
           </Button>
         </div>
       )}
@@ -869,15 +898,15 @@ export default function LogisticsPage() {
               {isAdmin && <RecentActivityPanel logs={deliveryLogs} />}
 
               {/* Status Actions */}
-              {canManage && selectedDelivery.status === 'pending' && (
+              {canExecuteDelivery && selectedDelivery.status === 'pending' && (
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
                   <div>
                     <p className="font-medium">Before Delivery Starts</p>
-                    <p className="text-sm text-muted-foreground">Confirm the receiving role, site details, delivery method, and planned ETA before beginning the trip.</p>
+                    <p className="text-sm text-muted-foreground">Confirm the expected receiving role, site details, delivery method, and planned ETA before beginning the trip.</p>
                   </div>
                   <Select value={receivedBy} onValueChange={setReceivedBy}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select receiver" />
+                      <SelectValue placeholder="Expected receiver" />
                     </SelectTrigger>
                     <SelectContent>
                       {receivedByOptions.map((option) => (
@@ -914,7 +943,6 @@ export default function LogisticsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="TRUCK">Truck</SelectItem>
-                          <SelectItem value="MOTOR">Motor</SelectItem>
                           <SelectItem value="LALAMOVE">Third Party (Lalamove)</SelectItem>
                         </SelectContent>
                       </Select>
@@ -936,7 +964,7 @@ export default function LogisticsPage() {
                 </div>
               )}
 
-              {canManage && (selectedDelivery.status === 'in-transit' || selectedDelivery.status === 'delayed') && (
+              {canExecuteDelivery && (selectedDelivery.status === 'in-transit' || selectedDelivery.status === 'delayed') && (
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
                   <div>
                     <p className="font-medium">Delay / Exception Handling</p>
@@ -972,7 +1000,6 @@ export default function LogisticsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="TRUCK">Truck</SelectItem>
-                          <SelectItem value="MOTOR">Motor</SelectItem>
                           <SelectItem value="LALAMOVE">Third Party (Lalamove)</SelectItem>
                         </SelectContent>
                       </Select>
@@ -1001,13 +1028,21 @@ export default function LogisticsPage() {
                 </div>
               )}
 
-              {canManage &&
+              {canExecuteDelivery &&
                 (selectedDelivery.status === 'in-transit' ||
                   selectedDelivery.status === 'delayed') && (
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
                   <div>
                     <p className="font-medium">After Delivery / Proof of Delivery</p>
-                    <p className="text-sm text-muted-foreground">Upload proof after the items are handed over at the site. Receiver details were already confirmed before delivery started.</p>
+                    <p className="text-sm text-muted-foreground">Record the actual receiver and upload proof after the items are handed over.</p>
+                  </div>
+                  <div>
+                    <Label>Actual Receiver</Label>
+                    <Input
+                      value={receivedBy}
+                      onChange={(event) => setReceivedBy(event.target.value)}
+                      placeholder="Full name of person who accepted the delivery"
+                    />
                   </div>
                   <Textarea
                     placeholder="POD remarks, handover notes, missing/damaged item notes..."
@@ -1049,27 +1084,35 @@ export default function LogisticsPage() {
                     Download PDF
                   </Button>
                 )}
-                {canManage && selectedDelivery.status === 'pending' && (
+                {canConfirmLoading && selectedDelivery.status === 'pending' && !selectedDelivery.loadedAt && (
+                  <Button variant="outline" onClick={() => handleConfirmLoading(selectedDelivery)}>
+                    <Package size={16} className="mr-1" />
+                    Confirm Vehicle Loaded
+                  </Button>
+                )}
+                {canExecuteDelivery && selectedDelivery.status === 'pending' && (
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => handleUpdateStatus(selectedDelivery.id, 'in-transit')}
+                    disabled={!selectedDelivery.loadedAt}
                   >
                     <Navigation size={16} className="mr-1" />
                     Begin Delivery
                   </Button>
                 )}
-                {canManage &&
+                {canExecuteDelivery &&
                   (selectedDelivery.status === 'in-transit' ||
                     selectedDelivery.status === 'delayed') && (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => handleUpdateStatus(selectedDelivery.id, 'delivered')}
+                    disabled={!selectedDelivery.proofOfDelivery}
                   >
                     <CheckCircle size={16} className="mr-1" />
                     Confirm Delivery
                   </Button>
                 )}
-                {canManage && selectedDelivery.status === 'delayed' && (
+                {canExecuteDelivery && selectedDelivery.status === 'delayed' && (
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => handleUpdateStatus(selectedDelivery.id, 'in-transit')}
@@ -1078,7 +1121,7 @@ export default function LogisticsPage() {
                     Resume Delivery
                   </Button>
                 )}
-                {canManage &&
+                {canExecuteDelivery &&
                   (selectedDelivery.status === 'in-transit' ||
                     selectedDelivery.status === 'delayed') && (
                   <Button
@@ -1090,7 +1133,7 @@ export default function LogisticsPage() {
                       : 'Report Delay'}
                   </Button>
                 )}
-                {canManage && selectedDelivery.status === 'return-pending' && (
+                {isAdmin && selectedDelivery.status === 'return-pending' && (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => handleProcessReturn(selectedDelivery)}
@@ -1110,16 +1153,16 @@ export default function LogisticsPage() {
         onOpenChange={(open) => {
           if (!open) setTrackingDelivery(null);
         }}
-        readOnly={!canManage}
-        onStatusUpdate={canManage ? handleUpdateStatus : undefined}
-        onUploadProof={canManage ? handleUploadProof : undefined}
+        readOnly={!canExecuteDelivery}
+        onStatusUpdate={canExecuteDelivery ? handleUpdateStatus : undefined}
+        onUploadProof={canExecuteDelivery ? handleUploadProof : undefined}
       />
 
       <Dialog open={isLalamoveOpen} onOpenChange={setIsLalamoveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delivery Request</DialogTitle>
-            <DialogDescription>Create a tracked Truck, Motor, or Third Party delivery. Office pays delivery fees.</DialogDescription>
+            <DialogTitle>Schedule Delivery Method</DialogTitle>
+            <DialogDescription>Update the method for a system-created delivery that is ready for dispatch.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -1129,7 +1172,7 @@ export default function LogisticsPage() {
                   <SelectValue placeholder="Select order" />
                 </SelectTrigger>
                 <SelectContent>
-                  {orders.map((order) => (
+                  {orders.filter((order) => order.status === 'ready-for-delivery').map((order) => (
                     <SelectItem key={order.id} value={order.id}>
                       {order.orderNumber} - {order.clientName}
                     </SelectItem>
@@ -1146,7 +1189,6 @@ export default function LogisticsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="TRUCK">Truck</SelectItem>
-                    <SelectItem value="MOTOR">Motor</SelectItem>
                     <SelectItem value="LALAMOVE">Third Party (Lalamove)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1185,7 +1227,7 @@ export default function LogisticsPage() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsLalamoveOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateLalamove}>Create Request</Button>
+              <Button onClick={handleCreateLalamove}>Save Method</Button>
             </div>
           </div>
         </DialogContent>

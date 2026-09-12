@@ -48,8 +48,10 @@ import { ProductImage } from '@/components/ProductImage';
 import { formatPesoAmount } from '@/lib/currency';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function MyOrdersPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
@@ -76,6 +78,7 @@ export default function MyOrdersPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [isConfirmingReceipt, setIsConfirmingReceipt] = useState(false);
   const [proofSubmitted, setProofSubmitted] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -110,7 +113,11 @@ export default function MyOrdersPage() {
     return acc;
   }, {});
   const selectedDelivery = selectedOrder
-    ? myDeliveries.find((delivery) => delivery.orderId === selectedOrder.id) || null
+    ? myDeliveries.find(
+        (delivery) =>
+          delivery.orderId === selectedOrder.id &&
+          ['in-transit', 'delayed'].includes(delivery.status)
+      ) || myDeliveries.find((delivery) => delivery.orderId === selectedOrder.id) || null
     : null;
   const selectedTotals = selectedOrder
     ? calcTotalsFromItems(
@@ -424,6 +431,30 @@ export default function MyOrdersPage() {
       setOrdersLoading(false);
     }
   }, [orderSearchTerm, orderStatusFilter, ordersPage, ordersPageSize]);
+
+  const handleConfirmReceipt = async (delivery: Delivery) => {
+    setIsConfirmingReceipt(true);
+    try {
+      await apiClient.post(`/deliveries/${delivery.id}/confirm`, {
+        receivedBy: user?.name || 'Client representative',
+      });
+      await Promise.all([refreshOrders(), reloadDeliveries()]);
+      setIsDetailOpen(false);
+      setSelectedOrder(null);
+      toast({
+        title: 'Delivery confirmed',
+        description: 'Receipt was recorded. The order completes after every delivery batch is received.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Unable to confirm receipt',
+        description: error?.response?.data?.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsConfirmingReceipt(false);
+    }
+  };
 
   useEffect(() => {
     refreshOrders();
@@ -776,11 +807,25 @@ export default function MyOrdersPage() {
                     </div>
                   ) : null}
                   {selectedDelivery ? (
-                    <div className="flex justify-end">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <Button variant="outline" onClick={() => setTrackingDelivery(selectedDelivery)}>
                         Track Delivery
                       </Button>
+                      {['in-transit', 'delayed'].includes(selectedDelivery.status) && selectedDelivery.proofOfDelivery ? (
+                        <Button
+                          onClick={() => handleConfirmReceipt(selectedDelivery)}
+                          disabled={isConfirmingReceipt}
+                        >
+                          <CheckCircle size={16} className="mr-1" />
+                          {isConfirmingReceipt ? 'Confirming…' : 'Confirm Receipt'}
+                        </Button>
+                      ) : null}
                     </div>
+                  ) : null}
+                  {selectedDelivery && ['in-transit', 'delayed'].includes(selectedDelivery.status) && !selectedDelivery.proofOfDelivery ? (
+                    <p className="text-right text-xs text-muted-foreground">
+                      Receipt can be confirmed after the driver uploads proof of delivery.
+                    </p>
                   ) : null}
                 </div>
 
@@ -938,8 +983,9 @@ export default function MyOrdersPage() {
                     type="number"
                     min="0"
                     value={paymentForm.amount}
-                    onChange={(event) => setPaymentForm((prev) => ({ ...prev, amount: event.target.value }))}
+                    readOnly
                   />
+                  <p className="mt-1 text-xs text-muted-foreground">Amount is fixed to the server-verified order total.</p>
                 </div>
                 <div>
                   <Label>Reference Number</Label>

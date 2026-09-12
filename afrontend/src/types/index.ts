@@ -121,6 +121,9 @@ export interface Order {
   projectName?: string;
   assignedSalesAgentId?: string | null;
   assignedSalesAgentName?: string | null;
+  requirementsConfirmedAt?: string | null;
+  requirementsConfirmedBy?: string | null;
+  coordinationNotes?: string | null;
   items: OrderItem[];
   subtotal: number;
   vat: number;
@@ -225,6 +228,8 @@ export interface Delivery {
   receiverAddress?: string | null;
   receiverContactNumber?: string | null;
   receivedAt?: string;
+  loadedAt?: string | null;
+  loadedBy?: string | null;
   proofOfDelivery?: string;
   notes?: string;
   delayType?:
