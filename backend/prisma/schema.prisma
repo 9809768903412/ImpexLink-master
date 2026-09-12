@@ -468,7 +468,7 @@ model Delivery {
   clientOrderId         Int?           @map("client_order_id")
   assignedDeliveryGuyId Int?           @map("assigned_delivery_guy_id")
   status                DeliveryStatus @default(PENDING)
-  eta                   DateTime?      @db.Date
+  eta                   DateTime?
   itemsCount            Int?           @map("items_count")
   createdAt             DateTime       @default(now()) @map("created_at")
   receivedAt            DateTime?      @map("received_at")
@@ -478,6 +478,7 @@ model Delivery {
   receiverContactNumber String?        @map("receiver_contact_number") @db.VarChar(50)
   proofOfDeliveryUrl    String?        @map("proof_of_delivery_url") @db.Text
   notes                 String?        @db.Text
+  delayType             String?        @map("delay_type") @db.VarChar(40)
   deliveryMethod        String         @default("TRUCK") @map("delivery_method") @db.VarChar(30)
   batchNumber           Int            @default(1) @map("batch_number")
   batchCount            Int            @default(1) @map("batch_count")

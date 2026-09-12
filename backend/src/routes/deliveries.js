@@ -26,6 +26,22 @@ const GPS_ACTIVE_STATUSES = ["IN_TRANSIT", "DELAYED"];
 const GPS_MAX_SPEED_KMPH = 200;
 const GPS_MAX_PAST_AGE_MS = 24 * 60 * 60 * 1000;
 const GPS_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const DELIVERY_DELAY_TYPES = [
+  "traffic",
+  "vehicle-issue",
+  "receiver-unavailable",
+  "weather",
+  "third-party",
+  "missing-item",
+];
+const DELIVERY_DELAY_LABELS = {
+  traffic: "Traffic / route delay",
+  "vehicle-issue": "Vehicle issue",
+  "receiver-unavailable": "Receiver unavailable",
+  weather: "Weather delay",
+  "third-party": "Third-party rider issue",
+  "missing-item": "Missing batch/item",
+};
 
 const proofDir = path.join(__dirname, "..", "..", "uploads", "deliveries");
 if (!fs.existsSync(proofDir)) {
@@ -226,7 +242,7 @@ let deliveryColumnSupport = null;
 
 async function getDeliveryColumnSupport() {
   if (deliveryColumnSupport) return deliveryColumnSupport;
-  const optionalColumns = [
+  const batchColumns = [
     "delivery_method",
     "batch_number",
     "batch_count",
@@ -239,7 +255,7 @@ async function getDeliveryColumnSupport() {
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = 'deliveries'
-        AND column_name IN ('delivery_method', 'batch_number', 'batch_count', 'load_kg', 'third_party_provider', 'third_party_reference')
+        AND column_name IN ('delivery_method', 'batch_number', 'batch_count', 'load_kg', 'third_party_provider', 'third_party_reference', 'delay_type')
     `;
     const found = new Set(rows.map((row) => row.column_name));
     const gpsRows = await prisma.$queryRaw`
@@ -251,12 +267,17 @@ async function getDeliveryColumnSupport() {
   ) AS table_exists
 `;
     deliveryColumnSupport = {
-      batches: optionalColumns.every((column) => found.has(column)),
+      batches: batchColumns.every((column) => found.has(column)),
+      delayType: found.has("delay_type"),
       gpsLocations: Boolean(gpsRows?.[0]?.table_exists),
     };
   } catch (err) {
     console.error("Delivery optional column check failed:", err.message || err);
-    deliveryColumnSupport = { batches: false, gpsLocations: false };
+    deliveryColumnSupport = {
+      batches: false,
+      delayType: false,
+      gpsLocations: false,
+    };
   }
   return deliveryColumnSupport;
 }
@@ -264,6 +285,7 @@ async function getDeliveryColumnSupport() {
 function deliverySelect(
   includeOptionalColumns = false,
   includeGpsLocations = false,
+  includeDelayType = false,
 ) {
   return {
     deliveryId: true,
@@ -279,6 +301,7 @@ function deliverySelect(
     receiverContactNumber: true,
     receivedAt: true,
     notes: true,
+    ...(includeDelayType ? { delayType: true } : {}),
     proofOfDeliveryUrl: true,
     returnRejectionReason: true,
     createdAt: true,
@@ -427,6 +450,7 @@ function mapDelivery(d) {
       d.receiverContactNumber || d.clientOrder?.client?.phone || null,
     receivedAt: d.receivedAt ? d.receivedAt.toISOString() : null,
     notes: d.notes || null,
+    delayType: d.delayType || null,
     returnRejectionReason: d.returnRejectionReason || null,
     proofOfDelivery: d.proofOfDeliveryUrl || null,
     assignedDeliveryGuyId: d.assignedDeliveryGuyId?.toString() || null,
@@ -467,12 +491,21 @@ router.post("/active/location", async (req, res, next) => {
       return res.status(409).json({ error: riderResult.error });
     }
 
+    const columnSupport = await getDeliveryColumnSupport();
+    if (!columnSupport.gpsLocations) {
+      return res.status(503).json({
+        error:
+          "GPS storage is not ready. Run the delivery GPS migration first.",
+      });
+    }
+
     // One truck can carry several orders. A single hardware reading therefore
     // belongs to every active delivery assigned to the sole delivery rider.
     const activeDeliveries = await prisma.delivery.findMany({
       where: {
         status: { in: GPS_ACTIVE_STATUSES },
         deletedAt: null,
+        ...(columnSupport.batches ? { deliveryMethod: "TRUCK" } : {}),
         OR: [
           { assignedDeliveryGuyId: riderResult.rider.userId },
           { assignedDeliveryGuyId: null },
@@ -488,15 +521,6 @@ router.post("/active/location", async (req, res, next) => {
     if (activeDeliveries.length === 0) {
       return res.status(404).json({
         error: "No In Transit delivery is available for GPS tracking",
-      });
-    }
-
-    const columnSupport = await getDeliveryColumnSupport();
-
-    if (!columnSupport.gpsLocations) {
-      return res.status(503).json({
-        error:
-          "GPS storage is not ready. Run the delivery GPS migration first.",
       });
     }
 
@@ -564,9 +588,22 @@ router.post("/:id/location", async (req, res, next) => {
     const payload = parseGpsPayload(req.body);
     if (payload.error) return res.status(400).json({ error: payload.error });
 
+    const columnSupport = await getDeliveryColumnSupport();
+    if (!columnSupport.gpsLocations) {
+      return res.status(503).json({
+        error:
+          "GPS storage is not ready. Run the delivery GPS migration first.",
+      });
+    }
+
     const delivery = await prisma.delivery.findFirst({
       where: { deliveryId, deletedAt: null },
-      select: { deliveryId: true, status: true, assignedDeliveryGuyId: true },
+      select: {
+        deliveryId: true,
+        status: true,
+        assignedDeliveryGuyId: true,
+        ...(columnSupport.batches ? { deliveryMethod: true } : {}),
+      },
     });
     if (!delivery) return res.status(404).json({ error: "Delivery not found" });
     if (!GPS_ACTIVE_STATUSES.includes(delivery.status)) {
@@ -574,12 +611,9 @@ router.post("/:id/location", async (req, res, next) => {
         error: "GPS can only be recorded for an in-transit or delayed delivery",
       });
     }
-
-    const columnSupport = await getDeliveryColumnSupport();
-    if (!columnSupport.gpsLocations) {
-      return res.status(503).json({
-        error:
-          "GPS storage is not ready. Run the delivery GPS migration first.",
+    if (columnSupport.batches && delivery.deliveryMethod !== "TRUCK") {
+      return res.status(409).json({
+        error: "Truck GPS cannot update a third-party or motorcycle delivery",
       });
     }
 
@@ -770,6 +804,7 @@ router.get(
           select: deliverySelect(
             columnSupport.batches,
             columnSupport.gpsLocations,
+            columnSupport.delayType,
           ),
           where,
           skip: pagination
@@ -846,6 +881,11 @@ router.post(
         ) {
           return res.status(400).json({ error: "Invalid status" });
         }
+        if (s !== "PENDING") {
+          return res.status(400).json({
+            error: "New deliveries must start with pending status",
+          });
+        }
       }
 
       const defaultEta = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
@@ -878,6 +918,7 @@ router.post(
         select: deliverySelect(
           columnSupport.batches,
           columnSupport.gpsLocations,
+          columnSupport.delayType,
         ),
       });
 
@@ -937,6 +978,7 @@ router.put(
         select: deliverySelect(
           columnSupport.batches,
           columnSupport.gpsLocations,
+          columnSupport.delayType,
         ),
       });
       if (!existing)
@@ -953,12 +995,24 @@ router.put(
       const requestedStatus = req.body.status
         ? req.body.status.toUpperCase().replace(/[-\s]+/g, "_")
         : null;
+      const requestedDelayType = req.body.delayType
+        ? String(req.body.delayType).trim().toLowerCase()
+        : null;
+      const resolvedDelayType = requestedDelayType || existing.delayType || null;
+      const requestedEta = req.body.eta ? new Date(req.body.eta) : null;
+      if (req.body.eta && Number.isNaN(requestedEta.getTime())) {
+        return res.status(400).json({ error: "ETA must be a valid date and time" });
+      }
       if (requestedStatus) {
         const allowed =
           (currentStatus === "PENDING" &&
-            ["IN_TRANSIT", "DELAYED"].includes(requestedStatus)) ||
-          ((currentStatus === "IN_TRANSIT" || currentStatus === "DELAYED") &&
+            requestedStatus === "IN_TRANSIT") ||
+          (currentStatus === "IN_TRANSIT" &&
             ["DELIVERED", "DELAYED"].includes(requestedStatus)) ||
+          (currentStatus === "DELAYED" &&
+            ["IN_TRANSIT", "DELIVERED", "DELAYED"].includes(
+              requestedStatus,
+            )) ||
           (currentStatus === "DELIVERED" &&
             requestedStatus === "RETURN_PENDING") ||
           (currentStatus === "RETURN_PENDING" &&
@@ -993,6 +1047,26 @@ router.put(
             .json({ error: "Updated ETA is required for delayed deliveries" });
         }
         if (
+          requestedStatus === "DELAYED" &&
+          requestedEta &&
+          requestedEta.getTime() <= Date.now()
+        ) {
+          return res.status(400).json({
+            error: "Updated ETA must be later than the current time",
+          });
+        }
+        if (requestedStatus === "DELAYED" && !columnSupport.delayType) {
+          return res.status(503).json({
+            error: "Delay tracking is not ready. Run the delivery delay migration first.",
+          });
+        }
+        if (
+          requestedStatus === "DELAYED" &&
+          !DELIVERY_DELAY_TYPES.includes(resolvedDelayType)
+        ) {
+          return res.status(400).json({ error: "A valid delay type is required" });
+        }
+        if (
           requestedStatus === "RETURN_REJECTED" &&
           !req.body.returnRejectionReason
         ) {
@@ -1016,7 +1090,7 @@ router.put(
         data: {
           assignedDeliveryGuyId: autoAssignedDeliveryGuyId,
           status: requestedStatus || undefined,
-          eta: req.body.eta ? new Date(req.body.eta) : undefined,
+          eta: requestedEta || undefined,
           receivedBy: req.body.receivedBy,
           receiverName: req.body.receiverName || req.body.receivedBy,
           receiverAddress: req.body.receiverAddress,
@@ -1027,6 +1101,9 @@ router.put(
               ? new Date()
               : undefined,
           notes: req.body.notes,
+          ...(columnSupport.delayType && requestedStatus === "DELAYED"
+            ? { delayType: resolvedDelayType }
+            : {}),
           proofOfDeliveryUrl: req.body.proofOfDelivery || undefined,
           returnRejectionReason: req.body.returnRejectionReason,
           ...(columnSupport.batches
@@ -1046,6 +1123,7 @@ router.put(
         select: deliverySelect(
           columnSupport.batches,
           columnSupport.gpsLocations,
+          columnSupport.delayType,
         ),
       });
 
@@ -1117,9 +1195,11 @@ router.put(
             updatedStatus === "RETURN_REJECTED"
               ? `Return rejected for ${delivery.drNumber}`
               : updatedStatus === "IN_TRANSIT"
-                ? `Delivery begun for ${delivery.drNumber}`
+                ? existing.status === "DELAYED"
+                  ? `Delivery resumed for ${delivery.drNumber}`
+                  : `Delivery begun for ${delivery.drNumber}`
                 : updatedStatus === "DELAYED"
-                  ? `Delivery delayed for ${delivery.drNumber}: ${req.body.notes || "No reason provided"}`
+                  ? `Delivery delayed for ${delivery.drNumber} (${DELIVERY_DELAY_LABELS[resolvedDelayType]}): ${req.body.notes || "No reason provided"}`
                   : `Updated delivery ${delivery.drNumber}`,
         },
       });
@@ -1137,11 +1217,21 @@ router.put(
               updatedStatus === "RETURN_REJECTED"
                 ? `Return request rejected for ${delivery.drNumber}. Reason: ${req.body.returnRejectionReason || "Not provided"}.`
                 : updatedStatus === "IN_TRANSIT"
-                  ? `Delivery ${delivery.drNumber} has begun and is now in transit.`
-                  : updatedStatus === "DELAYED"
-                    ? `Delivery ${delivery.drNumber} is delayed. Reason: ${req.body.notes || "Not provided"}. Updated ETA: ${
+                  ? existing.status === "DELAYED"
+                    ? `Delivery ${delivery.drNumber} has resumed and is now in transit. Updated ETA: ${
                         delivery.eta
-                          ? new Date(delivery.eta).toLocaleString("en-PH")
+                          ? new Date(delivery.eta).toLocaleString("en-PH", {
+                              timeZone: "Asia/Manila",
+                            })
+                          : "To be scheduled"
+                      }.`
+                    : `Delivery ${delivery.drNumber} has begun and is now in transit.`
+                  : updatedStatus === "DELAYED"
+                    ? `Delivery ${delivery.drNumber} is delayed (${DELIVERY_DELAY_LABELS[resolvedDelayType]}). Reason: ${req.body.notes || "Not provided"}. Updated ETA: ${
+                        delivery.eta
+                          ? new Date(delivery.eta).toLocaleString("en-PH", {
+                              timeZone: "Asia/Manila",
+                            })
                           : "To be scheduled"
                       }.`
                     : `Delivery ${delivery.drNumber} status is now ${delivery.status.toLowerCase().replace(/_/g, " ")}.`;
@@ -1173,7 +1263,11 @@ router.post("/:id/confirm", requireRole(["CLIENT"]), async (req, res, next) => {
     const columnSupport = await getDeliveryColumnSupport();
     const delivery = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
+      select: deliverySelect(
+        columnSupport.batches,
+        columnSupport.gpsLocations,
+        columnSupport.delayType,
+      ),
     });
     if (!delivery) return res.status(404).json({ error: "Delivery not found" });
     if (delivery.status !== "IN_TRANSIT" && delivery.status !== "DELAYED") {
@@ -1202,7 +1296,11 @@ router.post("/:id/confirm", requireRole(["CLIENT"]), async (req, res, next) => {
         receivedAt: new Date(),
         notes: req.body.notes || delivery.notes,
       },
-      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
+      select: deliverySelect(
+        columnSupport.batches,
+        columnSupport.gpsLocations,
+        columnSupport.delayType,
+      ),
     });
 
     await prisma.auditLog.create({
@@ -1225,7 +1323,11 @@ router.post("/:id/return", requireRole(["CLIENT"]), async (req, res, next) => {
     const columnSupport = await getDeliveryColumnSupport();
     const delivery = await prisma.delivery.findUnique({
       where: { deliveryId: Number(req.params.id) },
-      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
+      select: deliverySelect(
+        columnSupport.batches,
+        columnSupport.gpsLocations,
+        columnSupport.delayType,
+      ),
     });
     if (!delivery) return res.status(404).json({ error: "Delivery not found" });
     if (delivery.status !== "DELIVERED") {
@@ -1250,7 +1352,11 @@ router.post("/:id/return", requireRole(["CLIENT"]), async (req, res, next) => {
         status: "RETURN_PENDING",
         notes: req.body.reason,
       },
-      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
+      select: deliverySelect(
+        columnSupport.batches,
+        columnSupport.gpsLocations,
+        columnSupport.delayType,
+      ),
     });
 
     const admins = await prisma.user.findMany({
@@ -1308,6 +1414,7 @@ router.post(
         select: deliverySelect(
           columnSupport.batches,
           columnSupport.gpsLocations,
+          columnSupport.delayType,
         ),
       });
 
@@ -1356,7 +1463,11 @@ router.put("/:id/restore", requireRole(["ADMIN"]), async (req, res, next) => {
     const delivery = await prisma.delivery.update({
       where: { deliveryId },
       data: { deletedAt: null },
-      select: deliverySelect(columnSupport.batches, columnSupport.gpsLocations),
+      select: deliverySelect(
+        columnSupport.batches,
+        columnSupport.gpsLocations,
+        columnSupport.delayType,
+      ),
     });
     await prisma.auditLog.create({
       data: {

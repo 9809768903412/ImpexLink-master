@@ -66,6 +66,7 @@ const statusIcons: Record<DeliveryStatus, React.ReactNode> = {
   returned: <RotateCcw size={16} />,
 };
 const RECEIVER_OPTIONS = ['Sir Jason', 'Project In-charge', 'Safety Officer', 'Site Engineer'];
+type DeliveryDelayType = NonNullable<Delivery['delayType']>;
 
 function getDeliveryTimeline(delivery: Delivery) {
   return [
@@ -117,7 +118,7 @@ export default function LogisticsPage() {
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [deliveryEta, setDeliveryEta] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('TRUCK');
-  const [delayCase, setDelayCase] = useState('traffic');
+  const [delayCase, setDelayCase] = useState<DeliveryDelayType>('traffic');
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [isRejectReturnOpen, setIsRejectReturnOpen] = useState(false);
   const [returnRejectReason, setReturnRejectReason] = useState('');
@@ -220,6 +221,9 @@ export default function LogisticsPage() {
     const receivedByValue = meta?.receivedBy ?? receivedBy;
     const notesValue = meta?.notes ?? deliveryNotes;
     const etaValue = meta?.eta ?? deliveryEta;
+    const currentDelivery = deliveries.find((delivery) => delivery.id === delId);
+    const isResumingDelivery =
+      newStatus === 'in-transit' && currentDelivery?.status === 'delayed';
     if (newStatus === 'delivered' && !receivedByValue.trim()) {
       toast({
         title: 'Missing receiver',
@@ -228,7 +232,7 @@ export default function LogisticsPage() {
       });
       return;
     }
-    if (newStatus === 'in-transit') {
+    if (newStatus === 'in-transit' && !isResumingDelivery) {
       if (!receivedByValue.trim()) {
         toast({
           title: 'Select receiver',
@@ -270,6 +274,14 @@ export default function LogisticsPage() {
       });
       return;
     }
+    if (newStatus === 'delayed' && new Date(etaValue).getTime() <= Date.now()) {
+      toast({
+        title: 'Invalid updated ETA',
+        description: 'The new expected delivery time must be later than the current time.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (newStatus === 'return-rejected' && !returnRejectReason.trim()) {
       toast({
         title: 'Missing rejection reason',
@@ -286,7 +298,7 @@ export default function LogisticsPage() {
           updates.receiverName = receivedByValue;
           updates.receiverAddress = receiverAddress;
           updates.receiverContactNumber = receiverContactNumber;
-          updates.eta = new Date(etaValue).toISOString();
+          if (etaValue) updates.eta = new Date(etaValue).toISOString();
           updates.notes = notesValue;
           updates.deliveryMethod = deliveryMethod;
         }
@@ -305,6 +317,7 @@ export default function LogisticsPage() {
           updates.notes = notesValue;
           updates.eta = new Date(etaValue).toISOString();
           updates.deliveryMethod = deliveryMethod;
+          updates.delayType = delayCase;
         }
         if (newStatus === 'return-rejected') {
           updates.returnRejectionReason = returnRejectReason;
@@ -331,6 +344,7 @@ export default function LogisticsPage() {
         loadKg: updatedDelivery.loadKg,
         thirdPartyProvider: updatedDelivery.thirdPartyProvider,
         thirdPartyReference: updatedDelivery.thirdPartyReference,
+        delayType: updatedDelivery.delayType,
       };
       if (newStatus === 'return-rejected') {
         payload.returnRejectionReason = returnRejectReason;
@@ -467,7 +481,7 @@ export default function LogisticsPage() {
     setDeliveryNotes(delivery.notes || '');
     setDeliveryEta(delivery.eta ? new Date(delivery.eta).toISOString().slice(0, 16) : '');
     setDeliveryMethod(delivery.deliveryMethod || 'TRUCK');
-    setDelayCase('traffic');
+    setDelayCase(delivery.delayType || 'traffic');
   };
 
   const getDelayRecommendation = (delivery: Delivery | null) => {
@@ -707,7 +721,7 @@ export default function LogisticsPage() {
                         {isDelayed(delivery) ? (
                           <Badge variant="outline" className={`${statusBadgeClass('delayed')} flex items-center gap-1 w-fit`}>
                             <Clock size={16} />
-                            delayed
+                            ETA overdue
                           </Badge>
                         ) : (
                           <Badge variant="outline" className={`${statusBadgeClass(delivery.status)} flex items-center gap-1 w-fit`}>
@@ -931,7 +945,12 @@ export default function LogisticsPage() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <Label>Delay / Exception Type</Label>
-                      <Select value={delayCase} onValueChange={setDelayCase}>
+                      <Select
+                        value={delayCase}
+                        onValueChange={(value) =>
+                          setDelayCase(value as DeliveryDelayType)
+                        }
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -982,7 +1001,9 @@ export default function LogisticsPage() {
                 </div>
               )}
 
-              {canManage && selectedDelivery.status === 'in-transit' && (
+              {canManage &&
+                (selectedDelivery.status === 'in-transit' ||
+                  selectedDelivery.status === 'delayed') && (
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
                   <div>
                     <p className="font-medium">After Delivery / Proof of Delivery</p>
@@ -1018,7 +1039,7 @@ export default function LogisticsPage() {
                 </div>
               )}
 
-              <div className="flex gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end">
                 <Button variant="outline" onClick={() => setSelectedDelivery(null)}>
                   Close
                 </Button>
@@ -1037,7 +1058,9 @@ export default function LogisticsPage() {
                     Begin Delivery
                   </Button>
                 )}
-                {canManage && selectedDelivery.status === 'in-transit' && (
+                {canManage &&
+                  (selectedDelivery.status === 'in-transit' ||
+                    selectedDelivery.status === 'delayed') && (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => handleUpdateStatus(selectedDelivery.id, 'delivered')}
@@ -1046,12 +1069,25 @@ export default function LogisticsPage() {
                     Confirm Delivery
                   </Button>
                 )}
-                {canManage && (selectedDelivery.status === 'pending' || selectedDelivery.status === 'in-transit') && (
+                {canManage && selectedDelivery.status === 'delayed' && (
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => handleUpdateStatus(selectedDelivery.id, 'in-transit')}
+                  >
+                    <Navigation size={16} className="mr-1" />
+                    Resume Delivery
+                  </Button>
+                )}
+                {canManage &&
+                  (selectedDelivery.status === 'in-transit' ||
+                    selectedDelivery.status === 'delayed') && (
                   <Button
                     className="bg-orange-600 hover:bg-orange-700 text-white"
                     onClick={() => handleUpdateStatus(selectedDelivery.id, 'delayed')}
                   >
-                    Report Delay
+                    {selectedDelivery.status === 'delayed'
+                      ? 'Update Delay'
+                      : 'Report Delay'}
                   </Button>
                 )}
                 {canManage && selectedDelivery.status === 'return-pending' && (

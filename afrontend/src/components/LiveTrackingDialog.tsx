@@ -40,6 +40,14 @@ const STATUS_STYLES: Record<DeliveryStatus, string> = {
   "return-rejected": "bg-slate-100 text-slate-700",
   returned: "bg-red-100 text-red-800",
 };
+const DELAY_TYPE_LABELS: Record<string, string> = {
+  traffic: "Traffic / route delay",
+  "vehicle-issue": "Vehicle issue",
+  "receiver-unavailable": "Receiver unavailable",
+  weather: "Weather delay",
+  "third-party": "Third-party rider issue",
+  "missing-item": "Missing batch/item",
+};
 
 function formatAge(recordedAt?: string | null) {
   if (!recordedAt) return "No GPS update yet";
@@ -173,9 +181,13 @@ export default function LiveTrackingDialog({
 
   const activeLocation = latestLocation || delivery?.latestLocation || null;
   const hasLiveLocation = Boolean(activeLocation);
-  const isActiveDelivery = delivery
-    ? ["in-transit", "delayed"].includes(delivery.status)
-    : false;
+  const usesTruckGps =
+    !delivery?.deliveryMethod || delivery.deliveryMethod === "TRUCK";
+  const isActiveDelivery = Boolean(
+    delivery &&
+      usesTruckGps &&
+      ["in-transit", "delayed"].includes(delivery.status),
+  );
   const signalStale = isStale(activeLocation?.recordedAt);
   // Do not connect old test data or a prior trip to the current live route.
   const routePositions: [number, number][] = getCurrentRouteSegment(locationHistory)
@@ -194,8 +206,9 @@ export default function LiveTrackingDialog({
             Live Tracking {delivery?.drNumber ? `• ${delivery.drNumber}` : ""}
           </DialogTitle>
           <DialogDescription>
-            Live delivery location powered by OpenStreetMap. The map appears
-            after the truck GPS device sends its first reading.
+            {usesTruckGps
+              ? "Live delivery location powered by OpenStreetMap. The map appears after the truck GPS device sends its first reading."
+              : "This delivery uses a third-party or motorcycle method, so the company truck GPS is not attached."}
           </DialogDescription>
         </DialogHeader>
 
@@ -249,7 +262,9 @@ export default function LiveTrackingDialog({
                     <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                       {locationLoading
                         ? "Checking for the latest hardware location…"
-                        : "The map appears after the truck GPS device sends its first location."}
+                        : usesTruckGps
+                          ? "The map appears after the truck GPS device sends its first location."
+                          : "Truck GPS is unavailable for this delivery method."}
                     </p>
                   </div>
                   )}
@@ -300,14 +315,20 @@ export default function LiveTrackingDialog({
                           }
                         >
                           {!isActiveDelivery
-                            ? "historical"
+                            ? usesTruckGps
+                              ? "historical"
+                              : "not tracked"
                             : signalStale
                               ? "signal stale"
                               : "live active"}
                         </Badge>
                       ) : (
                         <Badge className="bg-slate-100 text-slate-700">
-                          {locationLoading ? "checking" : "not sharing"}
+                          {locationLoading
+                            ? "checking"
+                            : usesTruckGps
+                              ? "awaiting signal"
+                              : "not tracked"}
                         </Badge>
                       )}
                     </div>
@@ -431,6 +452,18 @@ export default function LiveTrackingDialog({
                       <p className="rounded-md bg-orange-50 px-3 py-2 text-xs text-orange-800">
                         {locationError}
                       </p>
+                    )}
+                    {delivery.delayType && (
+                      <div className="flex items-start gap-2">
+                        <Clock3 className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium">Delay Type</p>
+                          <p className="text-muted-foreground">
+                            {DELAY_TYPE_LABELS[delivery.delayType] ||
+                              delivery.delayType}
+                          </p>
+                        </div>
+                      </div>
                     )}
                     <div className="flex items-start gap-2">
                       <Clock3 className="mt-0.5 h-4 w-4 text-muted-foreground" />
