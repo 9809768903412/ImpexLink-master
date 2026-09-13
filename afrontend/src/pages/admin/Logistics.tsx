@@ -771,7 +771,9 @@ export default function LogisticsPage() {
                             }}
                           >
                             <Navigation size={16} className="mr-1" />
-                            Live GPS
+                            {['in-transit', 'delayed'].includes(delivery.status)
+                              ? 'Live GPS'
+                              : 'Trip History'}
                           </Button>
                         </div>
                       </TableCell>
