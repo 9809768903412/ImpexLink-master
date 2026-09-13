@@ -809,7 +809,9 @@ export default function MyOrdersPage() {
                   {selectedDelivery ? (
                     <div className="flex flex-wrap justify-end gap-2">
                       <Button variant="outline" onClick={() => setTrackingDelivery(selectedDelivery)}>
-                        Track Delivery
+                        {['in-transit', 'delayed'].includes(selectedDelivery.status)
+                          ? 'Track Delivery'
+                          : 'View Trip History'}
                       </Button>
                       {['in-transit', 'delayed'].includes(selectedDelivery.status) && selectedDelivery.proofOfDelivery ? (
                         <Button

@@ -123,6 +123,13 @@ export default function LiveTrackingDialog({
   const [locationHistory, setLocationHistory] = useState<DeliveryGpsLocation[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const usesTruckGps =
+    !delivery?.deliveryMethod || delivery.deliveryMethod === "TRUCK";
+  const isActiveDelivery = Boolean(
+    delivery &&
+      usesTruckGps &&
+      ["in-transit", "delayed"].includes(delivery.status),
+  );
 
   useEffect(() => {
     if (!open || !delivery?.id) {
@@ -135,7 +142,11 @@ export default function LiveTrackingDialog({
     let cancelled = false;
     const loadLatestLocation = async () => {
       setLocationLoading(true);
-      console.info(`[GPS] Checking hardware location for delivery ${delivery.id}`);
+      console.info(
+        isActiveDelivery
+          ? `[GPS] Checking hardware location for delivery ${delivery.id}`
+          : `[GPS] Loading location history for delivery ${delivery.id}`,
+      );
       try {
         const response = await apiClient.get<{ locations?: DeliveryGpsLocation[] }>(
           `/deliveries/${delivery.id}/location/history`,
@@ -172,22 +183,17 @@ export default function LiveTrackingDialog({
     };
 
     loadLatestLocation();
-    const interval = window.setInterval(loadLatestLocation, 10000);
+    const interval = isActiveDelivery
+      ? window.setInterval(loadLatestLocation, 10000)
+      : null;
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      if (interval !== null) window.clearInterval(interval);
     };
-  }, [delivery?.id, delivery?.latestLocation, open]);
+  }, [delivery?.id, delivery?.latestLocation, isActiveDelivery, open]);
 
   const activeLocation = latestLocation || delivery?.latestLocation || null;
   const hasLiveLocation = Boolean(activeLocation);
-  const usesTruckGps =
-    !delivery?.deliveryMethod || delivery.deliveryMethod === "TRUCK";
-  const isActiveDelivery = Boolean(
-    delivery &&
-      usesTruckGps &&
-      ["in-transit", "delayed"].includes(delivery.status),
-  );
   const signalStale = isStale(activeLocation?.recordedAt);
   // Do not connect old test data or a prior trip to the current live route.
   const routePositions: [number, number][] = getCurrentRouteSegment(locationHistory)
@@ -203,11 +209,14 @@ export default function LiveTrackingDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Truck className="h-5 w-5 text-primary" />
-            Live Tracking {delivery?.drNumber ? `• ${delivery.drNumber}` : ""}
+            {isActiveDelivery ? "Live Tracking" : "Trip History"}{" "}
+            {delivery?.drNumber ? `• ${delivery.drNumber}` : ""}
           </DialogTitle>
           <DialogDescription>
-            {usesTruckGps
-              ? "Live delivery location powered by OpenStreetMap. The map appears after the truck GPS device sends its first reading."
+            {isActiveDelivery
+              ? "Live delivery location powered by OpenStreetMap. The map refreshes every 10 seconds while this trip is active."
+              : usesTruckGps
+                ? "Historical truck GPS route and final recorded location. Live polling is stopped because this trip is not active."
               : "This delivery uses a third-party or motorcycle method, so the company truck GPS is not attached."}
           </DialogDescription>
         </DialogHeader>
