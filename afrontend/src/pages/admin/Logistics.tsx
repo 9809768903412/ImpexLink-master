@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation, Send } from 'lucide-react';
+import { Search, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation, Send, Undo2 } from 'lucide-react';
 import type { Delivery, DeliveryStatus, Order } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -401,6 +401,43 @@ export default function LogisticsPage() {
       title: 'Proof uploaded',
       description: 'Proof of delivery has been attached successfully.',
     });
+  };
+
+  const handleResetTrip = async (delivery: Delivery) => {
+    const reason = window.prompt(
+      `Why should ${delivery.drNumber} be reset? This releases the truck and returns the delivery to Pending.`,
+      'Stuck test delivery',
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 5) {
+      toast({
+        title: 'Reset reason required',
+        description: 'Enter at least 5 characters so the recovery is recorded in the audit log.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const response = await apiClient.post<Delivery>(`/deliveries/${delivery.id}/reset-trip`, {
+        reason: reason.trim(),
+      });
+      const resetDelivery = response.data;
+      setDeliveries((current) =>
+        current.map((item) => (item.id === delivery.id ? resetDelivery : item)),
+      );
+      syncSelectedDelivery(resetDelivery);
+      toast({
+        title: 'Truck released',
+        description: `${delivery.drNumber} is Pending and must be loaded again before departure.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Unable to reset trip',
+        description: err?.response?.data?.error || 'The delivery could not be reset.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handlePrintDelivery = (delivery: Delivery) => {
@@ -1080,6 +1117,15 @@ export default function LogisticsPage() {
                 <Button variant="outline" onClick={() => setSelectedDelivery(null)}>
                   Close
                 </Button>
+                {isAdmin &&
+                  (selectedDelivery.status === 'in-transit' ||
+                    selectedDelivery.status === 'delayed' ||
+                    (selectedDelivery.status === 'pending' && selectedDelivery.loadedAt)) && (
+                    <Button variant="destructive" onClick={() => handleResetTrip(selectedDelivery)}>
+                      <Undo2 size={16} className="mr-1" />
+                      Release Truck / Reset Trip
+                    </Button>
+                  )}
                 {selectedDelivery.status !== 'pending' && (
                   <Button variant="outline" onClick={() => handlePrintDelivery(selectedDelivery)}>
                     <FileText size={16} className="mr-1" />
