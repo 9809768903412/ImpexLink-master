@@ -1337,6 +1337,102 @@ router.put(
 );
 
 router.post(
+  "/:id/reset-trip",
+  requireRole(["ADMIN"]),
+  async (req, res, next) => {
+    try {
+      const reason = String(req.body.reason || "").trim();
+      if (reason.length < 5) {
+        return res.status(400).json({
+          error: "A reset reason of at least 5 characters is required.",
+        });
+      }
+
+      const columnSupport = await getDeliveryColumnSupport();
+      const existing = await prisma.delivery.findUnique({
+        where: { deliveryId: Number(req.params.id) },
+        select: deliverySelect(
+          columnSupport.batches,
+          columnSupport.gpsLocations,
+          columnSupport.delayType,
+        ),
+      });
+      if (!existing || existing.deletedAt) {
+        return res.status(404).json({ error: "Delivery not found" });
+      }
+
+      const canReset =
+        GPS_ACTIVE_STATUSES.includes(existing.status) ||
+        (existing.status === "PENDING" && Boolean(existing.loadedAt));
+      if (!canReset) {
+        return res.status(400).json({
+          error: "Only a loaded or active delivery can be reset.",
+        });
+      }
+
+      const delivery = await prisma.delivery.update({
+        where: { deliveryId: existing.deliveryId },
+        data: {
+          status: "PENDING",
+          loadedAt: null,
+          loadedBy: null,
+          assignedDeliveryGuyId: null,
+          receivedAt: null,
+          receivedBy: null,
+          proofOfDeliveryUrl: null,
+          ...(columnSupport.delayType ? { delayType: null } : {}),
+          notes: existing.notes
+            ? `${existing.notes}\nTrip reset: ${reason}`
+            : `Trip reset: ${reason}`,
+        },
+        select: deliverySelect(
+          columnSupport.batches,
+          columnSupport.gpsLocations,
+          columnSupport.delayType,
+        ),
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.userId,
+          action: "UPDATE",
+          target: "Delivery",
+          details: `Reset trip ${delivery.drNumber} and released the truck. Reason: ${reason}`,
+        },
+      });
+
+      if (existing.clientOrder?.clientId) {
+        const client = await prisma.client.findUnique({
+          where: { clientId: existing.clientOrder.clientId },
+          select: { email: true },
+        });
+        if (client?.email) {
+          const clientUser = await prisma.user.findUnique({
+            where: { email: client.email },
+            select: { userId: true },
+          });
+          if (clientUser) {
+            await prisma.notification.create({
+              data: {
+                userId: clientUser.userId,
+                type: "DELIVERY_UPDATE",
+                title: "Delivery rescheduled",
+                message: `Delivery ${delivery.drNumber} was reset and is awaiting dispatch. Reason: ${reason}`,
+                link: "/client/deliveries",
+              },
+            });
+          }
+        }
+      }
+
+      res.json(mapDelivery(delivery));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.post(
   "/:id/load",
   requireRole(["WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY"]),
   async (req, res, next) => {

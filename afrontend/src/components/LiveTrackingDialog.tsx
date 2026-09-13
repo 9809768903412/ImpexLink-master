@@ -80,6 +80,20 @@ function FollowGpsMarker({ position }: { position: [number, number] }) {
   return null;
 }
 
+function FitRouteHistory({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (positions.length >= 2) {
+      map.fitBounds(positions, { padding: [24, 24], maxZoom: 16 });
+    } else if (positions.length === 1) {
+      map.setView(positions[0], 15);
+    }
+  }, [map, positions]);
+
+  return null;
+}
+
 interface LiveTrackingDialogProps {
   delivery: Delivery | null;
   open: boolean;
@@ -95,8 +109,9 @@ interface LiveTrackingDialogProps {
 
 const ROUTE_SESSION_GAP_MS = 30 * 60 * 1000;
 
-function getCurrentRouteSegment(locations: DeliveryGpsLocation[]) {
-  let segmentStart = 0;
+function getRouteSegments(locations: DeliveryGpsLocation[]) {
+  if (locations.length === 0) return [];
+  const segments: DeliveryGpsLocation[][] = [[locations[0]]];
 
   for (let index = 1; index < locations.length; index += 1) {
     const previousTime = new Date(locations[index - 1].recordedAt).getTime();
@@ -106,11 +121,12 @@ function getCurrentRouteSegment(locations: DeliveryGpsLocation[]) {
       Number.isFinite(currentTime) &&
       currentTime - previousTime > ROUTE_SESSION_GAP_MS
     ) {
-      segmentStart = index;
+      segments.push([]);
     }
+    segments[segments.length - 1].push(locations[index]);
   }
 
-  return locations.slice(segmentStart);
+  return segments;
 }
 
 export default function LiveTrackingDialog({
@@ -195,10 +211,19 @@ export default function LiveTrackingDialog({
   const activeLocation = latestLocation || delivery?.latestLocation || null;
   const hasLiveLocation = Boolean(activeLocation);
   const signalStale = isStale(activeLocation?.recordedAt);
-  // Do not connect old test data or a prior trip to the current live route.
-  const routePositions: [number, number][] = getCurrentRouteSegment(locationHistory)
-    .map((location) => [Number(location.lat), Number(location.lng)] as [number, number])
-    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  // Keep sessions separated so gaps in historical/test data are never joined
+  // by a misleading straight line.
+  const allRouteSegments: [number, number][][] = getRouteSegments(locationHistory)
+    .map((segment) =>
+      segment
+        .map((location) => [Number(location.lat), Number(location.lng)] as [number, number])
+        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)),
+    )
+    .filter((segment) => segment.length > 0);
+  const visibleRouteSegments = isActiveDelivery
+    ? allRouteSegments.slice(-1)
+    : allRouteSegments;
+  const routePositions = visibleRouteSegments.flat();
   const marker: [number, number] | null = activeLocation
     ? [Number(activeLocation.lat), Number(activeLocation.lng)]
     : null;
@@ -234,16 +259,23 @@ export default function LiveTrackingDialog({
                       scrollWheelZoom
                       className="h-full w-full z-0"
                     >
-                      <FollowGpsMarker position={marker} />
+                      {isActiveDelivery ? (
+                        <FollowGpsMarker position={marker} />
+                      ) : (
+                        <FitRouteHistory positions={routePositions} />
+                      )}
                       <TileLayer
                         attribution="&copy; OpenStreetMap contributors"
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       />
-                      {routePositions.length >= 2 && (
-                        <Polyline
-                          positions={routePositions}
-                          pathOptions={{ color: "#2563EB", weight: 4 }}
-                        />
+                      {visibleRouteSegments.map((segment, index) =>
+                        segment.length >= 2 ? (
+                          <Polyline
+                            key={`${index}-${segment[0][0]}-${segment[0][1]}`}
+                            positions={segment}
+                            pathOptions={{ color: "#2563EB", weight: 4 }}
+                          />
+                        ) : null,
                       )}
                       <CircleMarker
                         center={marker}
