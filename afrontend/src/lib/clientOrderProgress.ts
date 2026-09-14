@@ -24,7 +24,3 @@ export function getClientOrderProgressStage(
 export function canOpenClientDeliveryMap(status?: DeliveryStatus | null) {
   return Boolean(status && status !== 'pending');
 }
-
-export function hasDeliveryDeparted(status?: DeliveryStatus | null) {
-  return Boolean(status && status !== 'pending');
-}
