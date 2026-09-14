@@ -49,6 +49,12 @@ import { formatPesoAmount } from '@/lib/currency';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  canOpenClientDeliveryMap,
+  CLIENT_ORDER_PROGRESS_LABELS,
+  getClientOrderProgressStage,
+  hasDeliveryDeparted,
+} from '@/lib/clientOrderProgress';
 
 export default function MyOrdersPage() {
   const { user } = useAuth();
@@ -148,50 +154,66 @@ export default function MyOrdersPage() {
     }
   };
 
-  const buildOrderTimeline = (order: Order, delivery: Delivery | null) => [
+  const buildOrderTimeline = (order: Order, delivery: Delivery | null) => {
+    const approvedOrLater = ['approved', 'processing', 'ready-for-delivery', 'delivered'].includes(order.status);
+    const processingOrLater = ['processing', 'ready-for-delivery', 'delivered'].includes(order.status);
+    const readyOrLater = ['ready-for-delivery', 'delivered'].includes(order.status);
+    const departed = hasDeliveryDeparted(delivery?.status);
+    const delivered = delivery?.status === 'delivered' || order.status === 'delivered';
+    const vehicleLoaded = Boolean(delivery?.loadedAt) || departed;
+
+    return [
     {
       label: 'Ordered',
       date: order.createdAt,
+      fallback: null,
       active: true,
       tone: 'bg-green-600',
     },
     {
       label: 'Approved',
-      date: ['approved', 'processing', 'ready-for-delivery', 'delivered'].includes(order.status) ? order.updatedAt : null,
-      active: ['approved', 'processing', 'ready-for-delivery', 'delivered'].includes(order.status),
+      date: order.status === 'approved' ? order.updatedAt : null,
+      fallback: approvedOrLater ? 'Completed' : 'Waiting for Admin approval',
+      active: approvedOrLater,
       tone: 'bg-green-600',
     },
     {
       label: 'Processing',
-      date: ['processing', 'ready-for-delivery', 'delivered'].includes(order.status) ? order.updatedAt : null,
-      active: ['processing', 'ready-for-delivery', 'delivered'].includes(order.status),
+      date: order.status === 'processing' ? order.updatedAt : null,
+      fallback: processingOrLater ? 'Completed' : 'Waiting for Warehouse',
+      active: processingOrLater,
       tone: 'bg-blue-600',
     },
     {
-      label: 'Delivery Pending',
-      date: delivery ? delivery.issuedAt || order.updatedAt : null,
-      active: Boolean(delivery),
+      label: 'Ready for Delivery',
+      date: order.status === 'ready-for-delivery' ? order.updatedAt : null,
+      fallback: readyOrLater ? 'Packed and ready for dispatch' : 'Waiting for packing',
+      active: readyOrLater,
       tone: 'bg-amber-500',
     },
     {
-      label: 'Delivery Started',
-      date: ['ready-for-delivery', 'delivered'].includes(order.status) || delivery?.status === 'in-transit' ? order.updatedAt : null,
-      active: ['ready-for-delivery', 'delivered'].includes(order.status) || delivery?.status === 'in-transit' || delivery?.status === 'delivered',
-      tone: 'bg-blue-600',
+      label: 'Vehicle Loaded',
+      date: delivery?.loadedAt || null,
+      fallback: vehicleLoaded ? 'Completed' : 'Waiting for loading confirmation',
+      active: vehicleLoaded,
+      tone: 'bg-amber-500',
     },
     {
       label: 'In Transit',
-      date: delivery?.status === 'in-transit' || delivery?.status === 'delivered' ? delivery?.issuedAt || null : null,
-      active: delivery?.status === 'in-transit' || delivery?.status === 'delivered',
+      date: null,
+      fallback: departed ? (delivered ? 'Completed' : 'Delivery is underway') : 'Waiting for driver departure',
+      active: departed,
       tone: 'bg-sky-600',
     },
     {
       label: 'Delivered',
       date: delivery?.receivedAt || null,
-      active: delivery?.status === 'delivered' || order.status === 'delivered',
+      fallback: delivered ? 'Delivery confirmed' : 'Waiting for delivery confirmation',
+      active: delivered,
       tone: 'bg-green-600',
     },
-  ];
+    ];
+  };
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -750,20 +772,29 @@ export default function MyOrdersPage() {
                     <div
                       className={cn(
                         'absolute left-0 top-0 h-2 rounded-full transition-all',
-                        selectedOrder.status === 'pending' && 'bg-warning w-[25%]',
-                        selectedOrder.status === 'approved' && 'bg-info w-[40%]',
-                        selectedOrder.status === 'processing' && 'bg-info w-[50%]',
-                        selectedOrder.status === 'ready-for-delivery' && 'bg-secondary w-[75%]',
-                        selectedOrder.status === 'delivered' && 'bg-success w-full'
+                        getClientOrderProgressStage(selectedOrder.status, selectedDelivery?.status) === 5
+                          ? 'bg-success'
+                          : getClientOrderProgressStage(selectedOrder.status, selectedDelivery?.status) >= 3
+                            ? 'bg-secondary'
+                            : 'bg-info'
                       )}
+                      style={{
+                        width: `${(getClientOrderProgressStage(selectedOrder.status, selectedDelivery?.status) / (CLIENT_ORDER_PROGRESS_LABELS.length - 1)) * 100}%`,
+                      }}
                     />
                   </div>
-                  <div className="grid grid-cols-5 text-xs text-muted-foreground">
-                    <span className={selectedOrder.status === 'pending' ? 'font-medium text-foreground' : ''}>Pending</span>
-                    <span className={selectedOrder.status === 'approved' ? 'font-medium text-foreground' : ''}>Approved</span>
-                    <span className={selectedDelivery?.status === 'pending' ? 'font-medium text-foreground' : ''}>Delivery Pending</span>
-                    <span className={selectedOrder.status === 'ready-for-delivery' || selectedDelivery?.status === 'in-transit' ? 'font-medium text-foreground' : ''}>In Transit</span>
-                    <span className={selectedOrder.status === 'delivered' ? 'font-medium text-foreground' : ''}>Delivered</span>
+                  <div className="grid grid-cols-3 gap-y-2 text-xs text-muted-foreground sm:grid-cols-6">
+                    {CLIENT_ORDER_PROGRESS_LABELS.map((label, index) => (
+                      <span
+                        key={label}
+                        className={cn(
+                          index === getClientOrderProgressStage(selectedOrder.status, selectedDelivery?.status) &&
+                            'font-medium text-foreground'
+                        )}
+                      >
+                        {label}
+                      </span>
+                    ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {getStatusExplanation(selectedOrder.status)}
@@ -775,8 +806,10 @@ export default function MyOrdersPage() {
                     <div>
                       <h4 className="font-semibold">Delivery Status</h4>
                       <p className="text-sm text-muted-foreground">
-                        {selectedDelivery
-                          ? 'Order and delivery updates are shown together here.'
+                        {selectedDelivery?.status === 'pending'
+                          ? 'Delivery is prepared and waiting for vehicle loading and driver departure.'
+                          : selectedDelivery
+                            ? 'Order and delivery updates are shown together here.'
                           : 'This order has not been dispatched yet.'}
                       </p>
                     </div>
@@ -802,11 +835,13 @@ export default function MyOrdersPage() {
                       </div>
                       <div className="rounded-md border bg-background p-3">
                         <p className="text-muted-foreground">Received By</p>
-                        <p className="font-medium">{selectedDelivery.receivedBy || 'Pending confirmation'}</p>
+                        <p className="font-medium">
+                          {selectedDelivery.receivedBy || (selectedDelivery.status === 'pending' ? 'Not delivered yet' : 'Pending confirmation')}
+                        </p>
                       </div>
                     </div>
                   ) : null}
-                  {selectedDelivery ? (
+                  {selectedDelivery && canOpenClientDeliveryMap(selectedDelivery.status) ? (
                     <div className="flex flex-wrap justify-end gap-2">
                       <Button variant="outline" onClick={() => setTrackingDelivery(selectedDelivery)}>
                         {['in-transit', 'delayed'].includes(selectedDelivery.status)
@@ -823,6 +858,10 @@ export default function MyOrdersPage() {
                         </Button>
                       ) : null}
                     </div>
+                  ) : selectedDelivery?.status === 'pending' ? (
+                    <p className="text-right text-xs text-muted-foreground">
+                      Tracking becomes available after the driver begins delivery.
+                    </p>
                   ) : null}
                   {selectedDelivery && ['in-transit', 'delayed'].includes(selectedDelivery.status) && !selectedDelivery.proofOfDelivery ? (
                     <p className="text-right text-xs text-muted-foreground">
@@ -842,7 +881,7 @@ export default function MyOrdersPage() {
                             {step.label}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {step.date ? new Date(step.date).toLocaleString('en-PH') : 'Waiting'}
+                            {step.date ? new Date(step.date).toLocaleString('en-PH') : step.fallback || 'Waiting'}
                           </p>
                         </div>
                       </div>

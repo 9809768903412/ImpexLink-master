@@ -64,14 +64,17 @@ export const canViewProjects = (role?: RoleInput) =>
 
 export const canViewMaterialRequests = (role?: RoleInput) =>
   normalizeRoles(role).some((r) =>
-    ['admin', 'project_manager', 'engineer', 'paint_chemist'].includes(r)
+    ['admin', 'president', 'project_manager', 'engineer', 'paint_chemist', 'warehouse_staff'].includes(r)
   );
 
 export const canCreateMaterialRequests = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['engineer', 'paint_chemist'].includes(r));
 
 export const canApproveMaterialRequests = (role?: RoleInput) =>
-  normalizeRoles(role).some((r) => ['admin'].includes(r));
+  normalizeRoles(role).some((r) => ['admin', 'project_manager', 'president'].includes(r));
+
+export const canFulfillMaterialRequests = (role?: RoleInput) =>
+  normalizeRoles(role).some((r) => ['admin', 'warehouse_staff'].includes(r));
 
 export const canViewClientOrders = (role?: RoleInput) =>
   normalizeRoles(role).some((r) => ['admin', 'sales_agent', 'warehouse_staff'].includes(r));

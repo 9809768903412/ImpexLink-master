@@ -3,12 +3,20 @@ const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { requireAuth, requireRole, getRoleList } = require('../middleware/auth');
 const { isPositiveInt, isValidDateString } = require('../utils/validate');
+const {
+  MATERIAL_REQUEST_VIEW_ROLES,
+  buildMaterialRequestScope,
+  canReviewAsProjectManager,
+  canReviewAsPresident,
+  canFulfillMaterialRequest,
+  isMaterialRequestTransitionAllowed,
+} = require('../utils/materialRequestRules');
 
 const router = express.Router();
 router.use(requireAuth);
 
-const DECISION_ROLES = ['ADMIN'];
-const PROCUREMENT_ROLES = ['ADMIN'];
+const DECISION_ROLES = ['ADMIN', 'PROJECT_MANAGER', 'PRESIDENT'];
+const PROCUREMENT_ROLES = ['ADMIN', 'WAREHOUSE_STAFF'];
 
 function hasRole(req, role) {
   return getRoleList(req.user).includes(String(role).toUpperCase());
@@ -53,11 +61,11 @@ async function canAccessProject(req, projectId) {
 }
 
 function canProjectManagerReview(req, request) {
-  return hasRole(req, 'ADMIN');
+  return canReviewAsProjectManager(getRoleList(req.user), req.user.userId, request);
 }
 
 function canPresidentReview(req) {
-  return hasRole(req, 'ADMIN');
+  return canReviewAsPresident(getRoleList(req.user));
 }
 
 async function getUsersByRoles(roleNames = []) {
@@ -90,29 +98,7 @@ async function notifyUsers(users, notification) {
 }
 
 function getRequestScopeWhere(req) {
-  const scopes = [];
-
-  if (hasRole(req, 'ADMIN')) {
-    scopes.push({ status: { in: ['APPROVED', 'FULFILLED'] } });
-  }
-
-  if (hasRole(req, 'PROJECT_MANAGER')) {
-    scopes.push({ assignedProjectManagerId: req.user.userId });
-  }
-
-  if (hasRole(req, 'ENGINEER')) {
-    scopes.push({ requestedBy: req.user.userId });
-  }
-
-  if (hasRole(req, 'PAINT_CHEMIST')) {
-    scopes.push({ requestedBy: req.user.userId });
-  }
-
-  if (scopes.length === 0) {
-    return { requestId: -1 };
-  }
-
-  return scopes.length === 1 ? scopes[0] : { OR: scopes };
+  return buildMaterialRequestScope(getRoleList(req.user), req.user.userId);
 }
 
 function mapRequest(r) {
@@ -149,16 +135,10 @@ function mapRequest(r) {
 router.get('/', async (req, res, next) => {
   try {
     const roleList = getRoleList(req.user);
-    const isClient = roleList.includes('CLIENT');
-    const isAdmin = roleList.includes('ADMIN');
-    const isProjectManager = roleList.includes('PROJECT_MANAGER');
-    const isEngineer = roleList.includes('ENGINEER');
-    const isPaintChemist = roleList.includes('PAINT_CHEMIST');
-
-    if (isClient) {
+    if (roleList.includes('CLIENT')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    if (!isAdmin && !isProjectManager && !isEngineer && !isPaintChemist) {
+    if (!roleList.some((role) => MATERIAL_REQUEST_VIEW_ROLES.includes(role))) {
       return res.json([]);
     }
     const pagination = parsePagination(req.query);
@@ -318,32 +298,21 @@ router.put('/:id', requireRole([...DECISION_ROLES, ...PROCUREMENT_ROLES]), async
       return res.status(400).json({ error: 'Status is required' });
     }
 
+    if (!isMaterialRequestTransitionAllowed(existing.status, status)) {
+      return res.status(400).json({ error: `Cannot move a material request from ${existing.status} to ${status}.` });
+    }
+
     if ((isPmApproval || (isReject && existing.status === 'PENDING')) && !canProjectManagerReview(req, existing)) {
-      return res.status(403).json({ error: 'Only Admin or President can review this request.' });
+      return res.status(403).json({ error: 'Only the assigned Project Manager or Admin can review this request.' });
     }
 
     if ((isPresidentApproval || (isReject && existing.status === 'PM_APPROVED')) && !canPresidentReview(req)) {
       return res.status(403).json({ error: 'Only the President can give final approval.' });
     }
 
-    if (isPmApproval && existing.status !== 'PENDING') {
-      return res.status(400).json({ error: 'Only pending requests can move to office review.' });
-    }
-
-    if (isPresidentApproval && existing.status !== 'PM_APPROVED') {
-      return res.status(400).json({ error: 'Only office-reviewed requests can receive final approval.' });
-    }
-
-    if (isReject && !['PENDING', 'PM_APPROVED'].includes(existing.status)) {
-      return res.status(400).json({ error: 'Only requests under review can be rejected.' });
-    }
-
     if (isFulfill) {
-      if (!hasRole(req, 'ADMIN')) {
-        return res.status(403).json({ error: 'Only Admin can fulfill approved requests.' });
-      }
-      if (existing.status !== 'APPROVED') {
-        return res.status(400).json({ error: 'Only approved requests can be fulfilled.' });
+      if (!canFulfillMaterialRequest(getRoleList(req.user))) {
+        return res.status(403).json({ error: 'Only Admin or Warehouse Staff can fulfill approved requests.' });
       }
     }
 
@@ -412,9 +381,9 @@ router.put('/:id', requireRole([...DECISION_ROLES, ...PROCUREMENT_ROLES]), async
     });
 
     if (isPmApproval) {
-      const admins = await getUsersByRoles(['ADMIN']);
-      await notifyUsers(admins, {
-        title: 'Material request needs Admin approval',
+      const finalApprovers = await getUsersByRoles(['PRESIDENT', 'ADMIN']);
+      await notifyUsers(finalApprovers, {
+        title: 'Material request needs President approval',
         message: `${request.requestNumber} has Project Manager approval and is waiting for final approval.`,
       });
     }

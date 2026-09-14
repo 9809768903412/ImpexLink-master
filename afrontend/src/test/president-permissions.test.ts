@@ -24,6 +24,7 @@ import {
 describe('President permissions', () => {
   it('can view the approved executive modules', () => {
     expect(canViewProjects('president')).toBe(true);
+    expect(canViewMaterialRequests('president')).toBe(true);
     expect(canViewPayments('president')).toBe(true);
     expect(canViewReports('president')).toBe(true);
     expect(canViewAIInsights('president')).toBe(true);
@@ -36,7 +37,6 @@ describe('President permissions', () => {
 
   it('cannot access or manage operational modules', () => {
     expect(canViewInventory('president')).toBe(false);
-    expect(canViewMaterialRequests('president')).toBe(false);
     expect(canViewClientOrders('president')).toBe(false);
     expect(canViewPurchaseOrders('president')).toBe(false);
     expect(canViewSuppliers('president')).toBe(false);
