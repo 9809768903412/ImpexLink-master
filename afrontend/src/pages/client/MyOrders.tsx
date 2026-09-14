@@ -53,7 +53,6 @@ import {
   canOpenClientDeliveryMap,
   CLIENT_ORDER_PROGRESS_LABELS,
   getClientOrderProgressStage,
-  hasDeliveryDeparted,
 } from '@/lib/clientOrderProgress';
 
 export default function MyOrdersPage() {
@@ -152,67 +151,6 @@ export default function MyOrdersPage() {
       case 'returned':
         return <Badge variant="outline" className={statusBadgeClass(status)}>Returned</Badge>;
     }
-  };
-
-  const buildOrderTimeline = (order: Order, delivery: Delivery | null) => {
-    const approvedOrLater = ['approved', 'processing', 'ready-for-delivery', 'delivered'].includes(order.status);
-    const processingOrLater = ['processing', 'ready-for-delivery', 'delivered'].includes(order.status);
-    const readyOrLater = ['ready-for-delivery', 'delivered'].includes(order.status);
-    const departed = hasDeliveryDeparted(delivery?.status);
-    const delivered = delivery?.status === 'delivered' || order.status === 'delivered';
-    const vehicleLoaded = Boolean(delivery?.loadedAt) || departed;
-
-    return [
-    {
-      label: 'Ordered',
-      date: order.createdAt,
-      fallback: null,
-      active: true,
-      tone: 'bg-green-600',
-    },
-    {
-      label: 'Approved',
-      date: order.status === 'approved' ? order.updatedAt : null,
-      fallback: approvedOrLater ? 'Completed' : 'Waiting for Admin approval',
-      active: approvedOrLater,
-      tone: 'bg-green-600',
-    },
-    {
-      label: 'Processing',
-      date: order.status === 'processing' ? order.updatedAt : null,
-      fallback: processingOrLater ? 'Completed' : 'Waiting for Warehouse',
-      active: processingOrLater,
-      tone: 'bg-blue-600',
-    },
-    {
-      label: 'Ready for Delivery',
-      date: order.status === 'ready-for-delivery' ? order.updatedAt : null,
-      fallback: readyOrLater ? 'Packed and ready for dispatch' : 'Waiting for packing',
-      active: readyOrLater,
-      tone: 'bg-amber-500',
-    },
-    {
-      label: 'Vehicle Loaded',
-      date: delivery?.loadedAt || null,
-      fallback: vehicleLoaded ? 'Completed' : 'Waiting for loading confirmation',
-      active: vehicleLoaded,
-      tone: 'bg-amber-500',
-    },
-    {
-      label: 'In Transit',
-      date: null,
-      fallback: departed ? (delivered ? 'Completed' : 'Delivery is underway') : 'Waiting for driver departure',
-      active: departed,
-      tone: 'bg-sky-600',
-    },
-    {
-      label: 'Delivered',
-      date: delivery?.receivedAt || null,
-      fallback: delivered ? 'Delivery confirmed' : 'Waiting for delivery confirmation',
-      active: delivered,
-      tone: 'bg-green-600',
-    },
-    ];
   };
 
   const getStatusBadge = (status: OrderStatus) => {
@@ -868,25 +806,6 @@ export default function MyOrdersPage() {
                       Receipt can be confirmed after the driver uploads proof of delivery.
                     </p>
                   ) : null}
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="font-semibold">Timeline</h4>
-                  <div className="space-y-3">
-                    {buildOrderTimeline(selectedOrder, selectedDelivery).map((step) => (
-                      <div key={step.label} className="flex items-start gap-3">
-                        <div className={cn('mt-1 h-3 w-3 rounded-full', step.active ? step.tone : 'bg-muted')} />
-                        <div>
-                          <p className={cn('text-sm font-medium', step.active ? 'text-foreground' : 'text-muted-foreground')}>
-                            {step.label}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {step.date ? new Date(step.date).toLocaleString('en-PH') : step.fallback || 'Waiting'}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 </div>
 
                 {/* Order Items */}
