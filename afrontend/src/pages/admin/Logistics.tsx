@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation, Send, Undo2 } from 'lucide-react';
+import { Search, Truck, Package, CheckCircle, RotateCcw, Upload, FileText, Clock, Navigation, Send, Undo2, Loader2 } from 'lucide-react';
 import type { Delivery, DeliveryStatus, Order } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -66,6 +66,11 @@ const statusIcons: Record<DeliveryStatus, React.ReactNode> = {
 };
 const RECEIVER_OPTIONS = ['Sir Jason', 'Project In-charge', 'Safety Officer', 'Site Engineer'];
 type DeliveryDelayType = NonNullable<Delivery['delayType']>;
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const apiError = error as { response?: { data?: { error?: string } } };
+  return apiError.response?.data?.error || fallback;
+}
 
 function getDeliveryTimeline(delivery: Delivery) {
   return [
@@ -111,6 +116,8 @@ export default function LogisticsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
   const [trackingDelivery, setTrackingDelivery] = useState<Delivery | null>(null);
+  const [showTruckLoad, setShowTruckLoad] = useState(false);
+  const [isStartingTruckTrip, setIsStartingTruckTrip] = useState(false);
   const [showDRPreview, setShowDRPreview] = useState(false);
   const [receivedBy, setReceivedBy] = useState('');
   const [receiverAddress, setReceiverAddress] = useState('');
@@ -157,6 +164,35 @@ export default function LogisticsPage() {
   const deliveriesPageEnd = deliveriesPageStart + deliveriesPageSize;
   const pagedDeliveries = filteredDeliveries.slice(deliveriesPageStart, deliveriesPageEnd);
   const totalFilteredDeliveries = filteredDeliveries.length;
+  const loadedTruckDeliveries = useMemo(
+    () =>
+      deliveries.filter(
+        (delivery) =>
+          delivery.status === 'pending' &&
+          Boolean(delivery.loadedAt) &&
+          (delivery.deliveryMethod || 'TRUCK') === 'TRUCK',
+      ),
+    [deliveries],
+  );
+  const activeTruckDeliveries = useMemo(
+    () =>
+      deliveries.filter(
+        (delivery) =>
+          ['in-transit', 'delayed'].includes(delivery.status) &&
+          (delivery.deliveryMethod || 'TRUCK') === 'TRUCK',
+      ),
+    [deliveries],
+  );
+  const loadedTruckKg = useMemo(
+    () =>
+      Math.round(
+        loadedTruckDeliveries.reduce(
+          (total, delivery) => total + Number(delivery.loadKg || 0),
+          0,
+        ) * 10,
+      ) / 10,
+    [loadedTruckDeliveries],
+  );
   const receivedByOptions = useMemo(() => {
     return RECEIVER_OPTIONS;
   }, [selectedDelivery]);
@@ -550,6 +586,58 @@ export default function LogisticsPage() {
     }
   };
 
+  const handleRemoveFromTruck = async (delivery: Delivery) => {
+    try {
+      const response = await apiClient.post<Delivery>(`/deliveries/${delivery.id}/unload`);
+      setDeliveries((current) =>
+        current.map((item) => (item.id === delivery.id ? response.data : item)),
+      );
+      syncSelectedDelivery(response.data);
+      toast({
+        title: 'Removed from truck',
+        description: `${delivery.drNumber} can be loaded again before departure.`,
+      });
+    } catch (error: unknown) {
+      toast({
+        title: 'Unable to remove delivery',
+        description: getApiErrorMessage(error, 'Please refresh and try again.'),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleBeginLoadedTrip = async () => {
+    if (loadedTruckDeliveries.length === 0 || activeTruckDeliveries.length > 0) return;
+    setIsStartingTruckTrip(true);
+    try {
+      const response = await apiClient.post<{
+        deliveries: Delivery[];
+        totalKg: number;
+        capacityKg: number;
+      }>('/deliveries/truck-load/start');
+      const startedById = new Map(
+        response.data.deliveries.map((delivery) => [delivery.id, delivery]),
+      );
+      setDeliveries((current) =>
+        current.map((delivery) => startedById.get(delivery.id) || delivery),
+      );
+      setSelectedDelivery(null);
+      setShowTruckLoad(true);
+      toast({
+        title: 'Loaded trip started',
+        description: `${response.data.deliveries.length} ${response.data.deliveries.length === 1 ? 'order is' : 'orders are'} now in transit (${response.data.totalKg}/${response.data.capacityKg} kg).`,
+      });
+    } catch (error: unknown) {
+      toast({
+        title: 'Unable to begin loaded trip',
+        description: getApiErrorMessage(error, 'Please refresh and try again.'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsStartingTruckTrip(false);
+    }
+  };
+
   const getDelayRecommendation = (delivery: Delivery | null) => {
     if (!delivery) return { method: 'TRUCK', note: '', action: '' };
     const loadKg = Number(delivery.loadKg || 0);
@@ -668,6 +756,110 @@ export default function LogisticsPage() {
           <p className="mt-1 text-xs text-muted-foreground">Oversized/heavy loads are tagged for Lalamove or other providers.</p>
         </div>
       </div>
+
+      {(isAdmin || isWarehouseStaff || isDeliveryGuy) && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2 font-semibold">
+                  <Truck size={18} />
+                  Current Truck Load
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {activeTruckDeliveries.length > 0
+                    ? `${activeTruckDeliveries.length} ${activeTruckDeliveries.length === 1 ? 'order is' : 'orders are'} currently on the active trip.`
+                    : `${loadedTruckDeliveries.length} ${loadedTruckDeliveries.length === 1 ? 'order' : 'orders'} loaded • ${loadedTruckKg}/1000 kg estimated`}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowTruckLoad((current) => !current)}
+                >
+                  {showTruckLoad ? 'Hide Truck Load' : 'View Truck Load'}
+                </Button>
+                {isDeliveryGuy && (
+                  <Button
+                    type="button"
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    onClick={handleBeginLoadedTrip}
+                    disabled={
+                      loadedTruckDeliveries.length === 0 ||
+                      activeTruckDeliveries.length > 0 ||
+                      loadedTruckKg > 1000 ||
+                      isStartingTruckTrip
+                    }
+                  >
+                    {isStartingTruckTrip ? (
+                      <Loader2 size={16} className="mr-1 animate-spin" />
+                    ) : (
+                      <Navigation size={16} className="mr-1" />
+                    )}
+                    Begin Loaded Trip ({loadedTruckDeliveries.length} {loadedTruckDeliveries.length === 1 ? 'order' : 'orders'} • {loadedTruckKg}kg)
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {showTruckLoad && (
+              <div className="mt-4 space-y-2 border-t pt-4">
+                {activeTruckDeliveries.length > 0 ? (
+                  activeTruckDeliveries.map((delivery) => (
+                    <div key={delivery.id} className="flex items-center justify-between rounded-md border bg-blue-50 p-3">
+                      <div>
+                        <p className="font-medium">{delivery.drNumber}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {delivery.orderNumber} • {delivery.clientName} • {Number(delivery.loadKg || 0)}kg
+                        </p>
+                      </div>
+                      <Badge variant="outline" className={statusBadgeClass(delivery.status)}>
+                        {delivery.status}
+                      </Badge>
+                    </div>
+                  ))
+                ) : loadedTruckDeliveries.length > 0 ? (
+                  loadedTruckDeliveries.map((delivery) => (
+                    <div key={delivery.id} className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-medium">{delivery.drNumber}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {delivery.orderNumber} • {delivery.clientName} • {Number(delivery.loadKg || 0)}kg
+                        </p>
+                      </div>
+                      {canConfirmLoading && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRemoveFromTruck(delivery)}
+                        >
+                          Remove from Load
+                        </Button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    The truck is empty. Open a pending delivery and click Confirm Vehicle Loaded.
+                  </p>
+                )}
+                {activeTruckDeliveries.length === 0 && loadedTruckDeliveries.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Remaining estimated capacity: {Math.max(0, 1000 - loadedTruckKg)} kg. Additional ready orders may be loaded before departure.
+                  </p>
+                )}
+                {isWarehouseStaff && !isDeliveryGuy && loadedTruckDeliveries.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Loading is ready. The delivery rider must click Begin Loaded Trip.
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="space-y-4">
           <Card>
@@ -937,7 +1129,7 @@ export default function LogisticsPage() {
               {isAdmin && <RecentActivityPanel logs={deliveryLogs} />}
 
               {/* Status Actions */}
-              {canExecuteDelivery && selectedDelivery.status === 'pending' && (
+              {canExecuteDelivery && selectedDelivery.status === 'pending' && (selectedDelivery.deliveryMethod || 'TRUCK') !== 'TRUCK' && (
                 <div className="space-y-3 p-4 bg-muted rounded-lg">
                   <div>
                     <p className="font-medium">Before Delivery Starts</p>
@@ -1138,7 +1330,7 @@ export default function LogisticsPage() {
                     Confirm Vehicle Loaded
                   </Button>
                 )}
-                {canExecuteDelivery && selectedDelivery.status === 'pending' && (
+                {canExecuteDelivery && selectedDelivery.status === 'pending' && (selectedDelivery.deliveryMethod || 'TRUCK') !== 'TRUCK' && (
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => handleUpdateStatus(selectedDelivery.id, 'in-transit')}
@@ -1148,6 +1340,23 @@ export default function LogisticsPage() {
                     Begin Delivery
                   </Button>
                 )}
+                {canExecuteDelivery &&
+                  selectedDelivery.status === 'pending' &&
+                  (selectedDelivery.deliveryMethod || 'TRUCK') === 'TRUCK' &&
+                  selectedDelivery.loadedAt && (
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handleBeginLoadedTrip}
+                      disabled={activeTruckDeliveries.length > 0 || isStartingTruckTrip}
+                    >
+                      {isStartingTruckTrip ? (
+                        <Loader2 size={16} className="mr-1 animate-spin" />
+                      ) : (
+                        <Navigation size={16} className="mr-1" />
+                      )}
+                      Begin Loaded Trip
+                    </Button>
+                  )}
                 {canExecuteDelivery &&
                   (selectedDelivery.status === 'in-transit' ||
                     selectedDelivery.status === 'delayed') && (

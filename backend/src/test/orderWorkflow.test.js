@@ -6,7 +6,10 @@ const {
   deriveOrderStatusFromDeliveries,
   splitItemsIntoDeliveryBatches,
 } = require('../utils/orderWorkflow');
-const { calculateDeliveryPlan } = require('../utils/deliveryRules');
+const {
+  calculateDeliveryPlan,
+  summarizeTruckLoad,
+} = require('../utils/deliveryRules');
 
 test('server totals use authoritative line prices and 12% VAT', () => {
   assert.deepEqual(
@@ -66,4 +69,20 @@ test('internal delivery planning uses the single company truck and splits oversi
   ]);
   assert.equal(oversizedOrder.method, 'TRUCK');
   assert.ok(oversizedOrder.batchCount > 1);
+});
+
+test('truck manifest combines different loaded deliveries within capacity', () => {
+  assert.deepEqual(
+    summarizeTruckLoad([{ loadKg: 80 }, { loadKg: 200 }]),
+    {
+      deliveryCount: 2,
+      totalKg: 280,
+      remainingKg: 720,
+      exceedsCapacity: false,
+    },
+  );
+  assert.equal(
+    summarizeTruckLoad([{ loadKg: 800 }, { loadKg: 250 }]).exceedsCapacity,
+    true,
+  );
 });

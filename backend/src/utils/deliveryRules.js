@@ -76,6 +76,22 @@ function calculateDeliveryPlan(items = []) {
   };
 }
 
+function summarizeTruckLoad(deliveries = []) {
+  const totalKg = deliveries.reduce(
+    (total, delivery) => total + Number(delivery?.loadKg || 0),
+    0,
+  );
+  return {
+    deliveryCount: deliveries.length,
+    totalKg: Math.round(totalKg * 10) / 10,
+    remainingKg: Math.max(
+      0,
+      Math.round((TRUCK_MAX_KG - totalKg) * 10) / 10,
+    ),
+    exceedsCapacity: totalKg > TRUCK_MAX_KG,
+  };
+}
+
 module.exports = {
   MAX_ITEM_QTY_PER_DELIVERY,
   PAINT_CAN_KG,
@@ -85,4 +101,5 @@ module.exports = {
   TRUCK_MAX_KG,
   MOTORCYCLE_MAX_KG,
   calculateDeliveryPlan,
+  summarizeTruckLoad,
 };

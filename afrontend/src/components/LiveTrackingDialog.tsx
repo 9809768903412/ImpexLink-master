@@ -5,6 +5,7 @@ import {
   CircleMarker,
   Polyline,
   Popup,
+  Tooltip,
   useMap,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -146,6 +147,7 @@ export default function LiveTrackingDialog({
       usesTruckGps &&
       ["in-transit", "delayed"].includes(delivery.status),
   );
+  const isCompletedDelivery = delivery?.status === "delivered";
 
   useEffect(() => {
     if (!open || !delivery?.id) {
@@ -281,17 +283,54 @@ export default function LiveTrackingDialog({
                         center={marker}
                         radius={10}
                         pathOptions={{
-                          color: signalStale ? "#C2410C" : "#1D4ED8",
-                          fillColor: signalStale ? "#F97316" : "#3B82F6",
+                          color: isCompletedDelivery
+                            ? "#15803D"
+                            : signalStale
+                              ? "#C2410C"
+                              : "#1D4ED8",
+                          fillColor: isCompletedDelivery
+                            ? "#22C55E"
+                            : signalStale
+                              ? "#F97316"
+                              : "#3B82F6",
                           fillOpacity: 1,
                         }}
                       >
+                        {isCompletedDelivery && (
+                          <Tooltip permanent direction="top" offset={[0, -10]}>
+                            Delivery completed here
+                          </Tooltip>
+                        )}
                         <Popup>
-                          {delivery.drNumber}
+                          <strong>
+                            {isCompletedDelivery
+                              ? "Delivery completed here"
+                              : delivery.drNumber}
+                          </strong>
                           <br />
-                          {delivery.clientName}
+                          {delivery.drNumber} • {delivery.orderNumber}
                           <br />
-                          GPS update: {formatAge(activeLocation?.recordedAt)}
+                          Client: {delivery.clientName}
+                          {isCompletedDelivery && delivery.receivedBy ? (
+                            <>
+                              <br />
+                              Received by: {delivery.receivedBy}
+                            </>
+                          ) : null}
+                          {isCompletedDelivery && delivery.receivedAt ? (
+                            <>
+                              <br />
+                              Completed: {new Date(delivery.receivedAt).toLocaleString("en-PH")}
+                            </>
+                          ) : null}
+                          {isCompletedDelivery && delivery.notes ? (
+                            <>
+                              <br />
+                              Notes: {delivery.notes}
+                            </>
+                          ) : null}
+                          <br />
+                          Final GPS update: {formatAge(activeLocation?.recordedAt)}
                         </Popup>
                       </CircleMarker>
                     </MapContainer>
