@@ -20,7 +20,10 @@ const {
 } = require("../utils/clientVisibility");
 const { mirrorUploadedFile } = require("../utils/uploadedFiles");
 const { deriveOrderStatusFromDeliveries } = require("../utils/orderWorkflow");
-const { TRUCK_MAX_KG } = require("../utils/deliveryRules");
+const {
+  TRUCK_MAX_KG,
+  summarizeTruckLoad,
+} = require("../utils/deliveryRules");
 
 const router = express.Router();
 const GPS_ACTIVE_STATUSES = ["IN_TRANSIT", "DELAYED"];
@@ -885,6 +888,204 @@ router.get(
 );
 
 router.post(
+  "/truck-load/start",
+  requireRole(["DRIVER", "DELIVERY_GUY"]),
+  async (req, res, next) => {
+    try {
+      const riderResult = await getSoleActiveDeliveryRider();
+      if (riderResult.error) {
+        return res.status(409).json({ error: riderResult.error });
+      }
+      if (riderResult.rider.userId !== req.user.userId) {
+        return res.status(403).json({
+          error: "Only the active delivery rider can begin the loaded trip.",
+        });
+      }
+
+      const columnSupport = await getDeliveryColumnSupport();
+      if (!columnSupport.batches) {
+        return res.status(503).json({
+          error: "Truck-load tracking is not ready. Run the delivery batch migration first.",
+        });
+      }
+
+      const startedDeliveries = await prisma.$transaction(
+        async (tx) => {
+          const activeTrip = await tx.delivery.findFirst({
+            where: {
+              deletedAt: null,
+              deliveryMethod: "TRUCK",
+              status: { in: GPS_ACTIVE_STATUSES },
+            },
+            select: { drNumber: true },
+          });
+          if (activeTrip) {
+            const error = new Error(
+              `The truck has already departed for ${activeTrip.drNumber}. Finish the active trip before starting another.`,
+            );
+            error.statusCode = 409;
+            throw error;
+          }
+
+          const loadedDeliveries = await tx.delivery.findMany({
+            where: {
+              deletedAt: null,
+              deliveryMethod: "TRUCK",
+              status: "PENDING",
+              loadedAt: { not: null },
+            },
+            select: {
+              deliveryId: true,
+              drNumber: true,
+              loadKg: true,
+              clientOrder: { select: { status: true, clientId: true } },
+            },
+            orderBy: { loadedAt: "asc" },
+          });
+
+          if (loadedDeliveries.length === 0) {
+            const error = new Error(
+              "The truck is empty. Confirm at least one vehicle load before beginning the trip.",
+            );
+            error.statusCode = 400;
+            throw error;
+          }
+
+          const ineligible = loadedDeliveries.find(
+            (delivery) => delivery.clientOrder?.status !== "SHIPPED",
+          );
+          if (ineligible) {
+            const error = new Error(
+              `${ineligible.drNumber} is no longer ready for delivery. Remove it from the truck load and review the order.`,
+            );
+            error.statusCode = 409;
+            throw error;
+          }
+
+          const load = summarizeTruckLoad(loadedDeliveries);
+          if (load.exceedsCapacity) {
+            const error = new Error(
+              `The loaded deliveries total ${load.totalKg} kg and exceed the ${TRUCK_MAX_KG} kg truck capacity.`,
+            );
+            error.statusCode = 409;
+            throw error;
+          }
+
+          const deliveryIds = loadedDeliveries.map(
+            (delivery) => delivery.deliveryId,
+          );
+          const updateResult = await tx.delivery.updateMany({
+            where: {
+              deliveryId: { in: deliveryIds },
+              deletedAt: null,
+              deliveryMethod: "TRUCK",
+              status: "PENDING",
+              loadedAt: { not: null },
+            },
+            data: {
+              status: "IN_TRANSIT",
+              assignedDeliveryGuyId: riderResult.rider.userId,
+            },
+          });
+          if (updateResult.count !== deliveryIds.length) {
+            const error = new Error(
+              "The truck load changed while departure was being confirmed. Refresh and try again.",
+            );
+            error.statusCode = 409;
+            throw error;
+          }
+
+          await tx.auditLog.createMany({
+            data: loadedDeliveries.map((delivery) => ({
+              userId: req.user.userId,
+              action: "UPDATE",
+              target: "Delivery",
+              details: `Loaded truck trip begun for ${delivery.drNumber}`,
+            })),
+          });
+
+          const clientIds = [
+            ...new Set(
+              loadedDeliveries
+                .map((delivery) => delivery.clientOrder?.clientId)
+                .filter(Boolean),
+            ),
+          ];
+          if (clientIds.length > 0) {
+            const clients = await tx.client.findMany({
+              where: { clientId: { in: clientIds } },
+              select: { clientId: true, email: true },
+            });
+            const clientEmails = clients
+              .map((client) => client.email)
+              .filter(Boolean);
+            const clientUsers = clientEmails.length
+              ? await tx.user.findMany({
+                  where: { email: { in: clientEmails }, deletedAt: null },
+                  select: { userId: true, email: true },
+                })
+              : [];
+            const userIdByClientId = new Map(
+              clients.map((client) => [
+                client.clientId,
+                clientUsers.find((user) => user.email === client.email)?.userId,
+              ]),
+            );
+            const notifications = loadedDeliveries
+              .map((delivery) => {
+                const userId = userIdByClientId.get(
+                  delivery.clientOrder?.clientId,
+                );
+                return userId
+                  ? {
+                      userId,
+                      type: "DELIVERY_UPDATE",
+                      title: "Delivery update",
+                      message: `Delivery ${delivery.drNumber} has departed and is now in transit.`,
+                      link: "/client/deliveries",
+                    }
+                  : null;
+              })
+              .filter(Boolean);
+            if (notifications.length > 0) {
+              await tx.notification.createMany({ data: notifications });
+            }
+          }
+
+          return tx.delivery.findMany({
+            where: { deliveryId: { in: deliveryIds } },
+            select: deliverySelect(
+              columnSupport.batches,
+              columnSupport.gpsLocations,
+              columnSupport.delayType,
+            ),
+            orderBy: { loadedAt: "asc" },
+          });
+        },
+        { isolationLevel: "Serializable" },
+      );
+
+      const load = summarizeTruckLoad(startedDeliveries);
+      return res.json({
+        deliveries: startedDeliveries.map(mapDelivery),
+        totalKg: load.totalKg,
+        capacityKg: TRUCK_MAX_KG,
+      });
+    } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      if (err.code === "P2034") {
+        return res.status(409).json({
+          error: "The truck load changed while departure was being confirmed. Refresh and try again.",
+        });
+      }
+      next(err);
+    }
+  },
+);
+
+router.post(
   "/",
   requireRole(["ADMIN", "WAREHOUSE_STAFF"]),
   async (req, res, next) => {
@@ -1104,6 +1305,30 @@ router.put(
         }
         if (requestedStatus === "IN_TRANSIT" && currentStatus === "PENDING" && !existing.loadedAt) {
           return res.status(400).json({ error: "Confirm that this delivery batch is loaded before beginning the trip." });
+        }
+        if (
+          requestedStatus === "IN_TRANSIT" &&
+          currentStatus === "PENDING" &&
+          columnSupport.batches &&
+          existing.deliveryMethod === "TRUCK"
+        ) {
+          const truckOccupancy = await getSoleTruckOccupancy(existing.deliveryId);
+          const activeTrip = truckOccupancy.find((delivery) =>
+            GPS_ACTIVE_STATUSES.includes(delivery.status),
+          );
+          if (activeTrip) {
+            return res.status(409).json({
+              error: `The truck has already departed for ${activeTrip.drNumber}.`,
+            });
+          }
+          const otherLoadedDelivery = truckOccupancy.find(
+            (delivery) => delivery.status === "PENDING",
+          );
+          if (otherLoadedDelivery) {
+            return res.status(409).json({
+              error: "More than one order is loaded. Use Begin Loaded Trip to start them together.",
+            });
+          }
         }
         if (requestedStatus === "DELIVERED" && !req.body.receivedBy) {
           return res.status(400).json({ error: "Received by is required" });
@@ -1499,6 +1724,51 @@ router.post(
         },
       });
       res.json(mapDelivery(updated));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.post(
+  "/:id/unload",
+  requireRole(["WAREHOUSE_STAFF", "DRIVER", "DELIVERY_GUY"]),
+  async (req, res, next) => {
+    try {
+      const columnSupport = await getDeliveryColumnSupport();
+      const existing = await prisma.delivery.findUnique({
+        where: { deliveryId: Number(req.params.id) },
+        select: deliverySelect(
+          columnSupport.batches,
+          columnSupport.gpsLocations,
+          columnSupport.delayType,
+        ),
+      });
+      if (!existing) return res.status(404).json({ error: "Delivery not found" });
+      if (existing.status !== "PENDING" || !existing.loadedAt) {
+        return res.status(400).json({
+          error: "Only a loaded delivery can be removed before departure.",
+        });
+      }
+
+      const updated = await prisma.delivery.update({
+        where: { deliveryId: existing.deliveryId },
+        data: { loadedAt: null, loadedBy: null },
+        select: deliverySelect(
+          columnSupport.batches,
+          columnSupport.gpsLocations,
+          columnSupport.delayType,
+        ),
+      });
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.userId,
+          action: "UPDATE",
+          target: "DeliveryLoad",
+          details: `Removed ${updated.drNumber} from the truck before departure`,
+        },
+      });
+      return res.json(mapDelivery(updated));
     } catch (err) {
       next(err);
     }
