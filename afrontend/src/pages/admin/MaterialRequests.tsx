@@ -38,7 +38,12 @@ import { useResource } from '@/hooks/use-resource';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { canApproveMaterialRequests, canCreateMaterialRequests, hasRole } from '@/lib/roles';
+import {
+  canApproveMaterialRequests,
+  canCreateMaterialRequests,
+  canFulfillMaterialRequests,
+  hasRole,
+} from '@/lib/roles';
 import { formatPesoAmount } from '@/lib/currency';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
@@ -57,8 +62,10 @@ export default function MaterialRequestsPage() {
   const roleInput = user?.roles?.length ? user.roles : user?.role;
   const canApprove = canApproveMaterialRequests(roleInput);
   const canCreate = canCreateMaterialRequests(roleInput);
+  const canFulfill = canFulfillMaterialRequests(roleInput);
   const isAdmin = hasRole(roleInput, 'admin');
   const isPresident = hasRole(roleInput, 'president');
+  const isProjectManager = hasRole(roleInput, 'project_manager');
   const isProcurement = hasRole(roleInput, 'admin') || hasRole(roleInput, 'warehouse_staff');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -76,8 +83,8 @@ export default function MaterialRequestsPage() {
       sortDir,
     }
   );
-  const { data: projects } = useResource<Project[]>('/projects', [], [user?.id], 15_000, { picker: true });
-  const { data: inventory } = useResource<InventoryItem[]>('/inventory', []);
+  const { data: projects } = useResource<Project[]>(canCreate ? '/projects' : '', [], [user?.id, canCreate], 15_000, { picker: true });
+  const { data: inventory } = useResource<InventoryItem[]>(canCreate ? '/inventory' : '', [], [canCreate]);
   const [selectedRequest, setSelectedRequest] = useState<MaterialRequest | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [approvalRemarks, setApprovalRemarks] = useState('');
@@ -109,8 +116,14 @@ export default function MaterialRequestsPage() {
   const canApproveSelected =
     Boolean(selectedRequest) &&
     canApprove &&
-    ((selectedRequest?.status === 'pending' && (isAdmin || isPresident)) ||
+    ((selectedRequest?.status === 'pending' &&
+      (isAdmin ||
+        (isProjectManager &&
+          Boolean(selectedRequest.assignedProjectManagerId) &&
+          Boolean(user?.id) &&
+          String(selectedRequest.assignedProjectManagerId) === String(user.id)))) ||
       (selectedRequest?.status === 'pm_approved' && (isAdmin || isPresident)));
+  const canFulfillSelected = Boolean(selectedRequest) && canFulfill && selectedRequest?.status === 'approved';
 
   const getDraftEstimatedCost = () =>
     newRequest.items.reduce((sum, item) => {
@@ -142,7 +155,7 @@ export default function MaterialRequestsPage() {
   const getStatusDescription = (request: MaterialRequest) => {
     switch (request.status) {
       case 'pending':
-        return 'Pending Admin / President review';
+        return 'Pending assigned Project Manager review';
       case 'pm_approved':
         return 'Reviewed. Waiting for final approval.';
       case 'approved':
@@ -211,7 +224,12 @@ export default function MaterialRequestsPage() {
         setRequests((prev) => prev.map((r) => (r.id === request.id ? updated : r)));
       })
       .catch(() => {
-        // keep optimistic state
+        setRequests((prev) => prev.map((r) => (r.id === request.id ? request : r)));
+        toast({
+          title: 'Approval failed',
+          description: 'The request was not changed. Refresh and try again.',
+          variant: 'destructive',
+        });
       });
     setIsDetailOpen(false);
     setApprovalRemarks('');
@@ -244,10 +262,39 @@ export default function MaterialRequestsPage() {
         setRequests((prev) => prev.map((r) => (r.id === request.id ? updated : r)));
       })
       .catch(() => {
-        // keep optimistic state
+        setRequests((prev) => prev.map((r) => (r.id === request.id ? request : r)));
+        toast({
+          title: 'Rejection failed',
+          description: 'The request was not changed. Refresh and try again.',
+          variant: 'destructive',
+        });
       });
     setIsDetailOpen(false);
     setApprovalRemarks('');
+  };
+
+  const handleFulfill = (request: MaterialRequest) => {
+    apiClient
+      .put<MaterialRequest>(`/material-requests/${request.id}`, {
+        status: 'fulfilled',
+        remarks: approvalRemarks,
+      })
+      .then((res) => {
+        setRequests((prev) => prev.map((r) => (r.id === request.id ? res.data : r)));
+        toast({
+          title: 'Request Fulfilled',
+          description: `${request.requestNumber} has been completed by Procurement.`,
+        });
+        setIsDetailOpen(false);
+        setApprovalRemarks('');
+      })
+      .catch(() => {
+        toast({
+          title: 'Unable to fulfill request',
+          description: 'The request was not changed. Refresh and try again.',
+          variant: 'destructive',
+        });
+      });
   };
 
 
@@ -333,7 +380,12 @@ export default function MaterialRequestsPage() {
         setRequests((prev) => [res.data, ...prev.filter((r) => r.id !== tempId)]);
       })
       .catch(() => {
-        // keep optimistic state
+        setRequests((prev) => prev.filter((r) => r.id !== tempId));
+        toast({
+          title: 'Request submission failed',
+          description: 'The request was not saved. Check the form and try again.',
+          variant: 'destructive',
+        });
       });
     toast({
       title: 'Request Submitted',
@@ -963,7 +1015,7 @@ export default function MaterialRequestsPage() {
                 Download PDF
               </Button>
             )}
-            {selectedRequest && ['pending', 'pm_approved'].includes(selectedRequest.status) ? (
+            {selectedRequest && ['pending', 'pm_approved'].includes(selectedRequest.status) && canApproveSelected ? (
               <>
                 <Button
                   className="bg-red-600 hover:bg-red-700 text-white"
@@ -974,7 +1026,6 @@ export default function MaterialRequestsPage() {
                 <Button
                   onClick={() => handleReject(selectedRequest)}
                   className="gap-2 bg-red-600 hover:bg-red-700 text-white"
-                  disabled={!canApproveSelected}
                 >
                   <XCircle size={16} />
                   Reject
@@ -982,10 +1033,22 @@ export default function MaterialRequestsPage() {
                 <Button
                   onClick={() => handleApprove(selectedRequest)}
                   className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  disabled={!canApproveSelected}
                 >
                   <CheckCircle size={16} />
                   {getApprovalActionLabel(selectedRequest)}
+                </Button>
+              </>
+            ) : selectedRequest && canFulfillSelected ? (
+              <>
+                <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
+                  Close
+                </Button>
+                <Button
+                  onClick={() => handleFulfill(selectedRequest)}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <CheckCircle size={16} />
+                  Mark Fulfilled
                 </Button>
               </>
             ) : (
