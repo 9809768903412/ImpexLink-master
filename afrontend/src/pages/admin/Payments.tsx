@@ -38,6 +38,7 @@ import { toPublicFileUrl } from '@/lib/files';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import TableExportMenu from '@/components/TableExportMenu';
 
 const selectorPageSize = 8;
 
@@ -212,12 +213,37 @@ export default function PaymentsPage() {
                 : 'Track Client to Office and Office to Supplier payments.'}
           </p>
         </div>
-        {canRecordPayments ? (
-          <Button onClick={() => setOpen(true)} className="gap-2">
-            <Plus size={16} />
-            Record Payment
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <TableExportMenu
+            title="Payments"
+            filename="payments"
+            columns={[
+              { header: 'Flow', value: (payment) => payment.direction === 'client-to-office' ? 'Client to Office' : 'Office to Supplier' },
+              { header: 'Client / Supplier', value: (payment) => payment.clientName || payment.supplierName || 'Unlinked' },
+              { header: 'Reference', value: (payment) => payment.referenceNumber || payment.clientOrderNumber || payment.supplierPoNumber || '-' },
+              { header: 'Method', value: (payment) => methodLabel(payment.method) },
+              { header: 'Due', value: (payment) => payment.dueDate ? format(new Date(payment.dueDate), 'yyyy-MM-dd') : '-' },
+              { header: 'Status', value: (payment) => payment.status },
+              { header: 'Amount', value: (payment) => `PHP ${formatPesoAmount(payment.amount)}` },
+            ]}
+            currentRows={paged}
+            allRows={payments}
+            page={page}
+            pageSize={pageSize}
+            totalPages={Math.max(Math.ceil(payments.length / pageSize), 1)}
+            totalItems={payments.length}
+            filters={[
+              { label: 'Search', value: search },
+              { label: 'Status', value: status !== 'all' ? status : '' },
+            ]}
+          />
+          {canRecordPayments ? (
+            <Button onClick={() => setOpen(true)} className="gap-2">
+              <Plus size={16} />
+              Record Payment
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {canViewPaymentSummary ? (

@@ -28,6 +28,7 @@ import { formatPesoAmount } from '@/lib/currency';
 import { downloadCsv } from '@/utils/csv';
 import PaginationNav from '@/components/PaginationNav';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
+import TableExportMenu from '@/components/TableExportMenu';
 
 const REPORT_PAGE_SIZE = 10;
 
@@ -505,58 +506,42 @@ export default function ReportsPage() {
     }
   };
 
-  const exportTableCsv = (fileBase: string, headers: string[], rows: Array<Array<string | number>>) => {
-    downloadCsv(`${fileBase}-${exportDateSlug}.csv`, [
-      ['Export Period', exportDateLabel],
-      [],
-      headers,
-      ...rows.map((row) => row.map((cell) => String(cell ?? ''))),
-    ]);
-  };
-
-  const exportTablePdf = (title: string, headers: string[], rows: Array<Array<string | number>>) => {
-    const headerHtml = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('');
-    const rowsHtml = rows
-      .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
-      .join('');
-    printHtml(
-      title,
-      `<h1>${escapeHtml(title)}</h1>
-      <div class="meta">Export period: ${escapeHtml(exportDateLabel)}</div>
-      <div class="meta">Generated: ${format(new Date(), 'yyyy-MM-dd')}</div>
-      <table><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`
-    );
-  };
-
   const tableExportButtons = (
     fileBase: string,
     title: string,
     headers: string[],
     rows: Array<Array<string | number>>
-  ) => (
-    <div className="flex items-center gap-1">
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        title={`Export ${title} CSV`}
-        aria-label={`Export ${title} CSV`}
-        onClick={() => exportTableCsv(fileBase, headers, rows)}
-      >
-        <Download size={16} />
-      </Button>
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        title={`Export ${title} PDF`}
-        aria-label={`Export ${title} PDF`}
-        onClick={() => exportTablePdf(title, headers, rows)}
-      >
-        <Download size={16} />
-      </Button>
-    </div>
-  );
+  ) => {
+    const pageByTable: Record<string, number> = {
+      'low-stock-action-list': lowStockPage,
+      'top-inventory-value': topValuePage,
+      'inventory-value-by-category': categoryPage,
+      'project-details': projectPage,
+      'projects-with-no-orders': projectNoOrderPage,
+      'overdue-deliveries': overduePage,
+      'eta-today-tomorrow': upcomingPage,
+      'recent-deliveries': deliveryPage,
+      'open-balances': openBalancePage,
+      'vat-summary': vatPage,
+    };
+    const tablePage = pageByTable[fileBase] || 1;
+    const tableTotalPages = pageCount(rows);
+    return (
+      <TableExportMenu<Array<string | number>>
+        title={title}
+        filename={fileBase}
+        columns={headers.map((header, index) => ({ header, value: (row) => row[index] ?? '' }))}
+        currentRows={paginate(rows, tablePage)}
+        allRows={rows}
+        page={tablePage}
+        pageSize={REPORT_PAGE_SIZE}
+        totalPages={tableTotalPages}
+        totalItems={rows.length}
+        filters={[{ label: 'Export period', value: exportDateLabel }]}
+        className="h-8 px-2 text-xs"
+      />
+    );
+  };
 
   const lowStockRows = lowStockItems.map((item) => [
     item.name,

@@ -21,6 +21,7 @@ import { formatPesoAmount } from '@/lib/currency';
 import { toPublicFileUrl } from '@/lib/files';
 import PaginationNav from '@/components/PaginationNav';
 import { statusBadgeClass } from '@/lib/statusStyles';
+import TableExportMenu from '@/components/TableExportMenu';
 
 const paymentStatusColors: Record<string, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -120,8 +121,31 @@ export default function ClientPaymentHistoryPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Payments</CardTitle>
-          <CardDescription>Statuses are updated in real time</CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Payments</CardTitle>
+              <CardDescription>Statuses are updated in real time</CardDescription>
+            </div>
+            <TableExportMenu
+              title="Order Payment Status"
+              filename="order-payment-status"
+              columns={[
+                { header: 'Order #', value: (order) => order.orderNumber },
+                { header: 'Project', value: (order) => order.projectName || '' },
+                { header: 'Status', value: (order) => order.paymentStatus },
+                { header: 'VATable Sales', value: (order) => `PHP ${formatPesoAmount(calcTotalsFromItems(order.items.map((item) => ({ quantity: item.quantity, unitPrice: item.unitPrice }))).net)}` },
+                { header: `VAT (${vatLabel}%)`, value: (order) => `PHP ${formatPesoAmount(calcTotalsFromItems(order.items.map((item) => ({ quantity: item.quantity, unitPrice: item.unitPrice }))).vat)}` },
+                { header: 'Total', value: (order) => `PHP ${formatPesoAmount(calcTotalsFromItems(order.items.map((item) => ({ quantity: item.quantity, unitPrice: item.unitPrice }))).total)}` },
+              ]}
+              currentRows={pagedOrders}
+              allRows={filtered}
+              page={ordersPage}
+              pageSize={pageSize}
+              totalPages={orderTotalPages}
+              totalItems={filtered.length}
+              filters={[{ label: 'Search', value: search }]}
+            />
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -168,8 +192,30 @@ export default function ClientPaymentHistoryPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Submitted Payment Records</CardTitle>
-          <CardDescription>Office verifies cheque and auto-deposit payments here.</CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Submitted Payment Records</CardTitle>
+              <CardDescription>Office verifies cheque and auto-deposit payments here.</CardDescription>
+            </div>
+            <TableExportMenu
+              title="Submitted Payment Records"
+              filename="submitted-payments"
+              columns={[
+                { header: 'Reference', value: (payment) => payment.referenceNumber || payment.clientOrderNumber || '-' },
+                { header: 'Method', value: (payment) => payment.method.replace(/-/g, ' ') },
+                { header: 'Status', value: (payment) => payment.status },
+                { header: 'Proof URL', value: (payment) => payment.proofUrl ? toPublicFileUrl(payment.proofUrl) : '' },
+                { header: 'Due', value: (payment) => payment.dueDate || '' },
+                { header: 'Amount', value: (payment) => `PHP ${formatPesoAmount(payment.amount)}` },
+              ]}
+              currentRows={pagedPayments}
+              allRows={payments}
+              page={paymentsPage}
+              pageSize={pageSize}
+              totalPages={paymentTotalPages}
+              totalItems={payments.length}
+            />
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>

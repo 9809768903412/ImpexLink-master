@@ -21,16 +21,15 @@ import {
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Search, Calendar as CalendarIcon, Download, History } from 'lucide-react';
+import { Search, Calendar as CalendarIcon, History } from 'lucide-react';
 import type { AuditLog, User } from '@/types';
 import { cn } from '@/lib/utils';
 import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
 import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
-import { printHtml } from '@/utils/print';
-import { downloadCsv } from '@/utils/csv';
 import PaginationNav from '@/components/PaginationNav';
+import TableExportMenu from '@/components/TableExportMenu';
 
 const actionColors: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
@@ -102,19 +101,32 @@ export default function AuditLogsPage() {
 
   const filteredLogs = logs;
 
-  const handleExport = () => {
-    const rows = filteredLogs
-      .map(
-        (log) =>
-          `<tr><td>${format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm')}</td><td>${log.userName}</td><td>${getActionLabel(log)}</td><td>${log.target}</td><td>${log.details}</td></tr>`
-      )
-      .join('');
-    printHtml(
-      'Audit Logs',
-      `<h1>Audit Logs</h1>
-      <div class="meta">Date: ${format(new Date(), 'yyyy-MM-dd')}</div>
-      <table><thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>${rows}</tbody></table>`
+  const totalPages = Math.max(Math.ceil((logsTotal || logs.length) / logsPageSize), 1);
+  const exportColumns = [
+    { header: 'Timestamp', value: (log: AuditLog) => format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss') },
+    { header: 'User', value: (log: AuditLog) => log.userName },
+    { header: 'Action', value: (log: AuditLog) => getActionLabel(log) },
+    { header: 'Target', value: (log: AuditLog) => log.target },
+    { header: 'Details', value: (log: AuditLog) => log.details },
+  ];
+
+  const loadExportLogs = async (fromPage: number, toPage: number) => {
+    const responses = await Promise.all(
+      Array.from({ length: toPage - fromPage + 1 }, (_, index) => fromPage + index).map((exportPage) =>
+        apiClient.get('/audit-logs', {
+          params: {
+            q: searchTerm || undefined,
+            action: actionFilter !== 'all' ? actionFilter : undefined,
+            userId: userFilter !== 'all' ? userFilter : undefined,
+            page: exportPage,
+            pageSize: logsPageSize,
+            dateFrom: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate()).toISOString() : undefined,
+            dateTo: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate() + 1, 0, 0, 0, -1).toISOString() : undefined,
+          },
+        }),
+      ),
     );
+    return responses.flatMap((response) => response.data?.data || response.data || []);
   };
 
   return (
@@ -127,31 +139,24 @@ export default function AuditLogsPage() {
           </h2>
           <p className="text-muted-foreground">Track all system activities and changes</p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              const rows = [
-                ['Timestamp', 'User', 'Action', 'Target', 'Details'],
-                ...filteredLogs.map((log) => [
-                  format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm'),
-                  log.userName,
-                  getActionLabel(log),
-                  log.target,
-                  log.details,
-                ]),
-              ];
-              downloadCsv(`audit-logs-${format(new Date(), 'yyyy-MM-dd')}.csv`, rows);
-            }}
-          >
-            <Download size={16} className="mr-2" />
-            Export CSV
-          </Button>
-          <Button variant="outline" onClick={handleExport}>
-            <Download size={16} className="mr-2" />
-            Export PDF
-          </Button>
-        </div>
+        <TableExportMenu
+          title="Audit Logs"
+          filename="audit-logs"
+          columns={exportColumns}
+          currentRows={filteredLogs}
+          loadRows={loadExportLogs}
+          page={logsPage}
+          pageSize={logsPageSize}
+          totalPages={totalPages}
+          totalItems={logsTotal}
+          filters={[
+            { label: 'Search', value: searchTerm },
+            { label: 'Action', value: actionFilter !== 'all' ? actionFilter : '' },
+            { label: 'User', value: userFilter !== 'all' ? users.find((user) => user.id === userFilter)?.name || userFilter : '' },
+            { label: 'Date', value: dateFilter ? format(dateFilter, 'yyyy-MM-dd') : '' },
+          ]}
+          disabled={logsLoading}
+        />
       </div>
 
       {/* Filters */}
@@ -314,7 +319,7 @@ export default function AuditLogsPage() {
         <div className="flex items-center justify-center">
           <PaginationNav
             page={logsPage}
-            totalPages={Math.max(Math.ceil((logsTotal || logs.length) / logsPageSize), 1)}
+            totalPages={totalPages}
             onPageChange={setLogsPage}
             disabled={logsLoading}
           />

@@ -44,6 +44,7 @@ import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
 import type { AiAnalysis, AiLogisticsSnapshot, AiSummary, ReorderSuggestion, StockTransaction, InventoryItem, WarehouseRisk } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
+import TableExportMenu from '@/components/TableExportMenu';
 
 const riskColors = {
   low: 'bg-green-100 text-green-800',
@@ -336,10 +337,27 @@ export default function AIInsightsPage() {
         {/* Pattern Trending */}
         <Card className="lg:col-span-2" ref={trendsRef}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp size={20} />
-              24-Month Pattern Trend
-            </CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp size={20} />
+                24-Month Pattern Trend
+              </CardTitle>
+              <TableExportMenu
+                title="24-Month Inventory Usage Pattern"
+                filename="inventory-usage-pattern"
+                columns={[
+                  { header: 'Month', value: (month) => month.month },
+                  ...DEMO_PATTERN_ITEMS.map((item) => ({ header: item.name, value: (month: Record<string, string | number>) => month[item.name] || 0 })),
+                  { header: 'Total', value: (month) => month.totalUsage || 0 },
+                ]}
+                currentRows={patternRows}
+                allRows={patternTrends}
+                page={patternPage}
+                pageSize={patternPageSize}
+                totalPages={patternTotalPages}
+                totalItems={patternTrends.length}
+              />
+            </div>
             <CardDescription>Monthly consumption patterns from May 2024 through April 2026</CardDescription>
           </CardHeader>
           <CardContent>
@@ -448,10 +466,32 @@ export default function AIInsightsPage() {
         {/* Warehouse Risk Assessment */}
         <Card ref={risksRef}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle size={20} className="text-yellow-600" />
-              Expiring / Risky Stock Alerts
-            </CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle size={20} className="text-yellow-600" />
+                Expiring / Risky Stock Alerts
+              </CardTitle>
+              <TableExportMenu
+                title="Expiring and Risky Stock Alerts"
+                filename="stock-risk-alerts"
+                columns={[
+                  { header: 'Item', value: (risk) => risk.itemName },
+                  { header: 'Risk', value: (risk) => risk.riskLevel },
+                  { header: 'Reason', value: (risk) => risk.reason },
+                  { header: 'Days in Stock', value: (risk) => risk.daysInStock ?? '' },
+                  { header: 'Shelf Life Days', value: (risk) => risk.shelfLifeDays ?? '' },
+                  { header: 'Days Left', value: (risk) => risk.daysToExpiry ?? '' },
+                  { header: 'Recommended Action', value: (risk) => risk.recommendedAction },
+                ]}
+                currentRows={riskPageItems}
+                allRows={filteredRisks}
+                page={riskPage}
+                pageSize={riskPageSize}
+                totalPages={riskTotalPages}
+                totalItems={filteredRisks.length}
+                filters={[{ label: 'Risk view', value: riskFilter }]}
+              />
+            </div>
             <CardDescription>Decision-support ranking for items requiring immediate attention</CardDescription>
           </CardHeader>
           <CardContent>
@@ -527,10 +567,28 @@ export default function AIInsightsPage() {
         {/* Smart Reorder Suggestions */}
         <Card ref={reorderRef}>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShoppingCart size={20} className="text-green-600" />
-              Smart Reorder Suggestions
-            </CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingCart size={20} className="text-green-600" />
+                Smart Reorder Suggestions
+              </CardTitle>
+              <TableExportMenu
+                title="Smart Reorder Suggestions"
+                filename="reorder-suggestions"
+                columns={[
+                  { header: 'Item', value: (item) => item.itemName },
+                  { header: 'Current Quantity', value: (item) => item.currentQty },
+                  { header: 'Suggested Quantity', value: (item) => item.suggestedQty },
+                  { header: 'Estimated Cost', value: (item) => `PHP ${item.estimatedCost.toLocaleString()}` },
+                ]}
+                currentRows={reorderPageItems}
+                allRows={reorderSuggestions}
+                page={reorderPage}
+                pageSize={reorderPageSize}
+                totalPages={reorderTotalPages}
+                totalItems={reorderSuggestions.length}
+              />
+            </div>
             <CardDescription>Suggested restocking quantities for admin review</CardDescription>
           </CardHeader>
           <CardContent>

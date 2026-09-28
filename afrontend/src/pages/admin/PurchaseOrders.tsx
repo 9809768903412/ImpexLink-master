@@ -43,6 +43,7 @@ import PaginationNav from '@/components/PaginationNav';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
+import TableExportMenu from '@/components/TableExportMenu';
 
 const statusColors: Record<POStatus, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -546,6 +547,31 @@ export default function PurchaseOrdersPage() {
                     <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
+                <TableExportMenu
+                  title="Purchase Orders"
+                  filename="purchase-orders"
+                  columns={[
+                    { header: 'PO #', value: (po) => po.poNumber },
+                    { header: 'Supplier', value: (po) => po.supplierName },
+                    { header: 'Date', value: (po) => format(new Date(po.date), 'yyyy-MM-dd') },
+                    { header: 'Terms', value: (po) => po.terms },
+                    { header: 'Total', value: (po) => `PHP ${formatPesoAmount(po.total)}` },
+                    { header: 'Status', value: (po) => po.status },
+                    { header: 'Approved By', value: (po) => po.approvedBy || '' },
+                  ]}
+                  currentRows={pagedPurchaseOrders}
+                  allRows={purchaseOrders}
+                  page={poPage}
+                  pageSize={poPageSize}
+                  totalPages={Math.max(Math.ceil(totalFilteredPOs / poPageSize), 1)}
+                  totalItems={totalFilteredPOs}
+                  filters={[
+                    { label: 'Search', value: searchTerm },
+                    { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
+                    { label: 'Sort', value: `${sortKey} ${sortDir}` },
+                  ]}
+                  disabled={poLoading}
+                />
               </div>
             </CardContent>
           </Card>

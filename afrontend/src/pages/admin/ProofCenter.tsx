@@ -20,14 +20,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Files, Search, ExternalLink, FileCheck, Download } from 'lucide-react';
+import { Files, Search, ExternalLink, FileCheck } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import PaginationNav from '@/components/PaginationNav';
 import { Skeleton } from '@/components/ui/skeleton';
-import { downloadCsv } from '@/utils/csv';
 import { toPublicFileUrl } from '@/lib/files';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
+import TableExportMenu from '@/components/TableExportMenu';
 
 type ProofType = 'registration' | 'payment' | 'delivery';
 
@@ -108,21 +108,23 @@ export default function ProofCenterPage() {
     fetchProofs();
   }, [fromDate, page, pageSize, searchTerm, statusFilter, toDate, typeFilter]);
 
-  const exportCsv = () => {
-    const rows = [
-      ['Uploaded', 'Type', 'Status', 'Owner', 'Owner Email', 'Reference', 'Project', 'File URL'],
-      ...proofs.map((row) => [
-        format(new Date(row.uploadedAt), 'yyyy-MM-dd HH:mm'),
-        row.type,
-        row.status,
-        row.ownerName,
-        row.ownerEmail || '',
-        row.reference,
-        row.projectName || '',
-        toPublicFileUrl(row.fileUrl),
-      ]),
-    ];
-    downloadCsv(`attachments-${format(new Date(), 'yyyy-MM-dd')}.csv`, rows);
+  const loadExportProofs = async (fromPage: number, toPage: number) => {
+    const responses = await Promise.all(
+      Array.from({ length: toPage - fromPage + 1 }, (_, index) => fromPage + index).map((exportPage) =>
+        apiClient.get<PaginatedProofResponse>('/proofs', {
+          params: {
+            q: searchTerm || undefined,
+            type: typeFilter !== 'all' ? typeFilter : undefined,
+            status: statusFilter !== 'all' ? statusFilter : undefined,
+            from: fromDate || undefined,
+            to: toDate || undefined,
+            page: exportPage,
+            pageSize,
+          },
+        }),
+      ),
+    );
+    return responses.flatMap((response) => response.data?.data || []);
   };
 
   return (
@@ -268,10 +270,34 @@ export default function ProofCenterPage() {
               <CardTitle>Documents</CardTitle>
               <CardDescription>Open the stored proof files directly from secure record entries.</CardDescription>
             </div>
-            <Button variant="outline" onClick={exportCsv} disabled={proofs.length === 0 || isLoading}>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
+            <TableExportMenu
+              title="Attachments"
+              filename="attachments"
+              columns={[
+                { header: 'Uploaded', value: (row) => format(new Date(row.uploadedAt), 'yyyy-MM-dd HH:mm') },
+                { header: 'Type', value: (row) => row.type },
+                { header: 'Status', value: (row) => row.status },
+                { header: 'Owner', value: (row) => row.ownerName },
+                { header: 'Owner Email', value: (row) => row.ownerEmail || '' },
+                { header: 'Reference', value: (row) => row.reference },
+                { header: 'Project', value: (row) => row.projectName || '' },
+                { header: 'File URL', value: (row) => toPublicFileUrl(row.fileUrl) },
+              ]}
+              currentRows={proofs}
+              loadRows={loadExportProofs}
+              page={page}
+              pageSize={pageSize}
+              totalPages={Math.max(totalPages, 1)}
+              totalItems={total}
+              filters={[
+                { label: 'Search', value: searchTerm },
+                { label: 'Type', value: typeFilter !== 'all' ? typeFilter : '' },
+                { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
+                { label: 'From', value: fromDate },
+                { label: 'To', value: toDate },
+              ]}
+              disabled={isLoading}
+            />
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

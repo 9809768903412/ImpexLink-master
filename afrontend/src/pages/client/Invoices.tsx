@@ -18,6 +18,7 @@ import type { Order } from '@/types';
 import { printHtml } from '@/utils/print';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
+import TableExportMenu from '@/components/TableExportMenu';
 
 export default function ClientInvoicesPage() {
   const { user } = useAuth();
@@ -73,9 +74,27 @@ export default function ClientInvoicesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-foreground">Invoices</h2>
-        <p className="text-muted-foreground">All invoices for your orders</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">Invoices</h2>
+          <p className="text-muted-foreground">All invoices for your orders</p>
+        </div>
+        <TableExportMenu
+          title="Client Invoices"
+          filename="client-invoices"
+          columns={[
+            { header: 'Invoice #', value: (order) => order.orderNumber },
+            { header: 'Project', value: (order) => order.projectName || '' },
+            { header: 'Payment Status', value: (order) => order.paymentStatus },
+            { header: 'VATable Sales', value: (order) => `PHP ${formatPesoAmount(totalsByOrder.get(order.id)?.net)}` },
+            { header: `VAT (${vatLabel}%)`, value: (order) => `PHP ${formatPesoAmount(totalsByOrder.get(order.id)?.vat)}` },
+            { header: 'Total', value: (order) => `PHP ${formatPesoAmount(totalsByOrder.get(order.id)?.total)}` },
+          ]}
+          currentRows={filtered}
+          allRows={filtered}
+          totalItems={filtered.length}
+          filters={[{ label: 'Search', value: search }]}
+        />
       </div>
 
       <Card>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Filter, Plus, Download } from 'lucide-react';
+import { Search, Filter, Plus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,12 +34,12 @@ import { useResource } from '@/hooks/use-resource';
 import { apiClient } from '@/api/client';
 import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
-import { downloadCsv } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { canManageInventory } from '@/lib/roles';
 import PaginationNav from '@/components/PaginationNav';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
+import TableExportMenu from '@/components/TableExportMenu';
 
 const INVENTORY_REASON_OPTIONS = [
   'Stock Adjustment',
@@ -511,26 +511,32 @@ export default function InventoryPage() {
           </p>
         )}
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              const rows = [
-                ['Item Name', 'Category', 'Unit', 'Qty On Hand', 'Unit Price', 'Status'],
-                ...scopedInventory.map((item) => [
-                  item.name,
-                  item.category,
-                  item.unit,
-                  String(item.qtyOnHand),
-                  String(item.unitPrice),
-                  item.status,
-                ]),
-              ];
-              downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, rows);
-            }}
-          >
-            <Download size={16} className="mr-2" />
-            Export CSV
-          </Button>
+          <TableExportMenu
+            title="Inventory"
+            filename="inventory"
+            columns={[
+              { header: 'Item ID', value: (item) => getDisplayId(item) },
+              { header: 'Item Name', value: (item) => item.name },
+              { header: 'Category', value: (item) => item.category },
+              { header: 'Unit', value: (item) => item.unit },
+              { header: 'Qty On Hand', value: (item) => item.qtyOnHand },
+              { header: 'Minimum Stock', value: (item) => item.minStock },
+              { header: 'Unit Price', value: (item) => `PHP ${item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
+              { header: 'Status', value: (item) => item.status },
+            ]}
+            currentRows={pagedInventory}
+            allRows={sortedInventory}
+            page={page}
+            pageSize={pageSize}
+            totalPages={Math.max(Math.ceil(totalFilteredItems / pageSize), 1)}
+            totalItems={totalFilteredItems}
+            filters={[
+              { label: 'Search', value: searchQuery },
+              { label: 'Category', value: categoryFilter !== 'all' ? categoryFilter : '' },
+              { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
+            ]}
+            disabled={loadingInventory}
+          />
           {canEditItemInfo && (
             <Button onClick={handleAddItem} className="gap-2">
               <Plus size={18} />

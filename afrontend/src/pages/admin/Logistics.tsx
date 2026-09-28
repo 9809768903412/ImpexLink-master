@@ -39,6 +39,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { RecentActivityPanel } from '@/components/RecentActivityPanel';
 import PaginationNav from '@/components/PaginationNav';
+import TableExportMenu from '@/components/TableExportMenu';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
@@ -913,6 +914,34 @@ export default function LogisticsPage() {
                     <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
+                <TableExportMenu
+                  title="Deliveries"
+                  filename="deliveries"
+                  columns={[
+                    { header: 'Delivery Receipt', value: (delivery) => delivery.drNumber },
+                    { header: 'Order', value: (delivery) => delivery.orderNumber },
+                    { header: 'Client', value: (delivery) => delivery.clientName },
+                    { header: 'Project', value: (delivery) => delivery.projectName || '' },
+                    { header: 'Batch', value: (delivery) => delivery.batchCount && delivery.batchCount > 1 ? `${delivery.batchNumber}/${delivery.batchCount}` : '1/1' },
+                    { header: 'Items', value: (delivery) => delivery.items.length },
+                    { header: 'Load (kg)', value: (delivery) => delivery.loadKg || 0 },
+                    { header: 'ETA', value: (delivery) => format(new Date(delivery.eta), 'yyyy-MM-dd HH:mm') },
+                    { header: 'Status', value: (delivery) => delivery.status },
+                    { header: 'Method', value: (delivery) => delivery.deliveryMethod || delivery.thirdPartyProvider || 'Company truck' },
+                  ]}
+                  currentRows={pagedDeliveries}
+                  allRows={filteredDeliveries}
+                  page={deliveriesPage}
+                  pageSize={deliveriesPageSize}
+                  totalPages={Math.max(Math.ceil(totalFilteredDeliveries / deliveriesPageSize), 1)}
+                  totalItems={totalFilteredDeliveries}
+                  filters={[
+                    { label: 'Search', value: searchTerm },
+                    { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
+                    { label: 'Sort', value: `${sortKey} ${sortDir}` },
+                  ]}
+                  disabled={deliveriesLoading}
+                />
               </div>
             </CardContent>
           </Card>
