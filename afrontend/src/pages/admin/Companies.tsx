@@ -25,6 +25,7 @@ import PaginationNav from '@/components/PaginationNav';
 import { apiClient } from '@/api/client';
 import type { Client } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import TableExportMenu from '@/components/TableExportMenu';
 
 type CompanyForm = {
   clientName: string;
@@ -177,6 +178,17 @@ export default function CompaniesPage() {
     }
   };
 
+  const loadExportCompanies = async (fromPage: number, toPage: number) => {
+    const responses = await Promise.all(
+      Array.from({ length: toPage - fromPage + 1 }, (_, index) => fromPage + index).map((exportPage) =>
+        apiClient.get('/clients', {
+          params: { q: search || undefined, page: exportPage, pageSize, sortBy: 'clientName', sortDir: 'asc' },
+        }),
+      ),
+    );
+    return responses.flatMap((response) => response.data?.data || response.data || []);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -184,10 +196,33 @@ export default function CompaniesPage() {
           <h1 className="text-2xl font-bold">Companies</h1>
           <p className="text-muted-foreground">Manage client company records used by registrations, projects, orders, and payments.</p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus size={18} />
-          Add Company
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <TableExportMenu
+            title="Client Companies"
+            filename="client-companies"
+            columns={[
+              { header: 'Company', value: (company) => company.name },
+              { header: 'Contact Person', value: (company) => company.contactPerson || '' },
+              { header: 'Phone', value: (company) => company.phone || '' },
+              { header: 'Email', value: (company) => company.email || '' },
+              { header: 'Address', value: (company) => company.address || '' },
+              { header: 'TIN', value: (company) => company.tin || '' },
+              { header: 'Visibility', value: (company) => company.visibilityScope || 'company' },
+            ]}
+            currentRows={companies}
+            loadRows={loadExportCompanies}
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            totalItems={total}
+            filters={[{ label: 'Search', value: search }]}
+            disabled={isLoading}
+          />
+          <Button onClick={openCreate} className="gap-2">
+            <Plus size={18} />
+            Add Company
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

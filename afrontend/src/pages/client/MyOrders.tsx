@@ -54,6 +54,7 @@ import {
   CLIENT_ORDER_PROGRESS_LABELS,
   getClientOrderProgressStage,
 } from '@/lib/clientOrderProgress';
+import TableExportMenu from '@/components/TableExportMenu';
 
 export default function MyOrdersPage() {
   const { user } = useAuth();
@@ -392,6 +393,22 @@ export default function MyOrdersPage() {
     }
   }, [orderSearchTerm, orderStatusFilter, ordersPage, ordersPageSize]);
 
+  const loadExportOrders = async (fromPage: number, toPage: number) => {
+    const statusParam = orderStatusFilter === 'all'
+      ? undefined
+      : orderStatusFilter === 'ready-for-delivery'
+        ? 'SHIPPED'
+        : orderStatusFilter.toUpperCase();
+    const responses = await Promise.all(
+      Array.from({ length: toPage - fromPage + 1 }, (_, index) => fromPage + index).map((exportPage) =>
+        apiClient.get('/orders', {
+          params: { page: exportPage, pageSize: ordersPageSize, q: orderSearchTerm.trim() || undefined, status: statusParam },
+        }),
+      ),
+    );
+    return responses.flatMap((response) => response.data?.data || response.data || []);
+  };
+
   const handleConfirmReceipt = async (delivery: Delivery) => {
     setIsConfirmingReceipt(true);
     try {
@@ -570,10 +587,57 @@ export default function MyOrdersPage() {
           <h1 className="text-2xl font-bold">Orders & Deliveries</h1>
           <p className="text-muted-foreground">Everything you need in one place: orders, deliveries, and live tracking.</p>
         </div>
-        <Button onClick={() => navigate('/client/order')} className="gap-2">
-          <Package size={18} />
-          Place New Order
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {activeTab === 'my-orders' ? (
+            <TableExportMenu
+              title="My Orders"
+              filename="my-orders"
+              columns={[
+                { header: 'Order #', value: (order) => order.orderNumber },
+                { header: 'Date', value: (order) => new Date(order.createdAt).toLocaleString('en-PH') },
+                { header: 'Project', value: (order) => order.projectName || '' },
+                { header: 'Items', value: (order) => order.items.length },
+                { header: 'Total', value: (order) => `PHP ${formatPesoAmount(order.total)}` },
+                { header: 'Status', value: (order) => order.status },
+                { header: 'Payment', value: (order) => order.paymentStatus },
+              ]}
+              currentRows={clientOrders}
+              loadRows={loadExportOrders}
+              page={ordersPage}
+              pageSize={ordersPageSize}
+              totalPages={Math.max(Math.ceil(ordersTotal / ordersPageSize), 1)}
+              totalItems={ordersTotal}
+              filters={[
+                { label: 'Search', value: orderSearchTerm },
+                { label: 'Status', value: orderStatusFilter !== 'all' ? orderStatusFilter : '' },
+              ]}
+              disabled={ordersLoading}
+            />
+          ) : (
+            <TableExportMenu
+              title="My Deliveries"
+              filename="my-deliveries"
+              columns={[
+                { header: 'DR #', value: (delivery) => delivery.drNumber },
+                { header: 'Order #', value: (delivery) => delivery.orderNumber },
+                { header: 'Project', value: (delivery) => delivery.projectName || '' },
+                { header: 'ETA', value: (delivery) => delivery.eta ? new Date(delivery.eta).toLocaleString('en-PH') : '' },
+                { header: 'Status', value: (delivery) => delivery.status },
+              ]}
+              currentRows={filteredDeliveries}
+              allRows={filteredDeliveries}
+              totalItems={filteredDeliveries.length}
+              filters={[
+                { label: 'Search', value: deliverySearchTerm },
+                { label: 'Status', value: deliveryStatusFilter !== 'all' ? deliveryStatusFilter : '' },
+              ]}
+            />
+          )}
+          <Button onClick={() => navigate('/client/order')} className="gap-2">
+            <Package size={18} />
+            Place New Order
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}

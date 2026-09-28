@@ -1,3 +1,6 @@
+import type { ExportFilter } from './tableExport';
+import { escapePrintHtml } from './tableExport';
+
 const impexLogoUrl = '/brand/impex-engineering-logo.jpeg';
 const thortexLogoUrl = '/brand/thortex-logo.jpeg';
 
@@ -71,6 +74,11 @@ export function printHtml(title: string, bodyHtml: string) {
           .footer { border-top: 1px solid #e5e7eb; margin-top: 10px; padding-top: 8px; font-size: 11px; color: #666; }
           .doc-label { font-weight: 600; color: #111; }
           .doc-code { border: 1px dashed #cbd5f5; background: #f8fafc; padding: 4px 8px; font-size: 12px; display: inline-block; vertical-align: middle; }
+          .print-sheet { break-after: page; page-break-after: always; }
+          .print-sheet:last-child { break-after: auto; page-break-after: auto; }
+          .print-sheet-footer { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #e5e7eb; margin-top: 12px; padding-top: 7px; font-size: 10px; color: #666; }
+          .print-table-meta { margin-bottom: 10px; font-size: 11px; color: #555; }
+          .print-table-meta div { margin-top: 2px; }
         </style>
       </head>
       <body>
@@ -100,4 +108,51 @@ export function printHtml(title: string, bodyHtml: string) {
     iframe.contentWindow?.print();
     document.body.removeChild(iframe);
   }, 300);
+}
+
+export function printTableReport({
+  title,
+  sourcePages,
+  headers,
+  rows,
+  filters = [],
+  rowsPerPage = 20,
+}: {
+  title: string;
+  sourcePages: string;
+  headers: string[];
+  rows: string[][];
+  filters?: ExportFilter[];
+  rowsPerPage?: number;
+}) {
+  const pageCount = Math.max(Math.ceil(rows.length / rowsPerPage), 1);
+  const generatedAt = new Date().toLocaleString();
+  const activeFilters = filters.filter(({ value }) => value !== null && value !== undefined && String(value).trim() !== '');
+  const sheets = Array.from({ length: pageCount }, (_, pageIndex) => {
+    const pageRows = rows.slice(pageIndex * rowsPerPage, (pageIndex + 1) * rowsPerPage);
+    return `
+      <section class="print-sheet">
+        <h1>${escapePrintHtml(title)}</h1>
+        <div class="print-table-meta">
+          <div><strong>Source records:</strong> ${escapePrintHtml(sourcePages)}</div>
+          <div><strong>Rows exported:</strong> ${rows.length}</div>
+          ${activeFilters.map(({ label, value }) => `<div><strong>${escapePrintHtml(label)}:</strong> ${escapePrintHtml(value)}</div>`).join('')}
+        </div>
+        <table>
+          <thead><tr>${headers.map((header) => `<th>${escapePrintHtml(header)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${pageRows.length > 0
+              ? pageRows.map((row) => `<tr>${row.map((cell) => `<td>${escapePrintHtml(cell)}</td>`).join('')}</tr>`).join('')
+              : `<tr><td colspan="${Math.max(headers.length, 1)}">No matching records.</td></tr>`}
+          </tbody>
+        </table>
+        <div class="print-sheet-footer">
+          <span>Generated ${escapePrintHtml(generatedAt)}</span>
+          <span>Page ${pageIndex + 1} of ${pageCount}</span>
+        </div>
+      </section>
+    `;
+  }).join('');
+
+  printHtml(title, sheets);
 }
