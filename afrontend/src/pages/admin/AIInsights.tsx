@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -40,9 +42,9 @@ import {
   Legend,
 } from 'recharts';
 import { toast } from '@/hooks/use-toast';
-import { useResource } from '@/hooks/use-resource';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
-import type { AiAnalysis, AiLogisticsSnapshot, AiSummary, ReorderSuggestion, StockTransaction, InventoryItem, WarehouseRisk } from '@/types';
+import type { AiAnalysis, AiLogisticsSnapshot, AiSummary, ReorderSuggestion, WarehouseRisk } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
 import TableExportMenu from '@/components/TableExportMenu';
 
@@ -56,23 +58,23 @@ const riskColors = {
 const fallbackLogistics: AiLogisticsSnapshot = {
   activeRoutes: 0,
   stopsToday: 0,
-  onTimeRate: 100,
+  onTimeRate: null,
   recommendation: 'Decision-support logistics signals will appear after the backend data loads.',
   dispatches: [],
 };
 
-const DEMO_PATTERN_ITEMS = [
-  { name: 'Paint thinner', baseIssue: 29, color: '#2563eb' },
-  { name: 'Ceramic Tech EG', baseIssue: 31, color: '#dc2626' },
-  { name: 'Seal Tech AW 20 ltrs', baseIssue: 14, color: '#16a34a' },
-  { name: 'Baby roller cotton (white)', baseIssue: 47, color: '#f97316' },
-  { name: 'Welding machine', baseIssue: 1, color: '#7c3aed' },
-  { name: 'Cotton rags', baseIssue: 72, color: '#0f766e' },
-];
-
 export default function AIInsightsPage() {
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [filters, setFilters] = useState(() => {
+    const now = new Date();
+    return {
+      from: format(new Date(now.getFullYear(), now.getMonth() - 24, 1), 'yyyy-MM-dd'),
+      to: format(now, 'yyyy-MM-dd'),
+      source: 'all', product: 'all',
+    };
+  });
+  const filterParams = useMemo(() => ({ ...filters }), [filters]);
   const trendsRef = useRef<HTMLDivElement | null>(null);
   const risksRef = useRef<HTMLDivElement | null>(null);
   const reorderRef = useRef<HTMLDivElement | null>(null);
@@ -85,12 +87,21 @@ export default function AIInsightsPage() {
   const riskPageSize = 5;
   const reorderPageSize = 5;
   const dispatchPageSize = 3;
-  const { data: aiAnalysis, setData: setAiAnalysis } = useResource<AiAnalysis | null>('/ai/analysis', null, [], 10 * 60 * 1000);
+  const queryClient = useQueryClient();
+  const { data: response, error, isPending: loading } = useQuery({
+    queryKey: ['ai-analysis', filterParams],
+    queryFn: async ({ signal }) => (await apiClient.get<AiAnalysis>('/ai/analysis', { params: filterParams, signal })).data,
+    staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
+    retry: false,
+  });
+  const aiAnalysis = response?.dataCoverage && Object.entries(filters).every(([key, value]) => response.dataCoverage?.[key as keyof typeof response.dataCoverage] === value) ? response : null;
   const aiSummary: AiSummary | null = aiAnalysis
     ? {
         enabled: aiAnalysis.enabled,
         provider: aiAnalysis.provider,
         model: aiAnalysis.model,
+        availabilityMessage: aiAnalysis.availabilityMessage,
         generatedAt: aiAnalysis.generatedAt,
         summary: aiAnalysis.summary,
         recommendations: aiAnalysis.recommendations,
@@ -99,48 +110,15 @@ export default function AIInsightsPage() {
   const warehouseRisks = aiAnalysis?.warehouseRisks || [];
   const reorderSuggestions = aiAnalysis?.reorderSuggestions || [];
   const logisticsSnapshot = aiAnalysis?.logisticsSnapshot || fallbackLogistics;
-  const { data: transactions } = useResource<StockTransaction[]>('/transactions', []);
-  const { data: inventory } = useResource<InventoryItem[]>('/inventory', []);
-  const patternTrends = useMemo(() => {
-    const months = Array.from({ length: 24 }).map((_, idx) => {
-      const date = new Date(2024, 4 + idx, 1);
-      const row: Record<string, string | number> = {
-        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
-        month: format(date, 'MMM yy'),
-      };
-      DEMO_PATTERN_ITEMS.forEach((item, itemIdx) => {
-        const seasonalLift = idx % 6 === 2 || idx % 6 === 3 ? 1.25 : idx % 6 === 4 ? 0.85 : 1;
-        const variation = (idx * 2 + itemIdx) % 7;
-        const usage = Math.round((item.baseIssue + variation) * seasonalLift);
-        row[item.name] = usage;
-        row.totalUsage = Number(row.totalUsage || 0) + usage;
-      });
-      return row;
-    });
-    const monthMap = new Map(months.map((month) => [String(month.key), month]));
-    const nameByItemId = new Map(inventory.map((item) => [item.id, item.name]));
-    const demoNames = new Set(DEMO_PATTERN_ITEMS.map((item) => item.name));
-
-    transactions.forEach((txn) => {
-      if (txn.qtyChange >= 0) return;
-      const txnDate = new Date(`${txn.date}T00:00:00`);
-      if (Number.isNaN(txnDate.getTime())) return;
-      const key = `${txnDate.getFullYear()}-${String(txnDate.getMonth() + 1).padStart(2, '0')}`;
-      const month = monthMap.get(key);
-      if (!month) return;
-      const noteMatch = String(txn.notes || '').match(/for\s+(.+)$/i);
-      const itemName = nameByItemId.get(txn.itemId) || (noteMatch ? noteMatch[1].trim() : '');
-      if (!demoNames.has(itemName)) return;
-      const usage = Math.abs(txn.qtyChange);
-      month[itemName] = Number(month[itemName] || 0) + usage;
-      month.totalUsage = Number(month.totalUsage || 0) + usage;
-    });
-
-    return months;
-  }, [transactions, inventory]);
-
+  const patternItems = aiAnalysis?.patternItems || [];
+  const patternTrends = aiAnalysis?.usageTrends || [];
+  const coverage = aiAnalysis?.dataCoverage;
+  const exportFilters = [
+    { label: 'From', value: filters.from }, { label: 'To', value: filters.to },
+    { label: 'Data source', value: filters.source }, { label: 'Product', value: filters.product },
+  ];
   const patternSummary = useMemo(() => {
-    const itemTotals = DEMO_PATTERN_ITEMS.map((item) => ({
+    const itemTotals = patternItems.map((item) => ({
       name: item.name,
       total: patternTrends.reduce((sum, month) => sum + Number(month[item.name] || 0), 0),
     })).sort((a, b) => b.total - a.total);
@@ -153,7 +131,7 @@ export default function AIInsightsPage() {
       peakMonth,
       totalUsage: patternTrends.reduce((sum, month) => sum + Number(month.totalUsage || 0), 0),
     };
-  }, [patternTrends]);
+  }, [patternTrends, patternItems]);
 
   const patternTotalPages = Math.max(1, Math.ceil(patternTrends.length / patternPageSize));
   const patternRows = patternTrends.slice((patternPage - 1) * patternPageSize, patternPage * patternPageSize);
@@ -162,13 +140,11 @@ export default function AIInsightsPage() {
     const highCount = warehouseRisks.filter((risk) => risk.riskLevel === 'high').length;
     const totalLow = warehouseRisks.length;
     const reorderTotal = reorderSuggestions.reduce((sum, item) => sum + item.estimatedCost, 0);
-    const savingsEstimate = reorderTotal ? Math.round(reorderTotal * 0.08) : 0;
     return {
       criticalCount,
       highCount,
       totalLow,
       reorderTotal,
-      savingsEstimate,
     };
   }, [warehouseRisks, reorderSuggestions]);
 
@@ -189,7 +165,7 @@ export default function AIInsightsPage() {
       );
     };
 
-    let base = warehouseRisks;
+    let base = [...warehouseRisks];
     if (riskFilter === 'alerts') {
       base = warehouseRisks.filter(isRisky).filter((r) => r.riskLevel !== 'low');
     } else if (riskFilter === 'include-low') {
@@ -222,7 +198,7 @@ export default function AIInsightsPage() {
 
   useEffect(() => {
     setPatternPage(1);
-  }, [patternTrends.length]);
+  }, [filters, patternTrends.length]);
 
   useEffect(() => {
     setReorderPage(1);
@@ -235,9 +211,9 @@ export default function AIInsightsPage() {
   const handleRefresh = () => {
     setIsRefreshing(true);
     apiClient
-      .post<AiAnalysis>('/ai/refresh')
+      .post<AiAnalysis>('/ai/refresh', filters)
       .then((response) => {
-        setAiAnalysis(response.data);
+        queryClient.setQueryData(['ai-analysis', filterParams], response.data);
         toast({
           title: 'Decision Support Refreshed',
           description: response.data.enabled
@@ -287,11 +263,30 @@ export default function AIInsightsPage() {
       </div>
 
       <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="p-4 text-sm">
-          <p className="font-medium">Demo data coverage: 24 months</p>
-          <p className="text-muted-foreground">
-            Seeded stock history runs monthly from May 2024 through April 2026, with supplier stock-ins and project issues for AI trend analysis.
-          </p>
+        <CardContent className="p-4 space-y-4 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1"><Label htmlFor="insights-from">From date</Label><Input id="insights-from" type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></div>
+            <div className="space-y-1"><Label htmlFor="insights-to">To date</Label><Input id="insights-to" type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></div>
+            <div className="space-y-1">
+              <Label htmlFor="insights-source">Data source</Label>
+              <Select value={filters.source} onValueChange={(source) => setFilters((current) => ({ ...current, source }))}>
+                <SelectTrigger id="insights-source"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">Existing + simulated</SelectItem><SelectItem value="existing">Existing records</SelectItem><SelectItem value="simulated">Simulated history only</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="insights-product">Thortex product</Label>
+              <Select value={filters.product} onValueChange={(product) => setFilters((current) => ({ ...current, product }))}>
+                <SelectTrigger id="insights-product"><SelectValue placeholder="All nine products" /></SelectTrigger>
+                <SelectContent><SelectItem value="all">All nine products</SelectItem>{(response?.productOptions || []).map((item) => <SelectItem key={item.key} value={item.key}>{item.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+          {error ? <p role="alert" className="text-destructive">Unable to load insights: {error.message}</p> : loading || !coverage ? <p>Loading database records…</p> : <>
+            <p className="font-medium">{coverage.issueCount.toLocaleString()} recorded stock issues · {coverage.activeMonths} months with activity</p>
+            <p className="text-muted-foreground">{coverage.firstIssue ? `${coverage.firstIssue} to ${coverage.lastIssue}. ` : 'No stock issues in this selection. '}{coverage.simulatedIssueCount.toLocaleString()} issues are from the estimated history import.</p>
+            <p className="text-xs text-muted-foreground">{coverage.existingMeans} {aiAnalysis?.inventoryScope}</p>
+          </>}
         </CardContent>
       </Card>
 
@@ -333,6 +328,7 @@ export default function AIInsightsPage() {
         </Card>
       )}
 
+      {aiAnalysis && <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pattern Trending */}
         <Card className="lg:col-span-2" ref={trendsRef}>
@@ -340,14 +336,14 @@ export default function AIInsightsPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp size={20} />
-                24-Month Pattern Trend
+                Thortex Inventory Usage
               </CardTitle>
               <TableExportMenu
-                title="24-Month Inventory Usage Pattern"
+                title="Thortex Inventory Usage"
                 filename="inventory-usage-pattern"
                 columns={[
                   { header: 'Month', value: (month) => month.month },
-                  ...DEMO_PATTERN_ITEMS.map((item) => ({ header: item.name, value: (month: Record<string, string | number>) => month[item.name] || 0 })),
+                  ...patternItems.map((item) => ({ header: item.name, value: (month: Record<string, string | number>) => month[item.name] || 0 })),
                   { header: 'Total', value: (month) => month.totalUsage || 0 },
                 ]}
                 currentRows={patternRows}
@@ -356,14 +352,15 @@ export default function AIInsightsPage() {
                 pageSize={patternPageSize}
                 totalPages={patternTotalPages}
                 totalItems={patternTrends.length}
+                filters={exportFilters}
               />
             </div>
-            <CardDescription>Monthly consumption patterns from May 2024 through April 2026</CardDescription>
+            <CardDescription>Recorded stock issues for the selected dates and products. Quantities count packages, not kilograms or litres.</CardDescription>
           </CardHeader>
           <CardContent>
             {patternTrends.some((month) => Number(month.totalUsage || 0) > 0) ? (
               <div className="space-y-4">
-                <ResponsiveContainer width="100%" height={340}>
+                <ResponsiveContainer width="100%" height={440}>
                   <LineChart
                     data={patternTrends}
                     margin={{ top: 8, right: 20, left: 0, bottom: 40 }}
@@ -385,7 +382,7 @@ export default function AIInsightsPage() {
                       ]}
                     />
                     <Legend />
-                    {DEMO_PATTERN_ITEMS.map((item) => (
+                    {patternItems.map((item) => (
                       <Line
                         key={item.name}
                         type="monotone"
@@ -401,7 +398,7 @@ export default function AIInsightsPage() {
                 </ResponsiveContainer>
                 <div className="grid gap-2 sm:grid-cols-3">
                   <div className="rounded-md border bg-muted/30 p-3">
-                    <p className="text-xs text-muted-foreground">24-Month Usage</p>
+                    <p className="text-xs text-muted-foreground">Usage in Selected Period</p>
                     <p className="text-lg font-semibold">
                       {patternSummary.totalUsage.toLocaleString()} units
                     </p>
@@ -424,7 +421,7 @@ export default function AIInsightsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Month</TableHead>
-                        {DEMO_PATTERN_ITEMS.map((item) => (
+                        {patternItems.map((item) => (
                           <TableHead key={item.name} className="text-right">{item.name}</TableHead>
                         ))}
                         <TableHead className="text-right">Total</TableHead>
@@ -434,7 +431,7 @@ export default function AIInsightsPage() {
                       {patternRows.map((month) => (
                         <TableRow key={String(month.key)}>
                           <TableCell className="font-medium">{month.month}</TableCell>
-                          {DEMO_PATTERN_ITEMS.map((item) => (
+                          {patternItems.map((item) => (
                             <TableCell key={item.name} className="text-right">
                               {Number(month[item.name] || 0).toLocaleString()}
                             </TableCell>
@@ -469,7 +466,7 @@ export default function AIInsightsPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="flex items-center gap-2">
                 <AlertTriangle size={20} className="text-yellow-600" />
-                Expiring / Risky Stock Alerts
+                Current Stock Alerts
               </CardTitle>
               <TableExportMenu
                 title="Expiring and Risky Stock Alerts"
@@ -478,7 +475,7 @@ export default function AIInsightsPage() {
                   { header: 'Item', value: (risk) => risk.itemName },
                   { header: 'Risk', value: (risk) => risk.riskLevel },
                   { header: 'Reason', value: (risk) => risk.reason },
-                  { header: 'Days in Stock', value: (risk) => risk.daysInStock ?? '' },
+                  { header: 'Days Since Last Receipt', value: (risk) => risk.daysInStock ?? '' },
                   { header: 'Shelf Life Days', value: (risk) => risk.shelfLifeDays ?? '' },
                   { header: 'Days Left', value: (risk) => risk.daysToExpiry ?? '' },
                   { header: 'Recommended Action', value: (risk) => risk.recommendedAction },
@@ -489,7 +486,7 @@ export default function AIInsightsPage() {
                 pageSize={riskPageSize}
                 totalPages={riskTotalPages}
                 totalItems={filteredRisks.length}
-                filters={[{ label: 'Risk view', value: riskFilter }]}
+                filters={[...exportFilters, { label: 'Risk view', value: riskFilter }]}
               />
             </div>
             <CardDescription>Decision-support ranking for items requiring immediate attention</CardDescription>
@@ -501,8 +498,8 @@ export default function AIInsightsPage() {
                   <SelectValue placeholder="Filter" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="alerts">Only Critical/High</SelectItem>
-                  <SelectItem value="include-low">Include Medium</SelectItem>
+                  <SelectItem value="alerts">Critical / High / Medium</SelectItem>
+                  <SelectItem value="include-low">Include Low-stock Items</SelectItem>
                   <SelectItem value="all">Show All Items</SelectItem>
                 </SelectContent>
               </Select>
@@ -511,7 +508,7 @@ export default function AIInsightsPage() {
             {filteredRisks.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-4">
                 <CheckCircle2 size={18} />
-                All stock healthy—no immediate risks.
+                No stock alerts match this view.
               </div>
             ) : (
             <Table>
@@ -519,8 +516,8 @@ export default function AIInsightsPage() {
                 <TableRow>
                   <TableHead>Item</TableHead>
                   <TableHead>Risk</TableHead>
-                  <TableHead>Age / Shelf Life</TableHead>
-                  <TableHead>Days Left</TableHead>
+                  <TableHead>Since Receipt / Shelf Life</TableHead>
+                  <TableHead>Batch Expiry</TableHead>
                   <TableHead>Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -544,7 +541,7 @@ export default function AIInsightsPage() {
                     <TableCell className="text-sm">
                       {typeof risk.daysToExpiry === 'number'
                         ? `${risk.daysToExpiry} days`
-                        : '—'}
+                        : 'Unknown'}
                     </TableCell>
                     <TableCell>
                       <p className="text-sm">{risk.recommendedAction}</p>
@@ -587,6 +584,7 @@ export default function AIInsightsPage() {
                 pageSize={reorderPageSize}
                 totalPages={reorderTotalPages}
                 totalItems={reorderSuggestions.length}
+                filters={exportFilters}
               />
             </div>
             <CardDescription>Suggested restocking quantities for admin review</CardDescription>
@@ -663,7 +661,7 @@ export default function AIInsightsPage() {
                 </div>
                 <div className="p-3 rounded-md border">
                   <p className="text-muted-foreground">On-Time Rate</p>
-                  <p className="text-xl font-semibold">{logisticsSnapshot.onTimeRate}%</p>
+                  <p className="text-xl font-semibold">{logisticsSnapshot.onTimeRate === null ? 'Not enough data' : `${logisticsSnapshot.onTimeRate}%`}</p>
                 </div>
               </div>
               <div className="rounded-md border p-3">
@@ -730,10 +728,10 @@ export default function AIInsightsPage() {
             </div>
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
               <TrendingUp className="text-blue-600 mb-2" size={24} />
-              <h4 className="font-medium">Demand Forecast</h4>
+              <h4 className="font-medium">Usage History</h4>
               <p className="text-sm text-muted-foreground">
                 {Number(patternSummary.peakMonth.totalUsage || 0) > 0
-                  ? `${patternSummary.peakMonth.month} shows the strongest usage pattern in the 24-month trend.`
+                  ? `${patternSummary.peakMonth.month} shows the strongest usage pattern in the selected period.`
                   : 'Usage pattern trends will update once transactions accumulate.'}
               </p>
               <Button
@@ -746,11 +744,11 @@ export default function AIInsightsPage() {
             </div>
             <div className="p-4 bg-green-50 rounded-lg border border-green-200">
               <ShoppingCart className="text-green-600 mb-2" size={24} />
-              <h4 className="font-medium">Cost Optimization</h4>
+              <h4 className="font-medium">Reorder Budget</h4>
               <p className="text-sm text-muted-foreground">
                 {summary.reorderTotal
-                  ? `Bulk ordering could save ₱${summary.savingsEstimate.toLocaleString()} on current suggestions.`
-                  : 'No cost optimization opportunities yet.'}
+                  ? `Estimated replenishment budget: ₱${summary.reorderTotal.toLocaleString()}. Uses current catalog prices; request supplier quotations for actual cost.`
+                  : 'No current replenishment estimate.'}
               </p>
               <Button
                 variant="link"
@@ -777,6 +775,7 @@ export default function AIInsightsPage() {
       <p className="text-center text-sm text-muted-foreground">
         * Decision-support signals are advisory, generated by backend rules/AI, and may be cached.
       </p>
+      </>}
     </div>
   );
 }
