@@ -14,11 +14,13 @@ async function importHistory(db, plan) {
     if (existing) throw new Error('This simulation already exists. No records were added. Verify it before rerunning.');
     const note = `${SIMULATION_TAG} Estimated training history, not verified company activity. Prices and quantities are illustrative. No real human performed these recorded events.`;
     const products = new Map();
+    const category = await tx.productCategory.upsert({ where: { categoryName: 'Construction Chemicals' }, create: { categoryName: 'Construction Chemicals' }, update: {} });
+    if (category.deletedAt) throw new Error('Construction Chemicals category is archived.');
     for (const product of THORTEX_PRODUCTS) {
       const itemName = `[SIMULATED] ${product.name}`;
       if (await tx.product.findFirst({ where: { itemName } })) throw new Error('Simulation products already exist; refusing duplicate import.');
       products.set(product.key, await tx.product.create({ data: {
-        itemName, unit: product.unit, unitPrice: product.price, qtyOnHand: 0,
+        itemName, unit: product.unit, unitPrice: product.price, qtyOnHand: 0, categoryId: category.categoryId,
         lowStockThreshold: 0, shelfLifeDays: 180, createdAt: new Date(`${plan.from}T00:00:00Z`),
       } }));
     }

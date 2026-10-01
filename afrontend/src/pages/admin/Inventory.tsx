@@ -686,9 +686,12 @@ export default function InventoryPage() {
 
       {/* Item Detail Modal */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle>Item Details</DialogTitle>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="pr-7 text-left">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <DialogTitle>Item Details</DialogTitle>
+              {selectedItem && getStatusBadge(selectedItem.status)}
+            </div>
             <DialogDescription>
               {selectedItem?.name}
             </DialogDescription>
@@ -696,22 +699,10 @@ export default function InventoryPage() {
 
           {selectedItem && (
             <div className="space-y-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">Item Details</h3>
-                  <p className="text-sm text-muted-foreground">{selectedItem.name}</p>
-                </div>
-                {getStatusBadge(selectedItem.status)}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Item ID</p>
                   <p className="font-medium">{selectedItemDisplayId || selectedItem.id}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Item Name</p>
-                  <p className="font-medium">{selectedItem.name}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Category</p>
@@ -725,11 +716,10 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsHistoryOpen(true)}>
-                View Stock History
-              </Button>
-
-              <div className="flex flex-wrap gap-2 justify-end">
+              <div className="grid grid-cols-2 gap-2 border-t pt-4 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+                <Button variant="outline" className="col-span-2 sm:mr-auto" onClick={() => setIsHistoryOpen(true)}>
+                  View Stock History
+                </Button>
                 <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
                   Close
                 </Button>
