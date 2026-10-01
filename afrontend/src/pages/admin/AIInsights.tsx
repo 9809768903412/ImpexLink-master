@@ -31,16 +31,7 @@ import {
   Eye,
   CheckCircle2,
 } from 'lucide-react';
-import {
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts';
+import InventoryUsageCharts from '@/components/InventoryUsageCharts';
 import { toast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/api/client';
@@ -115,7 +106,6 @@ export default function AIInsightsPage() {
   const coverage = aiAnalysis?.dataCoverage;
   const exportFilters = [
     { label: 'From', value: filters.from }, { label: 'To', value: filters.to },
-    { label: 'Data source', value: filters.source }, { label: 'Product', value: filters.product },
   ];
   const patternSummary = useMemo(() => {
     const itemTotals = patternItems.map((item) => ({
@@ -262,33 +252,11 @@ export default function AIInsightsPage() {
         </Button>
       </div>
 
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="p-4 space-y-4 text-sm">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1"><Label htmlFor="insights-from">From date</Label><Input id="insights-from" type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></div>
-            <div className="space-y-1"><Label htmlFor="insights-to">To date</Label><Input id="insights-to" type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></div>
-            <div className="space-y-1">
-              <Label htmlFor="insights-source">Data source</Label>
-              <Select value={filters.source} onValueChange={(source) => setFilters((current) => ({ ...current, source }))}>
-                <SelectTrigger id="insights-source"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="all">Existing + simulated</SelectItem><SelectItem value="existing">Existing records</SelectItem><SelectItem value="simulated">Simulated history only</SelectItem></SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="insights-product">Thortex product</Label>
-              <Select value={filters.product} onValueChange={(product) => setFilters((current) => ({ ...current, product }))}>
-                <SelectTrigger id="insights-product"><SelectValue placeholder="All nine products" /></SelectTrigger>
-                <SelectContent><SelectItem value="all">All nine products</SelectItem>{(response?.productOptions || []).map((item) => <SelectItem key={item.key} value={item.key}>{item.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          {error ? <p role="alert" className="text-destructive">Unable to load insights: {error.message}</p> : loading || !coverage ? <p>Loading database records…</p> : <>
-            <p className="font-medium">{coverage.issueCount.toLocaleString()} recorded stock issues · {coverage.activeMonths} months with activity</p>
-            <p className="text-muted-foreground">{coverage.firstIssue ? `${coverage.firstIssue} to ${coverage.lastIssue}. ` : 'No stock issues in this selection. '}{coverage.simulatedIssueCount.toLocaleString()} issues are from the estimated history import.</p>
-            <p className="text-xs text-muted-foreground">{coverage.existingMeans} {aiAnalysis?.inventoryScope}</p>
-          </>}
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end" aria-label="Insights date range">
+        <div className="space-y-1"><Label htmlFor="insights-from">From date</Label><Input id="insights-from" type="date" value={filters.from} max={filters.to} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></div>
+        <div className="space-y-1"><Label htmlFor="insights-to">To date</Label><Input id="insights-to" type="date" value={filters.to} min={filters.from} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></div>
+      </div>
+      {error ? <p role="alert" className="text-sm text-destructive">Unable to load insights: {error.message}</p> : loading || !coverage ? <p className="text-sm text-muted-foreground">Loading database records…</p> : null}
 
       {aiSummary && (
         <Card>
@@ -360,47 +328,12 @@ export default function AIInsightsPage() {
           <CardContent>
             {patternTrends.some((month) => Number(month.totalUsage || 0) > 0) ? (
               <div className="space-y-4">
-                <ResponsiveContainer width="100%" height={440}>
-                  <LineChart
-                    data={patternTrends}
-                    margin={{ top: 8, right: 20, left: 0, bottom: 40 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      dataKey="month"
-                      interval={0}
-                      angle={-45}
-                      textAnchor="end"
-                      height={70}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <YAxis allowDecimals={false} />
-                    <Tooltip
-                      formatter={(value, name) => [
-                        `${Number(value).toLocaleString()} units`,
-                        String(name),
-                      ]}
-                    />
-                    <Legend />
-                    {patternItems.map((item) => (
-                      <Line
-                        key={item.name}
-                        type="monotone"
-                        dataKey={item.name}
-                        stroke={item.color}
-                        strokeWidth={2}
-                        dot={{ r: 2 }}
-                        activeDot={{ r: 5 }}
-                        isAnimationActive={false}
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
+                <InventoryUsageCharts months={patternTrends} products={patternItems} />
                 <div className="grid gap-2 sm:grid-cols-3">
                   <div className="rounded-md border bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">Usage in Selected Period</p>
                     <p className="text-lg font-semibold">
-                      {patternSummary.totalUsage.toLocaleString()} units
+                      {patternSummary.totalUsage.toLocaleString()} packages
                     </p>
                   </div>
                   <div className="rounded-md border bg-muted/30 p-3">
@@ -410,9 +343,9 @@ export default function AIInsightsPage() {
                     </p>
                   </div>
                   <div className="rounded-md border bg-muted/30 p-3">
-                    <p className="text-xs text-muted-foreground">Peak Pattern Month</p>
+                    <p className="text-xs text-muted-foreground">Peak Usage Month</p>
                     <p className="text-lg font-semibold">
-                      {patternSummary.peakMonth.month} ({Number(patternSummary.peakMonth.totalUsage || 0).toLocaleString()} units)
+                      {patternSummary.peakMonth.month} ({Number(patternSummary.peakMonth.totalUsage || 0).toLocaleString()} packages)
                     </p>
                   </div>
                 </div>

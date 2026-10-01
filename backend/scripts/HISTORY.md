@@ -12,6 +12,10 @@ For private access, set `IMPEX_DATABASE_URL_FILE` to the path of a mode-600 file
 
 `node scripts/verifyHistory.js /absolute/path/to/pre-import-backup` checks backup hashes, preservation of all original rows, unchanged accounts, order/payment/delivery reconciliation, stock running balances, all 24 months and the actual read-only insights handler. Verification reads only.
 
+## Approved current stock addition
+
+On October 2, 2026 (Asia/Manila), the user approved adding 20 packages to each of the nine imported products. `node scripts/addHistoryStock.js /absolute/path/to/import-manifest.json` previews the targets; adding `--apply` backs up the database and performs a serializable, idempotent adjustment. It validates the original manifest, all nine catalog identities and their recorded provenance. Each addition writes a stock adjustment and audit entry; it does not claim a supplier purchase or create a payment. The operation marker prevents a second application from doubling stock. The pre-stock backup contains `stock-addition.json` with verified before/after balances. No application routes or schema were changed for this operation.
+
 ## Backup and recovery
 
 `.local-backups/<timestamp>-before-history/` is ignored by Git and contains gzip NDJSON snapshots of every public table, row counts, SHA-256 hashes, column metadata, sequence positions and a Prisma schema copy. It includes personal/account data and uploaded-file bytes: keep it private. It is a consistent **data backup**, not a complete PostgreSQL schema/DDL dump. Recovery requires a compatible schema; do not run a whole-database restore against a live database with newer activity. The import manifest records the added IDs for a reviewed, selective rollback. Copy the private backup to secure storage outside this checkout for disaster recovery.

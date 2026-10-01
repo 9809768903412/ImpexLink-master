@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { cleanDisplayPrefixes } from '@/lib/display-data';
 
 function resolveApiBaseUrl() {
   const configured = import.meta.env.VITE_API_URL || '/api';
@@ -23,6 +24,12 @@ const baseURL = resolveApiBaseUrl();
 export const apiClient = axios.create({
   baseURL,
   withCredentials: true,
+});
+
+apiClient.interceptors.response.use((response) => {
+  // Shared by web views and their table exports; original database tags stay intact.
+  response.data = cleanDisplayPrefixes(response.data);
+  return response;
 });
 
 apiClient.interceptors.request.use((config) => {
