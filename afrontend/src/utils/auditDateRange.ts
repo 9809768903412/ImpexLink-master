@@ -19,3 +19,12 @@ export function getAuditDateRange(month: string, day?: Date) {
   end.setMilliseconds(-1);
   return { dateFrom: start.toISOString(), dateTo: end.toISOString() };
 }
+
+export function getAuditCalendarRange(from?: Date, to?: Date) {
+  if (!from || !Number.isFinite(from.getTime()) || (to && (!Number.isFinite(to.getTime()) || to < from))) return {};
+  const start = new Date(from);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(to || from);
+  end.setHours(23, 59, 59, 999);
+  return { dateFrom: start.toISOString(), dateTo: end.toISOString() };
+}
