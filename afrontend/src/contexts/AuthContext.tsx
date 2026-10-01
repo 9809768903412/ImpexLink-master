@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import type { User, UserRole } from '@/types';
+import { setPrintAuthor } from '@/utils/print';
 import { getMe, login as apiLogin, register as apiRegister, verifyOtp as apiVerifyOtp, verifyEmail as apiVerifyEmail } from '@/api/auth';
 
 interface AuthContextType {
@@ -31,6 +32,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  useEffect(() => {
+    setPrintAuthor(user);
+    return () => setPrintAuthor(null);
+  }, [user]);
   const [isLoading, setIsLoading] = useState(true);
   const idleMinutes = Number(import.meta.env.VITE_IDLE_TIMEOUT_MIN || 30);
   const idleMs = Math.max(5, idleMinutes) * 60 * 1000;

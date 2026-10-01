@@ -18,6 +18,8 @@ On October 2, 2026 (Asia/Manila), the user approved adding 20 packages to each o
 
 ## Backup and recovery
 
+The nine imported Thortex variants use the existing `Construction Chemicals` category, matching the established catalog. For an already-imported database, `node scripts/categorizeHistoryProducts.js /absolute/path/to/import-manifest.json --apply` backs up first and updates only those nine category assignments, with an audit entry per changed product. Reruns do not duplicate changes/audits. Quantities, prices and transactions are preserved; no migration is required.
+
 `.local-backups/<timestamp>-before-history/` is ignored by Git and contains gzip NDJSON snapshots of every public table, row counts, SHA-256 hashes, column metadata, sequence positions and a Prisma schema copy. It includes personal/account data and uploaded-file bytes: keep it private. It is a consistent **data backup**, not a complete PostgreSQL schema/DDL dump. Recovery requires a compatible schema; do not run a whole-database restore against a live database with newer activity. The import manifest records the added IDs for a reviewed, selective rollback. Copy the private backup to secure storage outside this checkout for disaster recovery.
 
 ## Insights

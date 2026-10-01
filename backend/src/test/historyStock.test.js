@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { addStock, OPERATION } = require('../../scripts/addHistoryStock');
+const { categorizeProducts } = require('../../scripts/categorizeHistoryProducts');
 const { THORTEX_PRODUCTS, SIMULATION_TAG } = require('../utils/aiAnalytics');
 
 function fixture() {
@@ -44,4 +45,25 @@ test('unexpected product targets are rejected before any writes', async () => {
   await assert.rejects(() => addStock(state.db, state.manifest), /approved packaged catalog/);
   assert.equal(state.transactions.length, 0);
   assert.equal(state.audits.length, 0);
+});
+
+test('categorization updates only category IDs and does not duplicate audits on rerun', async () => {
+  const state = fixture();
+  state.db.productCategory = { findUnique: async () => ({ categoryId: 2, categoryName: 'Construction Chemicals', deletedAt: null }) };
+  const balances = state.products.map((row) => row.qtyOnHand);
+  assert.equal((await categorizeProducts(state.db, state.manifest)).changed, 9);
+  assert.ok(state.products.every((row) => row.categoryId === 2));
+  assert.deepEqual(state.products.map((row) => row.qtyOnHand), balances);
+  assert.equal(state.transactions.length, 0);
+  assert.equal(state.audits.length, 9);
+  assert.equal((await categorizeProducts(state.db, state.manifest)).changed, 0);
+  assert.equal(state.audits.length, 9);
+});
+
+test('categorization rejects an archived category without changing products', async () => {
+  const state = fixture();
+  state.db.productCategory = { findUnique: async () => ({ categoryId: 2, deletedAt: new Date() }) };
+  await assert.rejects(() => categorizeProducts(state.db, state.manifest), /Active Construction Chemicals/);
+  assert.equal(state.audits.length, 0);
+  assert.ok(state.products.every((row) => row.categoryId === undefined));
 });
