@@ -236,8 +236,8 @@ export default function AIInsightsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div>
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Brain className="text-primary" />
             AI Insights
@@ -246,15 +246,16 @@ export default function AIInsightsPage() {
             AI-assisted decision support for inventory, PO risk, and dispatch planning
           </p>
         </div>
-        <Button onClick={handleRefresh} disabled={isRefreshing}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end xl:shrink-0">
+          <div className="grid grid-cols-2 gap-3" aria-label="Insights date range">
+            <div className="min-w-0 space-y-1"><Label htmlFor="insights-from">From date</Label><Input className="min-w-0" id="insights-from" type="date" value={filters.from} max={filters.to} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></div>
+            <div className="min-w-0 space-y-1"><Label htmlFor="insights-to">To date</Label><Input className="min-w-0" id="insights-to" type="date" value={filters.to} min={filters.from} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></div>
+          </div>
+        <Button className="shrink-0" onClick={handleRefresh} disabled={isRefreshing}>
           <RefreshCw size={16} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
           Refresh Signals
         </Button>
-      </div>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end" aria-label="Insights date range">
-        <div className="space-y-1"><Label htmlFor="insights-from">From date</Label><Input id="insights-from" type="date" value={filters.from} max={filters.to} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></div>
-        <div className="space-y-1"><Label htmlFor="insights-to">To date</Label><Input id="insights-to" type="date" value={filters.to} min={filters.from} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></div>
+        </div>
       </div>
       {error ? <p role="alert" className="text-sm text-destructive">Unable to load insights: {error.message}</p> : loading || !coverage ? <p className="text-sm text-muted-foreground">Loading database records…</p> : null}
 
