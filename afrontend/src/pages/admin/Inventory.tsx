@@ -725,40 +725,9 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="rounded-lg border p-4 space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-semibold">Stock History</p>
-                    <p className="text-sm text-muted-foreground">
-                      {itemTransactionsByDate.length} movement{itemTransactionsByDate.length === 1 ? '' : 's'} recorded
-                    </p>
-                  </div>
-                  <Button variant="outline" onClick={() => setIsHistoryOpen(true)}>
-                    View Stock History
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Last Updated</p>
-                    <p className="font-medium">
-                      {lastUpdatedTxn ? new Date(lastUpdatedTxn.date).toLocaleDateString('en-PH') : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Last Restock</p>
-                    <p className="font-medium">
-                      {lastRestockTxn ? new Date(lastRestockTxn.date).toLocaleDateString('en-PH') : '—'}
-                    </p>
-                    {lastRestockTxn?.supplierName && (
-                      <p className="text-xs text-muted-foreground">{lastRestockTxn.supplierName}</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Monthly Usage</p>
-                    <p className="font-medium">{monthlyUsage} units</p>
-                  </div>
-                </div>
-              </div>
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsHistoryOpen(true)}>
+                View Stock History
+              </Button>
 
               <div className="flex flex-wrap gap-2 justify-end">
                 <Button variant="outline" onClick={() => setIsDetailOpen(false)}>

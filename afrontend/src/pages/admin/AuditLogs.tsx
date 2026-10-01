@@ -63,6 +63,11 @@ export default function AuditLogsPage() {
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<Date | undefined>();
+  const [monthFilter, setMonthFilter] = useState('');
+  const selectedYear = Number(monthFilter.slice(0, 4));
+  const selectedMonth = Number(monthFilter.slice(5, 7)) - 1;
+  const dateFrom = monthFilter ? new Date(selectedYear, selectedMonth, 1).toISOString() : dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate()).toISOString() : undefined;
+  const dateTo = monthFilter ? new Date(selectedYear, selectedMonth + 1, 1, 0, 0, 0, -1).toISOString() : dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate() + 1, 0, 0, 0, -1).toISOString() : undefined;
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -75,8 +80,8 @@ export default function AuditLogsPage() {
             userId: userFilter !== 'all' ? userFilter : undefined,
             page: logsPage,
             pageSize: logsPageSize,
-            dateFrom: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate()).toISOString() : undefined,
-            dateTo: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate() + 1, 0, 0, 0, -1).toISOString() : undefined,
+            dateFrom,
+            dateTo,
           },
         });
         const payload = response.data;
@@ -97,7 +102,7 @@ export default function AuditLogsPage() {
       }
     };
     fetchLogs();
-  }, [actionFilter, dateFilter, logsPage, logsPageSize, searchTerm, userFilter]);
+  }, [actionFilter, dateFrom, dateTo, logsPage, logsPageSize, searchTerm, userFilter]);
 
   const filteredLogs = logs;
 
@@ -120,8 +125,8 @@ export default function AuditLogsPage() {
             userId: userFilter !== 'all' ? userFilter : undefined,
             page: exportPage,
             pageSize: logsPageSize,
-            dateFrom: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate()).toISOString() : undefined,
-            dateTo: dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate() + 1, 0, 0, 0, -1).toISOString() : undefined,
+            dateFrom,
+            dateTo,
           },
         }),
       ),
@@ -154,6 +159,7 @@ export default function AuditLogsPage() {
             { label: 'Action', value: actionFilter !== 'all' ? actionFilter : '' },
             { label: 'User', value: userFilter !== 'all' ? users.find((user) => user.id === userFilter)?.name || userFilter : '' },
             { label: 'Date', value: dateFilter ? format(dateFilter, 'yyyy-MM-dd') : '' },
+            { label: 'Month', value: monthFilter },
           ]}
           disabled={logsLoading}
         />
@@ -213,6 +219,11 @@ export default function AuditLogsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Input type="month" aria-label="Audit month" className="lg:w-auto" value={monthFilter} onChange={(event) => {
+              setMonthFilter(event.target.value);
+              setDateFilter(undefined);
+              setLogsPage(1);
+            }} />
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className={cn('justify-start', !dateFilter && 'text-muted-foreground')}>
@@ -228,18 +239,20 @@ export default function AuditLogsPage() {
                   toDate={new Date()}
                   onSelect={(date) => {
                     setDateFilter(date);
+                    setMonthFilter('');
                     setLogsPage(1);
                   }}
                 />
               </PopoverContent>
             </Popover>
-            {(actionFilter !== 'all' || userFilter !== 'all' || dateFilter) && (
+            {(actionFilter !== 'all' || userFilter !== 'all' || dateFilter || monthFilter) && (
               <Button
                 variant="ghost"
                 onClick={() => {
                   setActionFilter('all');
                   setUserFilter('all');
                   setDateFilter(undefined);
+                  setMonthFilter('');
                   setLogsPage(1);
                 }}
               >
@@ -306,7 +319,7 @@ export default function AuditLogsPage() {
                     </TableCell>
                     <TableCell>{log.target}</TableCell>
                     <TableCell className="max-w-[300px]">
-                      <p className="truncate">{log.details}</p>
+                      <p className="whitespace-normal break-words">{log.details}</p>
                     </TableCell>
                   </TableRow>
                 ))
