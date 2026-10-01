@@ -30,6 +30,7 @@ import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
 import PaginationNav from '@/components/PaginationNav';
 import TableExportMenu from '@/components/TableExportMenu';
+import { getAuditDateRange } from '@/utils/auditDateRange';
 
 const actionColors: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
@@ -64,10 +65,7 @@ export default function AuditLogsPage() {
   const [userFilter, setUserFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<Date | undefined>();
   const [monthFilter, setMonthFilter] = useState('');
-  const selectedYear = Number(monthFilter.slice(0, 4));
-  const selectedMonth = Number(monthFilter.slice(5, 7)) - 1;
-  const dateFrom = monthFilter ? new Date(selectedYear, selectedMonth, 1).toISOString() : dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate()).toISOString() : undefined;
-  const dateTo = monthFilter ? new Date(selectedYear, selectedMonth + 1, 1, 0, 0, 0, -1).toISOString() : dateFilter ? new Date(dateFilter.getFullYear(), dateFilter.getMonth(), dateFilter.getDate() + 1, 0, 0, 0, -1).toISOString() : undefined;
+  const { dateFrom, dateTo } = getAuditDateRange(monthFilter, dateFilter);
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -219,7 +217,7 @@ export default function AuditLogsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Input type="month" aria-label="Audit month" className="lg:w-auto" value={monthFilter} onChange={(event) => {
+            <Input type="month" aria-label="Audit month" min="0001-01" max="9999-12" className="lg:w-auto" value={monthFilter} onChange={(event) => {
               setMonthFilter(event.target.value);
               setDateFilter(undefined);
               setLogsPage(1);
