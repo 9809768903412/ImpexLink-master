@@ -410,8 +410,8 @@ export interface WarehouseRisk {
   reason: string;
   recommendedAction: string;
   shelfLifeDays?: number;
-  daysInStock?: number;
-  daysToExpiry?: number;
+  daysInStock?: number | null;
+  daysToExpiry?: number | null;
 }
 
 export interface ReorderSuggestion {
@@ -460,7 +460,9 @@ export interface AiLogisticsDispatch {
 export interface AiLogisticsSnapshot {
   activeRoutes: number;
   stopsToday: number;
-  onTimeRate: number;
+  onTimeRate: number | null;
+  measuredDeliveries?: number;
+  pendingDispatches?: number;
   recommendation: string;
   dispatches: AiLogisticsDispatch[];
 }
@@ -470,4 +472,20 @@ export interface AiAnalysis extends AiSummary {
   reorderSuggestions: ReorderSuggestion[];
   fraudAlerts: FraudAlert[];
   logisticsSnapshot: AiLogisticsSnapshot;
+  patternItems?: { key: string; name: string; color: string }[];
+  productOptions?: { key: string; name: string; color: string }[];
+  usageTrends?: Record<string, string | number>[];
+  dataCoverage?: {
+    from: string;
+    to: string;
+    source: string;
+    product: string;
+    issueCount: number;
+    simulatedIssueCount: number;
+    firstIssue: string | null;
+    lastIssue: string | null;
+    activeMonths: number;
+    existingMeans: string;
+  };
+  inventoryScope?: string;
 }

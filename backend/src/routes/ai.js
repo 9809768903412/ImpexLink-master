@@ -2,12 +2,13 @@ const express = require('express');
 const prisma = require('../utils/prisma');
 const { requireAuth } = require('../middleware/auth');
 const { resolveShelfLifeDays } = require('../utils/shelfLife');
+const { findThortexProduct, matchesSource, parseInsightFilters, buildUsageTrends, buildLogisticsSnapshot, lockAnalysisMetrics } = require('../utils/aiAnalytics');
 
 const router = express.Router();
 router.use(requireAuth);
 
 const AI_PROVIDER = String(process.env.AI_PROVIDER || 'ollama').toLowerCase();
-const AI_CACHE_MS = Number(process.env.AI_CACHE_MS || process.env.XAI_CACHE_MS || 10 * 60 * 1000);
+const AI_CACHE_MS = Number(process.env.AI_CACHE_MS || process.env.XAI_CACHE_MS || 60 * 1000);
 
 const PROVIDERS = {
   ollama: {
@@ -39,8 +40,8 @@ const OLLAMA_NUM_PREDICT = Number(process.env.OLLAMA_NUM_PREDICT || 180);
 const AI_FALLBACK_MODEL =
   AI_PROVIDER === 'groq' ? process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant' : null;
 
-let analysisCache = null;
-let analysisPromise = null;
+const analysisCaches = new Map();
+const analysisPromises = new Map();
 
 function toNumber(value) {
   return Number(value || 0);
@@ -215,15 +216,15 @@ function buildLocalWarehouseRisks(products, purchaseMap) {
   const now = new Date();
 
   return products.map((p) => {
-    const lastPurchase = purchaseMap.get(p.productId) || p.createdAt || now;
-    const daysInStock = Math.max(0, toDays(now.getTime() - new Date(lastPurchase).getTime()));
+    const lastPurchase = purchaseMap.get(p.productId);
+    const daysInStock = lastPurchase ? Math.max(0, toDays(now.getTime() - new Date(lastPurchase).getTime())) : null;
     const shelfLifeDays = resolveShelfLifeDays({
       itemName: p.itemName,
       unit: p.unit,
-      shelfLifeDays: [365, 730].includes(Number(p.shelfLifeDays)) ? undefined : p.shelfLifeDays,
+      shelfLifeDays: p.shelfLifeDays,
     });
-    const daysToExpiry = shelfLifeDays - daysInStock;
-    const percentUsed = shelfLifeDays > 0 ? Math.min(100, Math.round((daysInStock / shelfLifeDays) * 100)) : 0;
+    // Product-level purchases cannot establish the expiry of individual stock batches.
+    const daysToExpiry = null;
 
     const stockRisk =
       p.qtyOnHand === 0
@@ -234,23 +235,8 @@ function buildLocalWarehouseRisks(products, purchaseMap) {
         ? 'medium'
         : 'low';
 
-    const ageRisk =
-      daysToExpiry <= 0
-        ? 'critical'
-        : daysToExpiry <= 10
-        ? 'high'
-        : daysToExpiry <= 30
-        ? 'medium'
-        : 'low';
-
-    const riskOrder = ['low', 'medium', 'high', 'critical'];
-    const riskLevel =
-      riskOrder.indexOf(ageRisk) >= riskOrder.indexOf(stockRisk) ? ageRisk : stockRisk;
-
-    const ageReason =
-      daysToExpiry <= 0
-        ? `Past shelf life by ${Math.abs(daysToExpiry)} days`
-        : `Shelf life ${shelfLifeDays} days; ${daysToExpiry} days left (${percentUsed}% used)`;
+    const riskLevel = stockRisk;
+    const ageReason = daysInStock === null ? 'Receipt history unavailable; batch expiry unknown' : `${daysInStock} days since latest receipt; batch expiry unknown`;
     const stockReason =
       p.qtyOnHand <= p.lowStockThreshold
         ? `Low stock: ${p.qtyOnHand}/${p.lowStockThreshold}`
@@ -263,10 +249,10 @@ function buildLocalWarehouseRisks(products, purchaseMap) {
       reason: `${ageReason}; ${stockReason}`,
       recommendedAction:
         riskLevel === 'critical'
-          ? 'Prioritize usage or reorder immediately'
+          ? 'Review available stock and replenish if needed'
           : riskLevel === 'high'
-          ? 'Use soon and plan replenishment'
-          : 'Monitor stock age',
+          ? 'Plan replenishment'
+          : 'Monitor stock and confirm batch expiry separately',
       shelfLifeDays,
       daysInStock,
       daysToExpiry,
@@ -278,7 +264,7 @@ function buildLocalReorderSuggestions(products) {
   return products
     .filter((p) => p.deletedAt === null && p.qtyOnHand <= p.lowStockThreshold)
     .map((p) => {
-      const suggestedQty = Math.max(p.lowStockThreshold * 2, 10);
+      const suggestedQty = Math.max(Math.max(p.lowStockThreshold * 2, 10) - p.qtyOnHand, 0);
       return {
         itemId: p.productId.toString(),
         itemName: p.itemName,
@@ -306,35 +292,13 @@ function buildLocalFraudAlerts(clientOrders) {
         order.paymentStatus === 'FAILED'
           ? 'AI flags this order for payment follow-up because payment verification failed.'
           : 'AI flags this high-value order because payment is still pending after a week.',
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(order.createdAt).toISOString(),
     }));
 }
 
-function buildLocalLogisticsSnapshot(deliveries) {
-  const active = deliveries.filter((d) => ['PENDING', 'IN_TRANSIT'].includes(d.status));
-  const completed = deliveries.filter((d) => d.status === 'DELIVERED');
-  const onTime = completed.filter((d) => !d.eta || !d.receivedAt || new Date(d.receivedAt) <= new Date(d.eta));
-  const onTimeRate = completed.length ? Math.round((onTime.length / completed.length) * 100) : 100;
-  const today = new Date().toISOString().slice(0, 10);
-  const stopsToday = deliveries.filter((d) => d.eta && new Date(d.eta).toISOString().slice(0, 10) === today).length;
-
-  return {
-    activeRoutes: active.length,
-    stopsToday,
-    onTimeRate,
-    recommendation: active.length
-      ? 'AI recommends monitoring active dispatches with the nearest ETA first.'
-      : 'No active dispatches need routing intervention right now.',
-    dispatches: active.slice(0, 3).map((d, index) => ({
-      route: `${d.drNumber || `Route ${index + 1}`} - ${d.clientOrder?.client?.clientName || 'Client'}`,
-      status: d.status === 'IN_TRANSIT' ? 'On Route' : 'Pending',
-      note: d.eta ? `ETA ${new Date(d.eta).toLocaleDateString('en-PH')}` : 'ETA not scheduled',
-    })),
-  };
-}
-
+const buildLocalLogisticsSnapshot = buildLogisticsSnapshot;
 function buildLocalAnalysis(snapshot) {
-  const { products, purchases, clientOrders, deliveries } = snapshot;
+  const { products, purchases, clientOrders, deliveries, transactions = [], filters = parseInsightFilters() } = snapshot;
   const purchaseMap = new Map(purchases.map((p) => [p.productId, p._max.date]));
   const warehouseRisks = buildLocalWarehouseRisks(products, purchaseMap);
   const reorderSuggestions = buildLocalReorderSuggestions(products);
@@ -343,6 +307,7 @@ function buildLocalAnalysis(snapshot) {
   const critical = warehouseRisks.filter((risk) => risk.riskLevel === 'critical').length;
   const high = warehouseRisks.filter((risk) => risk.riskLevel === 'high').length;
   const reorderTotal = reorderSuggestions.reduce((sum, item) => sum + item.estimatedCost, 0);
+  const usage = buildUsageTrends(products, transactions, filters);
 
   return {
     enabled: false,
@@ -353,9 +318,7 @@ function buildLocalAnalysis(snapshot) {
     availabilityMessage: AI_PROVIDER === 'ollama' || AI_API_KEY
       ? `${providerConfig.name} analysis is temporarily unavailable, so local operational rules are being used.`
       : `${providerConfig.apiKeyEnv} is not configured on the backend service.`,
-    summary: AI_PROVIDER === 'ollama' || AI_API_KEY
-      ? `${providerConfig.name} analysis is temporarily unavailable, so local operational rules are being used.`
-      : `${providerConfig.name} is not configured yet. Add ${providerConfig.apiKeyEnv} on Railway to enable AI-written analysis.`,
+    summary: `${usage.dataCoverage.issueCount} recorded stock issues across ${usage.dataCoverage.activeMonths} active months in the selected range; ${usage.dataCoverage.simulatedIssueCount} are simulated. Current selected inventory has ${critical} critical and ${high} high-risk items. ${logisticsSnapshot.measuredDeliveries} completed deliveries have dates suitable for on-time measurement. This is recorded history, not a validated forecast.`,
     recommendations: [
       {
         title: critical || high ? 'Prioritize stock risk' : 'Inventory stable',
@@ -371,8 +334,8 @@ function buildLocalAnalysis(snapshot) {
       },
       {
         title: 'Dispatch watch',
-        message: `${logisticsSnapshot.activeRoutes} active routes with ${logisticsSnapshot.onTimeRate}% on-time performance.`,
-        priority: logisticsSnapshot.onTimeRate < 85 ? 'high' : 'low',
+        message: `${logisticsSnapshot.activeRoutes} active routes. ${logisticsSnapshot.onTimeRate === null ? 'Insufficient completed delivery dates to measure on-time performance.' : `${logisticsSnapshot.onTimeRate}% on time across ${logisticsSnapshot.measuredDeliveries} measured deliveries.`}`,
+        priority: logisticsSnapshot.onTimeRate !== null && logisticsSnapshot.onTimeRate < 85 ? 'high' : 'low',
         action: logisticsSnapshot.recommendation,
       },
     ],
@@ -380,76 +343,34 @@ function buildLocalAnalysis(snapshot) {
     reorderSuggestions,
     fraudAlerts,
     logisticsSnapshot,
+    ...usage,
+    inventoryScope: 'Current inventory follows the selected product and data source. Date filters apply to historical usage, orders, and deliveries, not to a reconstructed past stock balance.',
   };
 }
 
-function buildEmergencyAnalysis(err) {
-  console.error('AI analysis emergency fallback:', err.message || err);
-  const fallback = buildLocalAnalysis({ products: [], purchases: [], clientOrders: [], deliveries: [] });
-  return {
-    ...fallback,
-    availabilityReason: 'snapshot_error',
-    availabilityMessage: 'AI analysis is using emergency local fallback because the live snapshot could not be read.',
-    summary: 'AI analysis is using emergency local fallback because the live snapshot could not be read.',
-  };
-}
-
-async function buildSnapshot() {
-  const safeRead = async (label, task, fallback = []) => {
-    try {
-      return await task;
-    } catch (err) {
-      console.error(`AI snapshot ${label} read failed:`, err.message || err);
-      return fallback;
-    }
-  };
-
-  const [products, purchases, clientOrders, deliveries] = await Promise.all([
-    safeRead('products', prisma.product.findMany({
-      where: { deletedAt: null },
-      orderBy: [{ status: 'asc' }, { qtyOnHand: 'asc' }, { itemName: 'asc' }],
-      take: 100,
-    })),
-    safeRead('purchases', prisma.stockTransaction.groupBy({
-      by: ['productId'],
-      where: { type: 'PURCHASE' },
-      _max: { date: true },
-    })),
-    safeRead('client orders', prisma.clientOrder.findMany({
-      where: { deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      take: 40,
-      include: {
-        client: true,
-        project: true,
-        items: { include: { product: true } },
-      },
-    })),
-    safeRead('deliveries', prisma.delivery.findMany({
-      where: { deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      take: 40,
-      select: {
-        deliveryId: true,
-        drNumber: true,
-        status: true,
-        eta: true,
-        receivedAt: true,
-        itemsCount: true,
-        assignedDeliveryGuy: { select: { fullName: true } },
-        clientOrder: {
-          select: {
-            client: { select: { clientName: true } },
-            project: { select: { projectName: true } },
-          },
-        },
-      },
-    })),
+async function buildSnapshot(filters) {
+  const products = await prisma.product.findMany({ where: { deletedAt: null }, orderBy: { itemName: 'asc' } });
+  const selectedIds = products.filter((product) => filters.product === 'all' || findThortexProduct(product.itemName)?.key === filters.product).map((product) => product.productId);
+  const date = { gte: new Date(filters.from + 'T00:00:00.000Z'), lte: new Date(filters.to + 'T23:59:59.999Z') };
+  const [transactions, purchases, orders, deliveries] = await Promise.all([
+    prisma.stockTransaction.findMany({ where: { date, productId: { in: selectedIds } }, orderBy: [{ date: 'asc' }, { transactionId: 'asc' }] }),
+    prisma.stockTransaction.groupBy({ by: ['productId'], where: { type: 'PURCHASE' }, _max: { date: true } }),
+    prisma.clientOrder.findMany({
+      where: { deletedAt: null, orderDate: date, ...(filters.product === 'all' ? {} : { items: { some: { productId: { in: selectedIds } } } }) },
+      include: { client: true, project: true, items: { include: { product: true } } }, orderBy: { createdAt: 'desc' },
+    }),
+    prisma.delivery.findMany({
+      where: { deletedAt: null, createdAt: date, ...(filters.product === 'all' ? {} : { items: { some: { orderItem: { productId: { in: selectedIds } } } } }) },
+      include: { assignedDeliveryGuy: { select: { fullName: true } }, clientOrder: { include: { client: true } } }, orderBy: { createdAt: 'desc' },
+    }),
   ]);
-
-  return { products, purchases, clientOrders, deliveries };
+  return {
+    products: products.filter((product) => selectedIds.includes(product.productId) && (filters.source === 'all' || (filters.source === 'simulated' ? product.itemName.startsWith('[SIMULATED]') : !product.itemName.startsWith('[SIMULATED]')))), purchases, transactions,
+    clientOrders: orders.filter((order) => matchesSource(order, filters.source)),
+    deliveries: deliveries.filter((delivery) => matchesSource(delivery, filters.source)),
+    filters,
+  };
 }
-
 function compactSnapshot(snapshot, fallback) {
   const isOllama = AI_PROVIDER === 'ollama';
   const rankedWarehouseRisks = [...fallback.warehouseRisks]
@@ -508,6 +429,8 @@ function compactSnapshot(snapshot, fallback) {
 
   return {
     inventorySummary,
+    dataCoverage: fallback.dataCoverage,
+    inventoryScope: fallback.inventoryScope,
     topWarehouseRisks: rankedWarehouseRisks,
     topReorderSuggestions: rankedReorders,
     topOrders: rankedOrders,
@@ -529,111 +452,28 @@ function compactSnapshot(snapshot, fallback) {
 }
 
 function sanitizeAnalysis(ai, fallback) {
-  const source = ai && typeof ai === 'object' ? ai : {};
-  const generatedAt = new Date().toISOString();
-  const resolvedModel = String(source.__providerModel || AI_MODEL);
-  const recommendations = Array.isArray(source.recommendations) && source.recommendations.length
-    ? source.recommendations.slice(0, 3).map((item, index) => ({
-        title: String(item.title || `Recommendation ${index + 1}`),
-        message: String(item.message || fallback.recommendations[index]?.message || ''),
-        priority: normalizePriority(item.priority, fallback.recommendations[index]?.priority || 'medium'),
-        action: String(item.action || fallback.recommendations[index]?.action || 'Review with operations.'),
-      }))
-    : fallback.recommendations;
-
-  const warehouseRisks = Array.isArray(source.warehouseRisks) && source.warehouseRisks.length
-    ? source.warehouseRisks.slice(0, 25).map((item, index) => {
-        const fallbackItem = fallback.warehouseRisks[index] || fallback.warehouseRisks[0];
-        return {
-          itemId: String(item.itemId || fallbackItem?.itemId || index + 1),
-          itemName: String(item.itemName || fallbackItem?.itemName || 'Inventory item'),
-          riskLevel: normalizePriority(item.riskLevel, fallbackItem?.riskLevel || 'medium'),
-          reason: String(item.reason || fallbackItem?.reason || 'AI flagged this item for review.'),
-          recommendedAction: String(item.recommendedAction || fallbackItem?.recommendedAction || 'Review stock movement and purchasing plan.'),
-          shelfLifeDays: clampNumber(item.shelfLifeDays, fallbackItem?.shelfLifeDays || 0),
-          daysInStock: clampNumber(item.daysInStock, fallbackItem?.daysInStock || 0),
-          daysToExpiry: Number.isFinite(Number(item.daysToExpiry)) ? Number(item.daysToExpiry) : fallbackItem?.daysToExpiry,
-        };
-      })
-    : fallback.warehouseRisks;
-
-  const reorderSuggestions = Array.isArray(source.reorderSuggestions) && source.reorderSuggestions.length
-    ? source.reorderSuggestions.slice(0, 20).map((item, index) => {
-        const fallbackItem = fallback.reorderSuggestions[index] || fallback.reorderSuggestions[0];
-        const suggestedQty = clampNumber(item.suggestedQty, fallbackItem?.suggestedQty || 10, 1);
-        return {
-          itemId: String(item.itemId || fallbackItem?.itemId || index + 1),
-          itemName: String(item.itemName || fallbackItem?.itemName || 'Inventory item'),
-          currentQty: clampNumber(item.currentQty, fallbackItem?.currentQty || 0),
-          suggestedQty,
-          estimatedCost: clampNumber(item.estimatedCost, fallbackItem?.estimatedCost || 0),
-        };
-      })
-    : fallback.reorderSuggestions;
-
-  const fraudAlerts = Array.isArray(source.fraudAlerts)
-    ? source.fraudAlerts.slice(0, 10).map((item, index) => ({
-        id: String(item.id || `ai-alert-${index + 1}`),
-        orderId: String(item.orderId || ''),
-        orderNumber: String(item.orderNumber || 'Order review'),
-        severity: normalizeSeverity(item.severity),
-        message: String(item.message || 'AI recommends reviewing this order or purchase document.'),
-        timestamp: item.timestamp ? new Date(item.timestamp).toISOString() : generatedAt,
-      }))
-    : fallback.fraudAlerts;
-
-  const rawLogistics = source.logisticsSnapshot || {};
-  const logisticsSnapshot = {
-    activeRoutes: clampNumber(rawLogistics.activeRoutes, fallback.logisticsSnapshot.activeRoutes),
-    stopsToday: clampNumber(rawLogistics.stopsToday, fallback.logisticsSnapshot.stopsToday),
-    onTimeRate: Math.min(100, clampNumber(rawLogistics.onTimeRate, fallback.logisticsSnapshot.onTimeRate)),
-    recommendation: String(rawLogistics.recommendation || fallback.logisticsSnapshot.recommendation),
-    dispatches: Array.isArray(rawLogistics.dispatches) && rawLogistics.dispatches.length
-      ? rawLogistics.dispatches.slice(0, 5).map((item, index) => ({
-          route: String(item.route || `Route ${index + 1}`),
-          status: String(item.status || 'Watch'),
-          note: String(item.note || 'AI recommends monitoring this dispatch.'),
-        }))
-      : fallback.logisticsSnapshot.dispatches,
-  };
-
-  const derivedSummary = recommendations.length
-    ? recommendations.map((item) => item.message).filter(Boolean).join(' ')
-    : '';
-
-  const summary = ai
-    ? String(
-        source.summary ||
-          derivedSummary ||
-          'AI analysis completed successfully with structured operational recommendations.',
-      )
-    : String(fallback.summary);
-
   return {
+    ...lockAnalysisMetrics(ai, fallback),
     enabled: Boolean(ai),
     provider: ai ? AI_PROVIDER : fallback.provider,
-    model: resolvedModel,
-    generatedAt,
+    model: String(ai?.__providerModel || AI_MODEL),
+    generatedAt: new Date().toISOString(),
     availabilityReason: ai ? 'available' : fallback.availabilityReason,
-    availabilityMessage: ai ? `${providerConfig.name} analysis is available.` : fallback.availabilityMessage,
-    summary,
-    recommendations,
-    warehouseRisks,
-    reorderSuggestions,
-    fraudAlerts,
-    logisticsSnapshot,
+    availabilityMessage: ai ? `${providerConfig.name} advisory text is available. Numerical metrics are calculated from database records.` : fallback.availabilityMessage,
   };
 }
-
-async function generateAiAnalysis(force = false) {
-  if (!force && analysisCache && Date.now() - analysisCache.createdAt < AI_CACHE_MS) {
-    return analysisCache.data;
+async function generateAiAnalysis(force = false, query = {}) {
+  const filters = parseInsightFilters(query);
+  const cacheKey = JSON.stringify(filters);
+  const cached = analysisCaches.get(cacheKey);
+  if (!force && cached && Date.now() - cached.createdAt < AI_CACHE_MS) {
+    return cached.data;
   }
 
-  if (analysisPromise) return analysisPromise;
+  if (analysisPromises.has(cacheKey)) return analysisPromises.get(cacheKey);
 
-  analysisPromise = (async () => {
-    const snapshot = await buildSnapshot();
+  const analysisPromise = (async () => {
+    const snapshot = await buildSnapshot(filters);
     const fallback = buildLocalAnalysis(snapshot);
     let ai = null;
     let failure = null;
@@ -646,15 +486,13 @@ async function generateAiAnalysis(force = false) {
           role: 'system',
           content:
             isOllama
-              ? 'Return only compact JSON for an operations dashboard.'
-              : 'You are the AI operations analyst for Impex Engineering. Return only valid JSON. Keep the response short and based only on the summarized data provided.',
+              ? 'Return compact JSON with summary and recommendations only. Describe only the supplied facts. Do not invent statistics or forecasts.'
+              : 'You are the operations analyst for Impex Engineering. Return JSON with summary and recommendations only, based on the supplied metrics. Do not invent statistics, forecasts, discounts, or accusations of fraud. Distinguish simulated and existing records.',
         },
         {
           role: 'user',
           content: JSON.stringify({
-            task: isOllama
-              ? 'Schema:{summary,recommendations:[{title,message,priority,action}],warehouseRisks:[{itemId,itemName,riskLevel,reason,recommendedAction,shelfLifeDays,daysInStock,daysToExpiry}],reorderSuggestions:[{itemId,itemName,currentQty,suggestedQty,estimatedCost}],fraudAlerts:[{id,orderId,orderNumber,severity,message,timestamp}],logisticsSnapshot:{activeRoutes,stopsToday,onTimeRate,recommendation,dispatches:[{route,status,note}]}} Keep arrays tiny.'
-              : 'Return this JSON schema only: {summary:string,recommendations:[{title:string,message:string,priority:"low"|"medium"|"high"|"critical",action:string}],warehouseRisks:[{itemId:string,itemName:string,riskLevel:"low"|"medium"|"high"|"critical",reason:string,recommendedAction:string,shelfLifeDays:number,daysInStock:number,daysToExpiry:number}],reorderSuggestions:[{itemId:string,itemName:string,currentQty:number,suggestedQty:number,estimatedCost:number}],fraudAlerts:[{id:string,orderId:string,orderNumber:string,severity:"low"|"medium"|"high",message:string,timestamp:string}],logisticsSnapshot:{activeRoutes:number,stopsToday:number,onTimeRate:number,recommendation:string,dispatches:[{route:string,status:string,note:string}]}}. Keep lists short and concise.',
+            task: 'Return only {summary:string,recommendations:[{title:string,message:string,priority:"low"|"medium"|"high"|"critical",action:string}]}. At most three recommendations. Explain the selected data coverage and distinguish simulated records. Do not fabricate metrics.',
             snapshot: snapshotPayload,
           }),
         },
@@ -680,7 +518,7 @@ async function generateAiAnalysis(force = false) {
                 role: 'user',
                 content: JSON.stringify({
                   task:
-                    'Generate every widget on the AI Insights page. Use this exact schema: {summary:string,recommendations:[{title:string,message:string,priority:"low"|"medium"|"high"|"critical",action:string}],warehouseRisks:[{itemId:string,itemName:string,riskLevel:"low"|"medium"|"high"|"critical",reason:string,recommendedAction:string,shelfLifeDays:number,daysInStock:number,daysToExpiry:number}],reorderSuggestions:[{itemId:string,itemName:string,currentQty:number,suggestedQty:number,estimatedCost:number}],fraudAlerts:[{id:string,orderId:string,orderNumber:string,severity:"low"|"medium"|"high",message:string,timestamp:string}],logisticsSnapshot:{activeRoutes:number,stopsToday:number,onTimeRate:number,recommendation:string,dispatches:[{route:string,status:string,note:string}]}}',
+                    'Return only {summary:string,recommendations:[{title:string,message:string,priority:string,action:string}]}. At most three recommendations. Distinguish simulated records and never fabricate statistics.',
                   currency: 'PHP',
                   snapshot: compactSnapshot(snapshot, fallback),
                 }),
@@ -704,24 +542,24 @@ async function generateAiAnalysis(force = false) {
       data.availabilityMessage = failure.message;
       data.summary = `${fallback.summary} Reason: ${failure.message}`;
     }
-    analysisCache = { createdAt: Date.now(), data };
-    analysisPromise = null;
+    if (analysisCaches.size >= 32) analysisCaches.delete(analysisCaches.keys().next().value);
+    analysisCaches.set(cacheKey, { createdAt: Date.now(), data });
     return data;
   })();
+  analysisPromises.set(cacheKey, analysisPromise);
 
   try {
     return await analysisPromise;
-  } catch (err) {
-    analysisPromise = null;
-    throw err;
+  } finally {
+    analysisPromises.delete(cacheKey);
   }
 }
 
 router.get('/analysis', async (_req, res, next) => {
   try {
-    res.json(await generateAiAnalysis(false));
+    res.json(await generateAiAnalysis(false, _req.query));
   } catch (err) {
-    res.json(buildEmergencyAnalysis(err));
+    res.status(err.status || 503).json({ error: err.status === 400 ? err.message : 'Unable to read database records for insights. Try again after the database connection is restored.' });
   }
 });
 
@@ -779,8 +617,7 @@ router.get('/logistics-snapshot', async (_req, res, next) => {
 
 router.post('/refresh', async (_req, res, next) => {
   try {
-    analysisCache = null;
-    const analysis = await generateAiAnalysis(true);
+    const analysis = await generateAiAnalysis(true, _req.body);
     await prisma.auditLog.create({
       data: {
         userId: _req.user?.userId,
