@@ -14,6 +14,10 @@ it('filters audit pages by a calendar month preset and keeps the range in export
   render(<AuditLogsPage />);
   expect(screen.queryByLabelText('Audit month')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Choose audit date range' }));
+  expect(screen.getAllByRole('combobox', { name: 'Month:' })).toHaveLength(1);
+  expect(screen.getAllByRole('combobox', { name: 'Year:' })).toHaveLength(1);
+  expect(screen.queryByText('Month:')).not.toBeInTheDocument();
+  expect(screen.queryByText('Year:')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
