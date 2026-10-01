@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import type { DateRange } from 'react-day-picker';
+import type { DateRange, DropdownProps } from 'react-day-picker';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +32,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import PaginationNav from '@/components/PaginationNav';
 import TableExportMenu from '@/components/TableExportMenu';
 import { getAuditCalendarRange } from '@/utils/auditDateRange';
+
+function AuditCalendarDropdown({ name, value, onChange, children, 'aria-label': ariaLabel }: DropdownProps) {
+  return <select name={name} aria-label={ariaLabel} value={value} onChange={onChange} className="h-8 rounded-md border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">{children}</select>;
+}
 
 const actionColors: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
@@ -224,10 +228,10 @@ export default function AuditLogsPage() {
                   {dateFilter?.from ? `${format(dateFilter.from, 'MMM dd, yyyy')}${dateFilter.to ? ` – ${format(dateFilter.to, 'MMM dd, yyyy')}` : ''}` : 'Choose date range'}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <div className="flex flex-wrap gap-2 border-b p-3">
+              <PopoverContent className="w-[22rem] max-w-[calc(100vw-2rem)] p-0" align="end">
+                <div className="grid grid-cols-3 gap-2 border-b p-3">
                   {['This month', 'Last month', 'Last 30 days'].map((preset) => (
-                    <Button key={preset} variant="outline" size="sm" onClick={() => {
+                    <Button key={preset} variant="outline" size="sm" className="px-1 text-xs" onClick={() => {
                       const today = new Date();
                       const from = new Date(today);
                       let to = today;
@@ -244,8 +248,16 @@ export default function AuditLogsPage() {
                 </div>
                 <p className="px-3 pt-3 text-xs text-muted-foreground">Select a start date, then an end date.</p>
                 <Calendar
+                  className="flex justify-center p-3"
                   mode="range"
                   captionLayout="dropdown-buttons"
+                  components={{ Dropdown: AuditCalendarDropdown }}
+                  classNames={{
+                    caption: 'relative flex h-9 items-center justify-center px-9',
+                    caption_label: 'sr-only',
+                    caption_dropdowns: 'flex items-center justify-center gap-2',
+                    vhidden: 'sr-only',
+                  }}
                   selected={dateFilter}
                   fromDate={new Date(2020, 0, 1)}
                   toDate={new Date()}
