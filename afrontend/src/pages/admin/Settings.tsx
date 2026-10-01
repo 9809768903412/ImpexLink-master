@@ -47,6 +47,7 @@ import {
 } from '@/lib/roles';
 import { toPublicFileUrl } from '@/lib/files';
 import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
+import TableExportMenu from '@/components/TableExportMenu';
 
 // TODO: Replace with real data
 export default function SettingsPage() {
@@ -935,10 +936,32 @@ export default function SettingsPage() {
                     <CardTitle>User Management</CardTitle>
                     <CardDescription>Review client approvals, manage staff access, and archive inactive accounts.</CardDescription>
                   </div>
-                  <Button onClick={() => setIsAddUserOpen(true)}>
-                    <Plus size={16} className="mr-2" />
-                    Add User
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <TableExportMenu
+                      title="User Accounts"
+                      filename="user-accounts"
+                      columns={[
+                        { header: 'Name', value: (account) => account.name },
+                        { header: 'Email', value: (account) => account.email },
+                        { header: 'Primary Role', value: (account) => account.role },
+                        { header: 'All Roles', value: (account) => account.roles || [account.role] },
+                        { header: 'Status', value: (account) => account.status || 'ACTIVE' },
+                      ]}
+                      currentRows={filteredUsers}
+                      allRows={filteredUsers}
+                      totalItems={filteredUsers.length}
+                      filters={[
+                        { label: 'Search', value: userSearch },
+                        { label: 'Role', value: userRoleFilter !== 'all' ? userRoleFilter : '' },
+                        { label: 'Status', value: userStatusFilter !== 'all' ? userStatusFilter : '' },
+                        { label: 'View', value: userView },
+                      ]}
+                    />
+                    <Button onClick={() => setIsAddUserOpen(true)}>
+                      <Plus size={16} className="mr-2" />
+                      Add User
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">

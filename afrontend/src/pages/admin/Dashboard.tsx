@@ -30,6 +30,7 @@ import type {
   StockTransaction,
   UserRole,
 } from '@/types';
+import TableExportMenu from '@/components/TableExportMenu';
 
 type DashboardStats = {
   pendingRequests: number;
@@ -289,8 +290,26 @@ export default function StaffDashboard() {
       <div className="grid gap-6 xl:grid-cols-[1.3fr_1fr]">
         <Card className="rounded-2xl">
           <CardHeader>
-            <CardTitle>Pending Request Queue</CardTitle>
-            <CardDescription>Latest material requests waiting for action</CardDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Pending Request Queue</CardTitle>
+                <CardDescription>Latest material requests waiting for action</CardDescription>
+              </div>
+              <TableExportMenu
+                title="Pending Request Queue"
+                filename="pending-request-queue"
+                columns={[
+                  { header: 'Request ID', value: (request) => request.requestNumber },
+                  { header: 'Project', value: (request) => request.projectName },
+                  { header: 'Requested By', value: (request) => request.requestedBy },
+                  { header: 'Date', value: (request) => new Date(request.date).toLocaleString('en-PH') },
+                  { header: 'Status', value: (request) => getRequestStatusLabel(request.status) },
+                ]}
+                currentRows={pendingRequests}
+                allRows={pendingRequests}
+                totalItems={pendingRequests.length}
+              />
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -798,7 +817,6 @@ export default function StaffDashboard() {
     </div>
   );
 }
-
 
 
 

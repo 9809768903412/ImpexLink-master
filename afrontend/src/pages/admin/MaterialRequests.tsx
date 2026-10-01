@@ -34,6 +34,7 @@ import type { MaterialRequest, UrgencyLevel, Project, InventoryItem } from '@/ty
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { printHtml } from '@/utils/print';
+import TableExportMenu from '@/components/TableExportMenu';
 import { useResource } from '@/hooks/use-resource';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
@@ -113,6 +114,17 @@ export default function MaterialRequestsPage() {
   const approvedRequests = filteredByStatus.filter((r) => r.status === 'approved');
   const rejectedRequests = filteredByStatus.filter((r) => r.status === 'rejected');
   const fulfilledRequests = filteredByStatus.filter((r) => r.status === 'fulfilled');
+  const activeExportRequests = activeTab === 'pending'
+    ? pendingRequests
+    : activeTab === 'president'
+      ? presidentRequests
+      : activeTab === 'approved'
+        ? approvedRequests
+        : activeTab === 'rejected'
+          ? rejectedRequests
+          : activeTab === 'fulfilled'
+            ? fulfilledRequests
+            : filteredByStatus;
   const canApproveSelected =
     Boolean(selectedRequest) &&
     canApprove &&
@@ -510,6 +522,34 @@ export default function MaterialRequestsPage() {
           <p className="text-xs text-muted-foreground">
             Last updated {new Date(lastUpdated).toLocaleTimeString()}
           </p>
+        )}
+        {activeTab !== 'create' && (
+          <TableExportMenu
+            title="Material Requests"
+            filename="material-requests"
+            columns={[
+              { header: 'Request ID', value: (request) => request.requestNumber },
+              { header: 'Project', value: (request) => request.projectName },
+              { header: 'Requested By', value: (request) => request.requestedBy },
+              { header: 'Date', value: (request) => new Date(request.date).toLocaleString('en-PH') },
+              { header: 'Urgency', value: (request) => request.urgency },
+              { header: 'Status', value: (request) => request.status },
+              { header: 'Estimated Cost', value: (request) => `PHP ${request.estimatedCost?.toLocaleString() || '0'}` },
+            ]}
+            currentRows={activeExportRequests}
+            allRows={activeExportRequests}
+            page={1}
+            pageSize={Math.max(activeExportRequests.length, 1)}
+            totalPages={1}
+            totalItems={activeExportRequests.length}
+            filters={[
+              { label: 'Search', value: searchTerm },
+              { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
+              { label: 'View', value: activeTab },
+              { label: 'Sort', value: `${sortKey} ${sortDir}` },
+            ]}
+            disabled={requestsLoading}
+          />
         )}
       </div>
 

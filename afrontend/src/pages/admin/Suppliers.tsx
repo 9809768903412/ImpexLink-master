@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Edit, Plus, Search, Trash2 } from 'lucide-react';
+import { Edit, Plus, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -32,7 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Supplier } from '@/types';
 import PaginationNav from '@/components/PaginationNav';
-import { downloadCsv } from '@/utils/csv';
+import TableExportMenu from '@/components/TableExportMenu';
 
 type SupplierForm = {
   supplierName: string;
@@ -202,25 +202,15 @@ export default function SuppliersPage() {
     }
   };
 
-  const exportSuppliers = async () => {
-    try {
-      const response = await apiClient.get('/suppliers', { params: { page: 1, pageSize: 10000 } });
-      const payload = response.data;
-      const rows: Supplier[] = payload?.data || payload || suppliers;
-      downloadCsv(`suppliers-${new Date().toISOString().slice(0, 10)}.csv`, [
-        ['Company Name', 'Country', 'TIN', 'Contact Person', 'Contact Number', 'Address'],
-        ...rows.map((supplier) => [
-          supplier.name,
-          supplier.country || 'Philippines',
-          supplier.tin || '',
-          supplier.contactPerson || '',
-          supplier.phone || '',
-          supplier.address || '',
-        ]),
-      ]);
-    } catch {
-      toast({ title: 'Export failed', description: 'Unable to prepare supplier CSV.', variant: 'destructive' });
-    }
+  const loadExportSuppliers = async (fromPage: number, toPage: number) => {
+    const responses = await Promise.all(
+      Array.from({ length: toPage - fromPage + 1 }, (_, index) => fromPage + index).map((exportPage) =>
+        apiClient.get('/suppliers', {
+          params: { q: searchQuery || undefined, page: exportPage, pageSize, sortBy: 'supplierName', sortDir: 'asc' },
+        }),
+      ),
+    );
+    return responses.flatMap((response) => response.data?.data || response.data || []);
   };
 
   return (
@@ -231,10 +221,26 @@ export default function SuppliersPage() {
           <p className="text-muted-foreground">Manage vendor records used by purchase orders and stock-in history</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="outline" onClick={exportSuppliers}>
-            <Download size={16} className="mr-2" />
-            Export CSV
-          </Button>
+          <TableExportMenu
+            title="Supplier Directory"
+            filename="suppliers"
+            columns={[
+              { header: 'Company Name', value: (supplier) => supplier.name },
+              { header: 'Country', value: (supplier) => supplier.country || 'Philippines' },
+              { header: 'TIN', value: (supplier) => supplier.tin || '' },
+              { header: 'Contact Person', value: (supplier) => supplier.contactPerson || '' },
+              { header: 'Contact Number', value: (supplier) => supplier.phone || '' },
+              { header: 'Address', value: (supplier) => supplier.address || '' },
+            ]}
+            currentRows={suppliers}
+            loadRows={loadExportSuppliers}
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            filters={[{ label: 'Search', value: searchQuery }]}
+            disabled={loading}
+          />
           {canManage && (
             <Button onClick={openCreate}>
               <Plus size={16} className="mr-2" />

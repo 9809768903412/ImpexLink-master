@@ -44,12 +44,12 @@ import { apiClient } from '@/api/client';
 import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
 import { printHtml } from '@/utils/print';
-import { downloadCsv } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { canManageClientOrders } from '@/lib/roles';
 import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
+import TableExportMenu from '@/components/TableExportMenu';
 import { useSearchParams } from 'react-router-dom';
 import { toPublicFileUrl } from '@/lib/files';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
@@ -488,27 +488,31 @@ export default function ClientOrdersPage() {
                     <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const rows = [
-                      ['Order #', 'Client', 'Project', 'Status', 'Payment', 'Total', 'Created'],
-                      ...orders.map((o) => [
-                        o.orderNumber,
-                        o.clientName,
-                        o.projectName || '',
-                        o.status,
-                        o.paymentStatus,
-                        String(o.total),
-                        o.createdAt,
-                      ]),
-                    ];
-                    downloadCsv(`client-orders-${format(new Date(), 'yyyy-MM-dd')}.csv`, rows);
-                  }}
-                >
-                  <Download size={16} className="mr-2" />
-                  Export CSV
-                </Button>
+                <TableExportMenu
+                  title="Client Orders"
+                  filename="client-orders"
+                  columns={[
+                    { header: 'Order #', value: (order) => order.orderNumber },
+                    { header: 'Client', value: (order) => order.clientName },
+                    { header: 'Project', value: (order) => order.projectName || '' },
+                    { header: 'Status', value: (order) => order.status },
+                    { header: 'Payment', value: (order) => order.paymentStatus },
+                    { header: 'Total', value: (order) => `PHP ${order.total.toLocaleString()}` },
+                    { header: 'Created', value: (order) => format(new Date(order.createdAt), 'yyyy-MM-dd HH:mm') },
+                  ]}
+                  currentRows={pagedOrders}
+                  allRows={filteredOrders}
+                  page={ordersPage}
+                  pageSize={ordersPageSize}
+                  totalPages={Math.max(Math.ceil(totalFilteredOrders / ordersPageSize), 1)}
+                  totalItems={totalFilteredOrders}
+                  filters={[
+                    { label: 'Search', value: searchTerm },
+                    { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
+                    { label: 'Sort', value: `${sortKey} ${sortDir}` },
+                  ]}
+                  disabled={ordersLoading}
+                />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline">Columns</Button>
