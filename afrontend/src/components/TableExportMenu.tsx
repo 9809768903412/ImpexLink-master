@@ -98,6 +98,9 @@ export default function TableExportMenu<T>({
           title,
           sourcePages,
           filters,
+          rowsPerPage: pageSize,
+          sourceStartPage: scope === 'current' ? page : scope === 'range' ? fromPage : 1,
+          sourceTotalPages: totalPages,
           headers: columns.map(({ header }) => header),
           rows: rows.map((row) => columns.map(({ value }) => stringifyExportValue(value(row)))),
         });
@@ -169,7 +172,7 @@ export default function TableExportMenu<T>({
           )}
           {validationError && <p className="text-sm text-destructive">{validationError}</p>}
           <p className="text-xs text-muted-foreground">
-            Active search and filters are preserved. Printed reports include source pages and Page X of Y.
+            Active search and filters are preserved. Each table page starts on a separate printed sheet with its source page number.
           </p>
         </div>
 
@@ -184,4 +187,3 @@ export default function TableExportMenu<T>({
     </Dialog>
   );
 }
-

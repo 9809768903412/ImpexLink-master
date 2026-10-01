@@ -66,6 +66,8 @@ export function printHtml(title: string, bodyHtml: string) {
           table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
           th, td { border-bottom: 1px solid #e5e7eb; padding: 8px 6px; }
           th { text-align: left; font-weight: 600; background: #f9fafb; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
           .meta { margin: 4px 0; font-size: 12px; color: #555; }
           .meta-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
           .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 10px 0 12px; }
@@ -117,6 +119,8 @@ export function printTableReport({
   rows,
   filters = [],
   rowsPerPage = 20,
+  sourceStartPage = 1,
+  sourceTotalPages,
 }: {
   title: string;
   sourcePages: string;
@@ -124,6 +128,8 @@ export function printTableReport({
   rows: string[][];
   filters?: ExportFilter[];
   rowsPerPage?: number;
+  sourceStartPage?: number;
+  sourceTotalPages?: number;
 }) {
   const pageCount = Math.max(Math.ceil(rows.length / rowsPerPage), 1);
   const generatedAt = new Date().toLocaleString();
@@ -135,6 +141,7 @@ export function printTableReport({
         <h1>${escapePrintHtml(title)}</h1>
         <div class="print-table-meta">
           <div><strong>Source records:</strong> ${escapePrintHtml(sourcePages)}</div>
+          <div><strong>Source page:</strong> ${sourceStartPage + pageIndex}${sourceTotalPages === undefined ? '' : ` of ${sourceTotalPages}`}</div>
           <div><strong>Rows exported:</strong> ${rows.length}</div>
           ${activeFilters.map(({ label, value }) => `<div><strong>${escapePrintHtml(label)}:</strong> ${escapePrintHtml(value)}</div>`).join('')}
         </div>
@@ -148,7 +155,7 @@ export function printTableReport({
         </table>
         <div class="print-sheet-footer">
           <span>Generated ${escapePrintHtml(generatedAt)}</span>
-          <span>Page ${pageIndex + 1} of ${pageCount}</span>
+          <span>Source page ${sourceStartPage + pageIndex}${sourceTotalPages === undefined ? '' : ` of ${sourceTotalPages}`} · Export sheet ${pageIndex + 1} of ${pageCount}</span>
         </div>
       </section>
     `;
