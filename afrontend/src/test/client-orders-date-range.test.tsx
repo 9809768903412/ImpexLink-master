@@ -16,10 +16,10 @@ it('requests a whole calendar month and preserves it in the order export', async
   vi.setSystemTime(new Date(2026, 9, 5));
   vi.mocked(apiClient.get).mockResolvedValue({ data: [] } as never);
   render(<MemoryRouter><ClientOrdersPage /></MemoryRouter>);
-  fireEvent.click(screen.getByRole('button', { name: 'Filter order date range' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Last month' }));
+  fireEvent.change(screen.getByLabelText('Order date from'), { target: { value: '2026-09-01' } });
+  fireEvent.change(screen.getByLabelText('Order date to'), { target: { value: '2026-09-30' } });
   await waitFor(() => {
-    const call = vi.mocked(apiClient.get).mock.calls.find((entry) => entry[0] === '/orders' && entry[1]?.params.dateFrom);
+    const call = vi.mocked(apiClient.get).mock.calls.find((entry) => entry[0] === '/orders' && entry[1]?.params.dateFrom && entry[1]?.params.dateTo);
     expect(call?.[1]?.params.dateFrom).toBe(new Date(2026, 8, 1).toISOString());
     expect(call?.[1]?.params.dateTo).toBe(new Date(2026, 8, 30, 23, 59, 59, 999).toISOString());
     expect(call?.[1]?.params.pageSize).toBeUndefined();

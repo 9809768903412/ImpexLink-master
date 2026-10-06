@@ -8,6 +8,8 @@ const normalizeRoles = (role?: RoleInput) =>
 export const hasRole = (role: RoleInput, target: UserRole) =>
   normalizeRoles(role).includes(target);
 
+export const deliveryRoleCanOpenPath = (path: string) => !path.startsWith('/admin') || ['/admin/settings', '/admin/messages', '/admin/notifications'].includes(path);
+
 export const ROLE_LABELS: Record<UserRole, string> = {
   president: 'President',
   admin: 'Admin',

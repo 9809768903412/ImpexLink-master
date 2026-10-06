@@ -54,6 +54,7 @@ import {
   canViewNotifications,
   canViewMessages,
   canAccessSettings,
+  deliveryRoleCanOpenPath,
 } from "@/lib/roles";
 
 const queryClient = new QueryClient();
@@ -78,8 +79,7 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
   const logisticsOnly = roleList.some((role) => ['driver', 'delivery_guy'].includes(role));
   if (
     logisticsOnly &&
-    location.pathname.startsWith('/admin') &&
-    !['/admin/settings', '/admin/messages'].includes(location.pathname)
+    !deliveryRoleCanOpenPath(location.pathname)
   ) {
     return <Navigate to="/logistics" replace />;
   }

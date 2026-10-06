@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import type { DateRange, DropdownProps } from 'react-day-picker';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,9 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Search, Calendar as CalendarIcon, History } from 'lucide-react';
+import { Search, History } from 'lucide-react';
 import type { AuditLog, User } from '@/types';
 import { cn } from '@/lib/utils';
 import { useResource } from '@/hooks/use-resource';
@@ -31,11 +28,7 @@ import { getCache, setCache } from '@/hooks/cache';
 import { Skeleton } from '@/components/ui/skeleton';
 import PaginationNav from '@/components/PaginationNav';
 import TableExportMenu from '@/components/TableExportMenu';
-import { getAuditCalendarRange } from '@/utils/auditDateRange';
-
-function AuditCalendarDropdown({ name, value, onChange, children, 'aria-label': ariaLabel }: DropdownProps) {
-  return <select name={name} aria-label={ariaLabel} value={value} onChange={onChange} className="h-8 rounded-md border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">{children}</select>;
-}
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 const actionColors: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
@@ -68,8 +61,7 @@ export default function AuditLogsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<DateRange | undefined>();
-  const { dateFrom, dateTo } = getAuditCalendarRange(dateFilter?.from, dateFilter?.to);
+  const { range: dateFilter, setRange: setDateFilter, dateFrom, dateTo, filters: dateExportFilters } = useTableDateRange();
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -160,8 +152,7 @@ export default function AuditLogsPage() {
             { label: 'Search', value: searchTerm },
             { label: 'Action', value: actionFilter !== 'all' ? actionFilter : '' },
             { label: 'User', value: userFilter !== 'all' ? users.find((user) => user.id === userFilter)?.name || userFilter : '' },
-            { label: 'From date', value: dateFilter?.from ? format(dateFilter.from, 'yyyy-MM-dd') : '' },
-            { label: 'To date', value: dateFilter?.from ? format(dateFilter.to || dateFilter.from, 'yyyy-MM-dd') : '' },
+            ...dateExportFilters,
           ]}
           disabled={logsLoading}
         />
@@ -221,53 +212,7 @@ export default function AuditLogsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button aria-label="Choose audit date range" variant="outline" className={cn('justify-start', !dateFilter && 'text-muted-foreground')}>
-                  <CalendarIcon size={16} className="mr-2" />
-                  {dateFilter?.from ? `${format(dateFilter.from, 'MMM dd, yyyy')}${dateFilter.to ? ` – ${format(dateFilter.to, 'MMM dd, yyyy')}` : ''}` : 'Choose date range'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[22rem] max-w-[calc(100vw-2rem)] p-0" align="end">
-                <div className="grid grid-cols-3 gap-2 border-b p-3">
-                  {['This month', 'Last month', 'Last 30 days'].map((preset) => (
-                    <Button key={preset} variant="outline" size="sm" className="px-1 text-xs" onClick={() => {
-                      const today = new Date();
-                      const from = new Date(today);
-                      let to = today;
-                      if (preset === 'This month') from.setDate(1);
-                      else if (preset === 'Last month') {
-                        from.setDate(1);
-                        from.setMonth(from.getMonth() - 1);
-                        to = new Date(today.getFullYear(), today.getMonth(), 0);
-                      } else from.setDate(from.getDate() - 29);
-                      setDateFilter({ from, to });
-                      setLogsPage(1);
-                    }}>{preset}</Button>
-                  ))}
-                </div>
-                <p className="px-3 pt-3 text-xs text-muted-foreground">Select a start date, then an end date.</p>
-                <Calendar
-                  className="flex justify-center p-3"
-                  mode="range"
-                  captionLayout="dropdown-buttons"
-                  components={{ Dropdown: AuditCalendarDropdown }}
-                  classNames={{
-                    caption: 'relative flex h-9 items-center justify-center px-9',
-                    caption_label: 'sr-only',
-                    caption_dropdowns: 'flex items-center justify-center gap-2',
-                    vhidden: 'sr-only',
-                  }}
-                  selected={dateFilter}
-                  fromDate={new Date(2020, 0, 1)}
-                  toDate={new Date()}
-                  onSelect={(date) => {
-                    setDateFilter(date);
-                    setLogsPage(1);
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
+            <TableDateRangeFilter label="Audit date" range={dateFilter} onChange={(range) => { setDateFilter(range); setLogsPage(1); }} />
             {(actionFilter !== 'all' || userFilter !== 'all' || dateFilter) && (
               <Button
                 variant="ghost"
