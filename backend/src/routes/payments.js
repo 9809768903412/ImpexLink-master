@@ -1,4 +1,5 @@
 const express = require('express');
+const { dateRangeWhere } = require('../utils/dateRange');
 const prisma = require('../utils/prisma');
 const { requireAuth, requireRole, getRoleList } = require('../middleware/auth');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
@@ -148,6 +149,7 @@ router.get('/', async (req, res, next) => {
     const scopeWhere = await buildPaymentScope(req);
     const where = {
       AND: [
+        dateRangeWhere(req.query, 'createdAt'),
         scopeWhere,
         direction ? { direction } : {},
         status ? { status } : {},

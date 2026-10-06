@@ -108,7 +108,7 @@ export const canViewNotifications = (role?: RoleInput) => {
   const roles = normalizeRoles(role);
   return (
     roles.length > 0 &&
-    !roles.some((r) => ['client', 'warehouse_staff', 'delivery_guy', 'driver', 'receiver'].includes(r))
+    roles.some((r) => ADMIN_AREA_ROLES.includes(r) && r !== 'receiver')
   );
 };
 

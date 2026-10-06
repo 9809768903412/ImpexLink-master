@@ -48,9 +48,11 @@ import {
 import { toPublicFileUrl } from '@/lib/files';
 import { PhoneInputWithCountry } from '@/components/PhoneInputWithCountry';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 // TODO: Replace with real data
 export default function SettingsPage() {
+  const accountDates = useTableDateRange();
   const { user, updateUser, refreshUser } = useAuth();
   const roleList = user?.roles?.length ? user.roles : user?.role ? [user.role] : [];
   const canEditCompany = canManageUsers(roleList);
@@ -141,7 +143,7 @@ export default function SettingsPage() {
     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
     const statusValue = String(u.status || 'ACTIVE').toLowerCase();
     const matchesStatus = userStatusFilter === 'all' || statusValue === userStatusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
+    return matchesSearch && matchesRole && matchesStatus && accountDates.matches(u.createdAt);
   });
   const [newUser, setNewUser] = useState({
     name: '',
@@ -937,6 +939,7 @@ export default function SettingsPage() {
                     <CardDescription>Review client approvals, manage staff access, and archive inactive accounts.</CardDescription>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <TableDateRangeFilter label="Account created date" range={accountDates.range} onChange={accountDates.setRange} />
                     <TableExportMenu
                       title="User Accounts"
                       filename="user-accounts"
@@ -951,6 +954,7 @@ export default function SettingsPage() {
                       allRows={filteredUsers}
                       totalItems={filteredUsers.length}
                       filters={[
+                        ...accountDates.filters,
                         { label: 'Search', value: userSearch },
                         { label: 'Role', value: userRoleFilter !== 'all' ? userRoleFilter : '' },
                         { label: 'Status', value: userStatusFilter !== 'all' ? userStatusFilter : '' },

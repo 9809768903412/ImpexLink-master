@@ -87,6 +87,7 @@ router.get('/', requireAdmin, async (req, res, next) => {
     const clientsByEmail = new Map(clientRecords.map((client) => [String(client.email || '').toLowerCase(), client]));
     const data = users.map((user) => ({
       id: user.userId.toString(),
+      createdAt: user.createdAt.toISOString(),
       name: user.fullName,
       email: user.email,
       role: getPrimaryRole(user),

@@ -31,6 +31,7 @@ import type {
   UserRole,
 } from '@/types';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 type DashboardStats = {
   pendingRequests: number;
@@ -136,6 +137,7 @@ function QuickLinkCard({
 }
 
 export default function StaffDashboard() {
+  const requestDates = useTableDateRange();
   const navigate = useNavigate();
   const { user } = useAuth();
   const roleList = useMemo<UserRole[]>(
@@ -172,6 +174,7 @@ export default function StaffDashboard() {
         ? ['approved']
         : ['pending'];
   const pendingRequests = requests
+    .filter((request) => requestDates.matches(request.date))
     .filter((request) => reviewStatuses.includes(request.status))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -295,6 +298,7 @@ export default function StaffDashboard() {
                 <CardTitle>Pending Request Queue</CardTitle>
                 <CardDescription>Latest material requests waiting for action</CardDescription>
               </div>
+              <TableDateRangeFilter label="Request date" range={requestDates.range} onChange={requestDates.setRange} />
               <TableExportMenu
                 title="Pending Request Queue"
                 filename="pending-request-queue"
@@ -308,6 +312,7 @@ export default function StaffDashboard() {
                 currentRows={pendingRequests}
                 allRows={pendingRequests}
                 totalItems={pendingRequests.length}
+                filters={requestDates.filters}
               />
             </div>
           </CardHeader>
@@ -817,7 +822,5 @@ export default function StaffDashboard() {
     </div>
   );
 }
-
-
 
 

@@ -40,6 +40,7 @@ import PaginationNav from '@/components/PaginationNav';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 const INVENTORY_REASON_OPTIONS = [
   'Stock Adjustment',
@@ -61,6 +62,8 @@ const STOCK_ACTION_REASON_OPTIONS: Record<'restock' | 'issue' | 'adjust', string
 const UNIT_OPTIONS = ['Pieces', 'Gallons', 'Kilograms', 'Liters', 'Bundles', 'Kits', 'Sacks', 'Pairs', 'Rolls', 'Boxes', 'Sets'];
 
 export default function InventoryPage() {
+  const historyDates = useTableDateRange();
+  const itemDates = useTableDateRange();
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
   const canEditInventory = canManageInventory(roleInput);
@@ -141,10 +144,10 @@ export default function InventoryPage() {
           q: searchQuery || undefined,
           category: categoryFilter !== 'all' ? categoryFilter : undefined,
           status: statusFilter !== 'all' ? statusFilter : undefined,
-          page: 1,
-          pageSize: 1000,
           sortBy: sortKey === 'qty' ? 'qtyOnHand' : sortKey === 'price' ? 'unitPrice' : 'itemName',
           sortDir: 'desc',
+          dateFrom: itemDates.dateFrom,
+          dateTo: itemDates.dateTo,
         },
       });
       const payload = response.data;
@@ -183,7 +186,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     reloadInventory();
-  }, [categoryFilter, statusFilter, page, pageSize, searchQuery]);
+  }, [categoryFilter, statusFilter, page, pageSize, searchQuery, itemDates.dateFrom, itemDates.dateTo]);
 
   useEffect(() => {
     if (!newItem.category && categoryList.length > 0) {
@@ -250,7 +253,7 @@ export default function InventoryPage() {
     statusFilter === 'all'
       ? scopedInventory
       : scopedInventory.filter((item) => item.status === statusFilter);
-  const sortedInventory = filteredInventory;
+  const sortedInventory = filteredInventory.filter((item) => itemDates.matches(item.createdAt));
   const pageStart = (page - 1) * pageSize;
   const pageEnd = pageStart + pageSize;
   const pagedInventory = sortedInventory.slice(pageStart, pageEnd);
@@ -262,7 +265,7 @@ export default function InventoryPage() {
     ? transactions.filter((t) => t.itemId === selectedItem.id)
     : [];
   const selectedItemDisplayId = selectedItem ? getDisplayId(selectedItem) : '';
-  const itemTransactionsByDate = [...itemTransactions].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  const itemTransactionsByDate = [...itemTransactions].filter((transaction) => historyDates.matches(transaction.date)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
   const lastUpdatedTxn = itemTransactionsByDate[0];
   const lastRestockTxn = itemTransactionsByDate.find((t) => t.type === 'purchase');
   const monthlyUsage = itemTransactions
@@ -278,6 +281,7 @@ export default function InventoryPage() {
   };
 
   const handleItemClick = (item: InventoryItem) => {
+    historyDates.setRange(undefined);
     setSelectedItem(item);
     setIsDetailOpen(true);
     reloadTransactions();
@@ -510,7 +514,8 @@ export default function InventoryPage() {
             Last updated {new Date(lastUpdated).toLocaleTimeString()}
           </p>
         )}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <TableDateRangeFilter label="Item added date" range={itemDates.range} onChange={(range) => { itemDates.setRange(range); setPage(1); }} />
           <TableExportMenu
             title="Inventory"
             filename="inventory"
@@ -531,6 +536,7 @@ export default function InventoryPage() {
             totalPages={Math.max(Math.ceil(totalFilteredItems / pageSize), 1)}
             totalItems={totalFilteredItems}
             filters={[
+              ...itemDates.filters,
               { label: 'Search', value: searchQuery },
               { label: 'Category', value: categoryFilter !== 'all' ? categoryFilter : '' },
               { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
@@ -759,6 +765,22 @@ export default function InventoryPage() {
               {selectedItem?.name}
             </DialogDescription>
           </DialogHeader>
+          <div className="flex justify-end">
+            <TableDateRangeFilter label="Stock movement date" range={historyDates.range} onChange={historyDates.setRange} />
+            <TableExportMenu title={`Stock History — ${selectedItem?.name || ''}`} filename="inventory-stock-history"
+              columns={[
+                { header: 'Date', value: (transaction) => transaction.date },
+                { header: 'Type', value: (transaction) => transaction.type },
+                { header: 'Quantity change', value: (transaction) => transaction.qtyChange },
+                { header: 'Balance', value: (transaction) => transaction.newBalance },
+                { header: 'User', value: (transaction) => transaction.userName },
+                { header: 'Notes', value: (transaction) => transaction.notes || '' },
+              ]}
+              currentRows={itemTransactionsByDate} allRows={itemTransactionsByDate}
+              pageSize={Math.max(itemTransactionsByDate.length, 1)} totalItems={itemTransactionsByDate.length}
+              filters={historyDates.filters}
+            />
+          </div>
           <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
             <div className="rounded-md border p-3">
               <p className="text-muted-foreground">Last Updated</p>

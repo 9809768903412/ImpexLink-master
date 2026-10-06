@@ -1,4 +1,5 @@
 const express = require('express');
+const { dateRangeWhere } = require('../utils/dateRange');
 const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { requireAuth, requireRole, getRoleList } = require('../middleware/auth');
@@ -148,6 +149,7 @@ router.get('/', async (req, res, next) => {
     const onlyDeleted = req.query.onlyDeleted === 'true';
     const where = {
       AND: [
+        dateRangeWhere(req.query, 'createdAt'),
         getRequestScopeWhere(req),
         onlyDeleted ? { deletedAt: { not: null } } : includeDeleted ? {} : { deletedAt: null },
         q

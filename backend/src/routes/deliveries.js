@@ -1,4 +1,5 @@
 const express = require("express");
+const { dateRangeWhere } = require('../utils/dateRange');
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
@@ -809,6 +810,7 @@ router.get(
       const scopeWhere = await buildDeliveryScope(req);
       const where = {
         AND: [
+          dateRangeWhere(req.query, 'createdAt'),
           scopeWhere,
           onlyDeleted
             ? { deletedAt: { not: null } }

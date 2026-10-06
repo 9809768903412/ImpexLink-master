@@ -55,8 +55,10 @@ import {
   getClientOrderProgressStage,
 } from '@/lib/clientOrderProgress';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 export default function MyOrdersPage() {
+  const recordDates = useTableDateRange();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -111,9 +113,9 @@ export default function MyOrdersPage() {
         (delivery.projectName || '').toLowerCase().includes(query) ||
         delivery.items.some((item) => item.itemName.toLowerCase().includes(query));
       const matchesStatus = deliveryStatusFilter === 'all' || delivery.status === deliveryStatusFilter;
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && recordDates.matches(delivery.issuedAt);
     });
-  }, [deliverySearchTerm, deliveryStatusFilter, myDeliveries]);
+  }, [deliverySearchTerm, deliveryStatusFilter, myDeliveries, recordDates.dateFrom, recordDates.dateTo]);
   const projectStatusById = projects.reduce<Record<string, Project['status']>>((acc, project) => {
     acc[project.id] = project.status;
     return acc;
@@ -369,6 +371,8 @@ export default function MyOrdersPage() {
             ? 'SHIPPED'
             : orderStatusFilter.toUpperCase();
       const params: Record<string, string | number | undefined> = {
+        dateFrom: recordDates.dateFrom,
+        dateTo: recordDates.dateTo,
         page: ordersPage,
         pageSize: ordersPageSize,
         q: orderSearchTerm.trim() || undefined,
@@ -391,7 +395,7 @@ export default function MyOrdersPage() {
     } finally {
       setOrdersLoading(false);
     }
-  }, [orderSearchTerm, orderStatusFilter, ordersPage, ordersPageSize]);
+  }, [orderSearchTerm, orderStatusFilter, ordersPage, ordersPageSize, recordDates.dateFrom, recordDates.dateTo]);
 
   const loadExportOrders = async (fromPage: number, toPage: number) => {
     const statusParam = orderStatusFilter === 'all'
@@ -402,7 +406,7 @@ export default function MyOrdersPage() {
     const responses = await Promise.all(
       Array.from({ length: toPage - fromPage + 1 }, (_, index) => fromPage + index).map((exportPage) =>
         apiClient.get('/orders', {
-          params: { page: exportPage, pageSize: ordersPageSize, q: orderSearchTerm.trim() || undefined, status: statusParam },
+          params: { page: exportPage, pageSize: ordersPageSize, q: orderSearchTerm.trim() || undefined, status: statusParam, dateFrom: recordDates.dateFrom, dateTo: recordDates.dateTo },
         }),
       ),
     );
@@ -588,6 +592,7 @@ export default function MyOrdersPage() {
           <p className="text-muted-foreground">Everything you need in one place: orders, deliveries, and live tracking.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <TableDateRangeFilter label="Order / delivery date" range={recordDates.range} onChange={(range) => { recordDates.setRange(range); setOrdersPage(1); }} />
           {activeTab === 'my-orders' ? (
             <TableExportMenu
               title="My Orders"
@@ -608,6 +613,7 @@ export default function MyOrdersPage() {
               totalPages={Math.max(Math.ceil(ordersTotal / ordersPageSize), 1)}
               totalItems={ordersTotal}
               filters={[
+                ...recordDates.filters,
                 { label: 'Search', value: orderSearchTerm },
                 { label: 'Status', value: orderStatusFilter !== 'all' ? orderStatusFilter : '' },
               ]}
@@ -628,6 +634,7 @@ export default function MyOrdersPage() {
               allRows={filteredDeliveries}
               totalItems={filteredDeliveries.length}
               filters={[
+                ...recordDates.filters,
                 { label: 'Search', value: deliverySearchTerm },
                 { label: 'Status', value: deliveryStatusFilter !== 'all' ? deliveryStatusFilter : '' },
               ]}

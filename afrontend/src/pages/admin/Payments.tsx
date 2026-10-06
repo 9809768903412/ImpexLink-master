@@ -39,6 +39,7 @@ import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 const selectorPageSize = 8;
 
@@ -54,6 +55,7 @@ function methodLabel(value: string) {
 }
 
 export default function PaymentsPage() {
+  const paymentDates = useTableDateRange();
   const { user } = useAuth();
   const roleList = (user?.roles?.length ? user.roles : user?.role ? [user.role] : []).map((role) => String(role).toLowerCase());
   const isSalesAgent = roleList.includes('sales_agent');
@@ -93,8 +95,8 @@ export default function PaymentsPage() {
       params: {
         q: search || undefined,
         status: status !== 'all' ? status : undefined,
-        page: 1,
-        pageSize: 500,
+        dateFrom: paymentDates.dateFrom,
+        dateTo: paymentDates.dateTo,
       },
     });
     setPayments(response.data?.data || response.data || []);
@@ -105,7 +107,7 @@ export default function PaymentsPage() {
     if (canViewPaymentSummary) {
       apiClient.get('/payments/summary').then((res) => setSummary(res.data)).catch(() => undefined);
     }
-  }, [search, status, canViewPaymentSummary]);
+  }, [search, status, canViewPaymentSummary, paymentDates.dateFrom, paymentDates.dateTo]);
 
   useEffect(() => {
     if (canRecordPayments) {
@@ -119,7 +121,8 @@ export default function PaymentsPage() {
 
   useEffect(() => setPage(1), [search, status]);
 
-  const paged = useMemo(() => payments.slice((page - 1) * pageSize, page * pageSize), [payments, page, pageSize]);
+  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt));
+  const paged = datedPayments.slice((page - 1) * pageSize, page * pageSize);
   const orderPickerTotalPages = Math.max(Math.ceil(orders.length / selectorPageSize), 1);
   const poPickerTotalPages = Math.max(Math.ceil(purchaseOrders.length / selectorPageSize), 1);
   const visibleOrders = useMemo(
@@ -214,6 +217,7 @@ export default function PaymentsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <TableDateRangeFilter label="Payment date" range={paymentDates.range} onChange={(range) => { paymentDates.setRange(range); setPage(1); }} />
           <TableExportMenu
             title="Payments"
             filename="payments"
@@ -227,12 +231,13 @@ export default function PaymentsPage() {
               { header: 'Amount', value: (payment) => `PHP ${formatPesoAmount(payment.amount)}` },
             ]}
             currentRows={paged}
-            allRows={payments}
+            allRows={datedPayments}
             page={page}
             pageSize={pageSize}
-            totalPages={Math.max(Math.ceil(payments.length / pageSize), 1)}
-            totalItems={payments.length}
+            totalPages={Math.max(Math.ceil(datedPayments.length / pageSize), 1)}
+            totalItems={datedPayments.length}
             filters={[
+              ...paymentDates.filters,
               { label: 'Search', value: search },
               { label: 'Status', value: status !== 'all' ? status : '' },
             ]}
@@ -339,7 +344,7 @@ export default function PaymentsPage() {
           </Table>
         </CardContent>
       </Card>
-      <PaginationNav page={page} totalPages={Math.max(Math.ceil(payments.length / pageSize), 1)} onPageChange={setPage} />
+      <PaginationNav page={page} totalPages={Math.max(Math.ceil(datedPayments.length / pageSize), 1)} onPageChange={setPage} />
 
       <Dialog open={!!selectedPayment} onOpenChange={(nextOpen) => !nextOpen && setSelectedPayment(null)}>
         {selectedPayment && (
