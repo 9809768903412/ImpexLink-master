@@ -40,6 +40,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { RecentActivityPanel } from '@/components/RecentActivityPanel';
 import PaginationNav from '@/components/PaginationNav';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 import LiveTrackingDialog from '@/components/LiveTrackingDialog';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
@@ -95,6 +96,7 @@ function getDeliveryTimeline(delivery: Delivery) {
 
 // TODO: Replace with real data 
 export default function LogisticsPage() {
+  const deliveryDates = useTableDateRange();
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
   const roleList = (Array.isArray(roleInput) ? roleInput : roleInput ? [roleInput] : []).map((role) => String(role).toLowerCase());
@@ -159,7 +161,7 @@ export default function LogisticsPage() {
       delivery.clientName?.toLowerCase().includes(normalizedSearch) ||
       delivery.projectName?.toLowerCase().includes(normalizedSearch);
     const matchesStatus = statusFilter === 'all' || delivery.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && deliveryDates.matches(delivery.issuedAt);
   });
   const deliveriesPageStart = (deliveriesPage - 1) * deliveriesPageSize;
   const deliveriesPageEnd = deliveriesPageStart + deliveriesPageSize;
@@ -205,8 +207,6 @@ export default function LogisticsPage() {
         params: {
           q: searchTerm || undefined,
           status: statusFilter !== 'all' ? statusFilter : undefined,
-          page: 1,
-          pageSize: 1000,
           sortBy: sortKey,
           sortDir,
         },
@@ -914,6 +914,7 @@ export default function LogisticsPage() {
                     <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
+                <TableDateRangeFilter label="Delivery record date" range={deliveryDates.range} onChange={(range) => { deliveryDates.setRange(range); setDeliveriesPage(1); }} />
                 <TableExportMenu
                   title="Deliveries"
                   filename="deliveries"
@@ -936,6 +937,7 @@ export default function LogisticsPage() {
                   totalPages={Math.max(Math.ceil(totalFilteredDeliveries / deliveriesPageSize), 1)}
                   totalItems={totalFilteredDeliveries}
                   filters={[
+                    ...deliveryDates.filters,
                     { label: 'Search', value: searchTerm },
                     { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
                     { label: 'Sort', value: `${sortKey} ${sortDir}` },

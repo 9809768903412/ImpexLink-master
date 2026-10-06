@@ -1,4 +1,5 @@
 const express = require('express');
+const { dateRangeWhere } = require('../utils/dateRange');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
@@ -344,6 +345,7 @@ router.get('/', async (req, res, next) => {
     const scopeWhere = await buildOrderRoleScope(req);
     const where = {
       AND: [
+        dateRangeWhere(req.query, 'createdAt'),
         scopeWhere,
         onlyDeleted ? { deletedAt: { not: null } } : includeDeleted ? {} : { deletedAt: null },
         q

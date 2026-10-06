@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { printHtml } from '@/utils/print';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 import { useResource } from '@/hooks/use-resource';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
@@ -59,6 +60,7 @@ const MATERIAL_REQUEST_PURPOSE_OPTIONS = [
 ];
 
 export default function MaterialRequestsPage() {
+  const requestDates = useTableDateRange();
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
   const canApprove = canApproveMaterialRequests(roleInput);
@@ -76,12 +78,14 @@ export default function MaterialRequestsPage() {
   const { data: requests, setData: setRequests, loading: requestsLoading, lastUpdated } = useResource<MaterialRequest[]>(
     '/material-requests',
     [],
-    [searchTerm, sortKey, sortDir],
+    [searchTerm, sortKey, sortDir, requestDates.dateFrom, requestDates.dateTo],
     15_000,
     {
       q: searchTerm || undefined,
       sortBy: sortKey,
       sortDir,
+      dateFrom: requestDates.dateFrom,
+      dateTo: requestDates.dateTo,
     }
   );
   const { data: projects } = useResource<Project[]>(canCreate ? '/projects' : '', [], [user?.id, canCreate], 15_000, { picker: true });
@@ -106,7 +110,7 @@ export default function MaterialRequestsPage() {
     urgency: String(req.urgency || 'normal').toLowerCase() as UrgencyLevel,
   }));
   const scopedInventory = inventory;
-  const scopedRequests = normalizedRequests;
+  const scopedRequests = normalizedRequests.filter((request) => requestDates.matches(request.date));
   const filteredByStatus =
     statusFilter === 'all' ? scopedRequests : scopedRequests.filter((r) => r.status === statusFilter);
   const pendingRequests = filteredByStatus.filter((r) => r.status === 'pending');
@@ -523,6 +527,7 @@ export default function MaterialRequestsPage() {
             Last updated {new Date(lastUpdated).toLocaleTimeString()}
           </p>
         )}
+        <TableDateRangeFilter label="Request date" range={requestDates.range} onChange={(range) => { requestDates.setRange(range); }} />
         {activeTab !== 'create' && (
           <TableExportMenu
             title="Material Requests"
@@ -543,6 +548,7 @@ export default function MaterialRequestsPage() {
             totalPages={1}
             totalItems={activeExportRequests.length}
             filters={[
+              ...requestDates.filters,
               { label: 'Search', value: searchTerm },
               { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
               { label: 'View', value: activeTab },

@@ -50,6 +50,7 @@ import { calcLineAmounts, calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
 import PaginationNav from '@/components/PaginationNav';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 import { useSearchParams } from 'react-router-dom';
 import { toPublicFileUrl } from '@/lib/files';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
@@ -73,6 +74,7 @@ const paymentStatusColors: Record<string, string> = {
 
 // TODO: Replace with real data
 export default function ClientOrdersPage() {
+  const orderDates = useTableDateRange();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
@@ -127,10 +129,10 @@ export default function ClientOrdersPage() {
           params: {
             q: searchTerm || undefined,
             status: statusFilter !== 'all' ? statusFilter : undefined,
-            page: 1,
-            pageSize: 1000,
             sortBy: sortKey,
             sortDir,
+            dateFrom: orderDates.dateFrom,
+            dateTo: orderDates.dateTo,
           onlyDeleted: undefined,
           },
         });
@@ -160,7 +162,7 @@ export default function ClientOrdersPage() {
       } finally {
         setOrdersLoading(false);
       }
-    }, [ordersPage, ordersPageSize, searchTerm, statusFilter, sortKey, sortDir]);
+    }, [ordersPage, ordersPageSize, searchTerm, statusFilter, sortKey, sortDir, orderDates.dateFrom, orderDates.dateTo]);
 
   useEffect(() => {
     fetchOrders();
@@ -191,7 +193,7 @@ export default function ClientOrdersPage() {
     };
   }, [fetchOrders]);
 
-  const filteredOrders = orders;
+  const filteredOrders = orders.filter((order) => orderDates.matches(order.createdAt));
   const ordersPageStart = (ordersPage - 1) * ordersPageSize;
   const ordersPageEnd = ordersPageStart + ordersPageSize;
   const pagedOrders = filteredOrders.slice(ordersPageStart, ordersPageEnd);
@@ -488,6 +490,7 @@ export default function ClientOrdersPage() {
                     <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
+                <TableDateRangeFilter label="Order date" range={orderDates.range} onChange={(range) => { orderDates.setRange(range); setOrdersPage(1); }} />
                 <TableExportMenu
                   title="Client Orders"
                   filename="client-orders"
@@ -507,6 +510,7 @@ export default function ClientOrdersPage() {
                   totalPages={Math.max(Math.ceil(totalFilteredOrders / ordersPageSize), 1)}
                   totalItems={totalFilteredOrders}
                   filters={[
+                    ...orderDates.filters,
                     { label: 'Search', value: searchTerm },
                     { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
                     { label: 'Sort', value: `${sortKey} ${sortDir}` },

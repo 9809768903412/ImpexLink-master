@@ -19,8 +19,10 @@ import { printHtml } from '@/utils/print';
 import { calcTotalsFromItems, VAT_RATE } from '@/lib/vat';
 import { formatPesoAmount } from '@/lib/currency';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 export default function ClientInvoicesPage() {
+  const invoiceDates = useTableDateRange();
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState('');
@@ -36,7 +38,7 @@ export default function ClientInvoicesPage() {
       .catch(() => setOrders([]));
   }, [user?.id]);
 
-  const filtered = orders.filter((o) =>
+  const filtered = orders.filter((o) => invoiceDates.matches(o.createdAt)).filter((o) =>
     [o.orderNumber, o.clientName, o.projectName].some((v) =>
       String(v || '').toLowerCase().includes(search.toLowerCase())
     )
@@ -79,6 +81,7 @@ export default function ClientInvoicesPage() {
           <h2 className="text-2xl font-bold text-foreground">Invoices</h2>
           <p className="text-muted-foreground">All invoices for your orders</p>
         </div>
+        <TableDateRangeFilter label="Invoice order date" range={invoiceDates.range} onChange={invoiceDates.setRange} />
         <TableExportMenu
           title="Client Invoices"
           filename="client-invoices"
@@ -93,7 +96,7 @@ export default function ClientInvoicesPage() {
           currentRows={filtered}
           allRows={filtered}
           totalItems={filtered.length}
-          filters={[{ label: 'Search', value: search }]}
+          filters={[...invoiceDates.filters, { label: 'Search', value: search }]}
         />
       </div>
 

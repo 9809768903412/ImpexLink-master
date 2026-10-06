@@ -1,4 +1,5 @@
 const express = require('express');
+const { dateRangeWhere } = require('../utils/dateRange');
 const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse } = require('../utils/pagination');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -16,6 +17,7 @@ router.get('/', async (req, res, next) => {
     const productId = req.query.productId ? Number(req.query.productId) : null;
     const where = {
       AND: [
+        dateRangeWhere(req.query, 'date'),
         q
           ? {
               OR: [

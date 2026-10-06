@@ -14,6 +14,7 @@ export type UserRole =
   | 'client';
 
 export interface User {
+  createdAt?: string;
   id: string;
   name: string;
   email: string;
@@ -34,6 +35,7 @@ export interface User {
 export type ItemStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
 
 export interface InventoryItem {
+  createdAt?: string;
   id: string;
   name: string;
   category: string;

@@ -44,6 +44,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 const statusColors: Record<POStatus, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -56,6 +57,7 @@ const statusColors: Record<POStatus, string> = {
 
 // TODO: Replace with real data
 export default function PurchaseOrdersPage() {
+  const purchaseDates = useTableDateRange();
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(
     () => getCache<PurchaseOrder[]>('purchase-orders') || []
   );
@@ -108,8 +110,9 @@ export default function PurchaseOrdersPage() {
   const vatLabel = Math.round(VAT_RATE * 100);
   const poPageStart = (poPage - 1) * poPageSize;
   const poPageEnd = poPageStart + poPageSize;
-  const pagedPurchaseOrders = purchaseOrders.slice(poPageStart, poPageEnd);
-  const totalFilteredPOs = purchaseOrders.length;
+  const datedPurchaseOrders = purchaseOrders.filter((order) => purchaseDates.matches(order.date));
+  const pagedPurchaseOrders = datedPurchaseOrders.slice(poPageStart, poPageEnd);
+  const totalFilteredPOs = datedPurchaseOrders.length;
   const impactedOrders = selectedPO?.projectId
     ? clientOrders.filter((order) => order.projectId === selectedPO.projectId && !['delivered', 'cancelled'].includes(order.status))
     : clientOrders.filter((order) => !['delivered', 'cancelled'].includes(order.status)).slice(0, 8);
@@ -121,10 +124,10 @@ export default function PurchaseOrdersPage() {
         params: {
           q: searchTerm || undefined,
           status: statusFilter !== 'all' ? statusFilter : undefined,
-          page: 1,
-          pageSize: 1000,
           sortBy: sortKey,
           sortDir,
+          dateFrom: purchaseDates.dateFrom,
+          dateTo: purchaseDates.dateTo,
           onlyDeleted: undefined,
         },
       });
@@ -159,7 +162,7 @@ export default function PurchaseOrdersPage() {
 
   useEffect(() => {
     fetchPurchaseOrders();
-  }, [searchTerm, statusFilter, poPage, poPageSize, sortKey, sortDir]);
+  }, [searchTerm, statusFilter, poPage, poPageSize, sortKey, sortDir, purchaseDates.dateFrom, purchaseDates.dateTo]);
 
   useEffect(() => {
     setPoPage(1);
@@ -547,6 +550,7 @@ export default function PurchaseOrdersPage() {
                     <SelectItem value="asc">Asc</SelectItem>
                   </SelectContent>
                 </Select>
+                <TableDateRangeFilter label="PO date" range={purchaseDates.range} onChange={(range) => { purchaseDates.setRange(range); setPoPage(1); }} />
                 <TableExportMenu
                   title="Purchase Orders"
                   filename="purchase-orders"
@@ -560,12 +564,13 @@ export default function PurchaseOrdersPage() {
                     { header: 'Approved By', value: (po) => po.approvedBy || '' },
                   ]}
                   currentRows={pagedPurchaseOrders}
-                  allRows={purchaseOrders}
+                  allRows={datedPurchaseOrders}
                   page={poPage}
                   pageSize={poPageSize}
                   totalPages={Math.max(Math.ceil(totalFilteredPOs / poPageSize), 1)}
                   totalItems={totalFilteredPOs}
                   filters={[
+                    ...purchaseDates.filters,
                     { label: 'Search', value: searchTerm },
                     { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
                     { label: 'Sort', value: `${sortKey} ${sortDir}` },

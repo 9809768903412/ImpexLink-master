@@ -22,6 +22,7 @@ import { toPublicFileUrl } from '@/lib/files';
 import PaginationNav from '@/components/PaginationNav';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import TableExportMenu from '@/components/TableExportMenu';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 const paymentStatusColors: Record<string, string> = {
   pending: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -33,6 +34,7 @@ const paymentStatusColors: Record<string, string> = {
 };
 
 export default function ClientPaymentHistoryPage() {
+  const paymentDates = useTableDateRange();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -57,20 +59,21 @@ export default function ClientPaymentHistoryPage() {
       .catch(() => setPayments([]));
   }, [user?.id]);
 
-  const filtered = orders.filter((o) =>
+  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt));
+  const filtered = orders.filter((order) => paymentDates.matches(order.createdAt)).filter((o) =>
     [o.orderNumber, o.clientName, o.projectName].some((v) =>
       String(v || '').toLowerCase().includes(search.toLowerCase())
     )
   );
   const orderTotalPages = Math.max(Math.ceil(filtered.length / pageSize), 1);
-  const paymentTotalPages = Math.max(Math.ceil(payments.length / pageSize), 1);
+  const paymentTotalPages = Math.max(Math.ceil(datedPayments.length / pageSize), 1);
   const pagedOrders = useMemo(
     () => filtered.slice((ordersPage - 1) * pageSize, ordersPage * pageSize),
     [filtered, ordersPage, pageSize]
   );
   const pagedPayments = useMemo(
-    () => payments.slice((paymentsPage - 1) * pageSize, paymentsPage * pageSize),
-    [payments, paymentsPage, pageSize]
+    () => datedPayments.slice((paymentsPage - 1) * pageSize, paymentsPage * pageSize),
+    [datedPayments, paymentsPage, pageSize]
   );
   const vatLabel = Math.round(VAT_RATE * 100);
   const totalsByOrder = new Map(
@@ -126,6 +129,7 @@ export default function ClientPaymentHistoryPage() {
               <CardTitle>Payments</CardTitle>
               <CardDescription>Statuses are updated in real time</CardDescription>
             </div>
+            <TableDateRangeFilter label="Order / payment date" range={paymentDates.range} onChange={(range) => { paymentDates.setRange(range); setOrdersPage(1); setPaymentsPage(1); }} />
             <TableExportMenu
               title="Order Payment Status"
               filename="order-payment-status"
@@ -143,7 +147,7 @@ export default function ClientPaymentHistoryPage() {
               pageSize={pageSize}
               totalPages={orderTotalPages}
               totalItems={filtered.length}
-              filters={[{ label: 'Search', value: search }]}
+              filters={[...paymentDates.filters, { label: 'Search', value: search }]}
             />
           </div>
         </CardHeader>
@@ -209,11 +213,12 @@ export default function ClientPaymentHistoryPage() {
                 { header: 'Amount', value: (payment) => `PHP ${formatPesoAmount(payment.amount)}` },
               ]}
               currentRows={pagedPayments}
-              allRows={payments}
+              allRows={datedPayments}
               page={paymentsPage}
               pageSize={pageSize}
               totalPages={paymentTotalPages}
-              totalItems={payments.length}
+              totalItems={datedPayments.length}
+              filters={paymentDates.filters}
             />
           </div>
         </CardHeader>

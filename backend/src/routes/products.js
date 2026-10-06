@@ -1,4 +1,5 @@
 const express = require('express');
+const { dateRangeWhere } = require('../utils/dateRange');
 const prisma = require('../utils/prisma');
 const { parsePagination, buildPaginatedResponse, parseSort } = require('../utils/pagination');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -80,6 +81,7 @@ router.get('/', async (req, res, next) => {
     const onlyDeleted = req.query.onlyDeleted === 'true';
     const where = {
       AND: [
+        dateRangeWhere(req.query, 'createdAt'),
         onlyDeleted ? { deletedAt: { not: null } } : includeDeleted ? {} : { deletedAt: null },
         q
           ? {
@@ -107,6 +109,7 @@ router.get('/', async (req, res, next) => {
     ]);
     const data = products.map((p) => ({
       id: p.productId.toString(),
+      createdAt: p.createdAt.toISOString(),
       name: p.itemName,
       category: p.category?.categoryName || 'Uncategorized',
       unit: normalizeUnit(p.unit),
