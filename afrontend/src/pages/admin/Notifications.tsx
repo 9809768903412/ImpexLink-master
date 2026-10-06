@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/api/client';
 import { useNavigate } from 'react-router-dom';
 import PaginationNav from '@/components/PaginationNav';
+import { useAuth } from '@/contexts/AuthContext';
+import { deliveryRoleCanOpenPath } from '@/lib/roles';
 
 const typeIcons: Record<NotificationType, React.ReactNode> = {
   'low-stock': <Package className="text-yellow-600" size={20} />,
@@ -49,13 +51,20 @@ const typeLabels: Record<NotificationType, string> = {
   'ai-alert': 'AI Alert',
 };
 
-// TODO: Replace with real data
 export default function NotificationsPage() {
   const navigate = useNavigate();
-  const { data: notifications, setData: setNotifications, loading, reload } = useResource<Notification[]>(
+  const { user } = useAuth();
+  const params = useMemo(() => ({ viewer: user?.id || 'anonymous' }), [user?.id]);
+  const { data: notifications, setData: setNotifications, loading, error, reload } = useResource<Notification[]>(
     '/notifications',
-    []
+    [], [user?.id], 15_000, params
   );
+  useEffect(() => {
+    const timer = window.setInterval(() => reload(), 15_000);
+    const refresh = () => reload();
+    window.addEventListener('focus', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [reload]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [page, setPage] = useState(1);
   const pageSize = 8;
@@ -114,7 +123,9 @@ export default function NotificationsPage() {
       handleMarkAsRead(notification.id);
     }
     if (notification.link) {
-      navigate(notification.link);
+      const roles = user?.roles?.length ? user.roles : [user?.role];
+      const deliveryOnly = roles.some((role) => role === 'driver' || role === 'delivery_guy');
+      navigate(deliveryOnly && !deliveryRoleCanOpenPath(notification.link) ? '/logistics' : notification.link);
     }
   };
 
@@ -164,6 +175,7 @@ export default function NotificationsPage() {
       </div>
 
       <Tabs defaultValue="all" className="space-y-4">
+        {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"><span>Notifications could not be loaded. Please retry.</span><Button variant="outline" size="sm" onClick={() => reload()}>Retry</Button></div>}
         <TabsList>
           <TabsTrigger value="all" onClick={() => setFilter('all')}>
             All ({notifications.length})

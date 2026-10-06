@@ -13,7 +13,11 @@ function buildHistoryPlan(now = new Date()) {
       const submittedAt = date(3 + stop * 6);
       const items = Array.from({ length: 3 }, (_, line) => {
         const product = THORTEX_PRODUCTS[(index * 2 + line) % THORTEX_PRODUCTS.length];
-        const quantity = 1 + (month + stop * 3 + line) % 6;
+        // Deterministic training activity: quiet months, project peaks and a modest
+        // second-year increase. No fabricated values are added by the chart.
+        const seasonal = [0.45, 0.7, 1.25, 0.85, 1.6, 0.55, 0.95, 1.4, 0.75, 1.15, 1.8, 0.6][month % 12];
+        const projectPeak = month === 7 || month === 18 ? 1.7 : 1;
+        const quantity = Math.max(1, Math.round((1 + (month * 7 + stop * 3 + line * 5) % 9) * seasonal * projectPeak * (month >= 12 ? 1.15 : 1)));
         return { key: product.key, quantity, unitPrice: product.price };
       });
       orders.push({

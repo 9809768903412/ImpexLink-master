@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { format } from 'date-fns';
 import { Search, Filter, Plus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -258,7 +259,7 @@ export default function InventoryPage() {
   const pageEnd = pageStart + pageSize;
   const pagedInventory = sortedInventory.slice(pageStart, pageEnd);
   const totalFilteredItems = sortedInventory.length;
-  const tableColSpan = 7;
+  const tableColSpan = 8;
 
   // Get transactions for selected item
   const itemTransactions = selectedItem
@@ -522,6 +523,7 @@ export default function InventoryPage() {
             columns={[
               { header: 'Item ID', value: (item) => getDisplayId(item) },
               { header: 'Item Name', value: (item) => item.name },
+              { header: 'Date Added', value: (item) => item.createdAt ? format(new Date(item.createdAt), 'MMM dd, yyyy') : 'Not recorded' },
               { header: 'Category', value: (item) => item.category },
               { header: 'Unit', value: (item) => item.unit },
               { header: 'Qty On Hand', value: (item) => item.qtyOnHand },
@@ -614,6 +616,7 @@ export default function InventoryPage() {
                   <TableHead>Item ID</TableHead>
                   <TableHead>Item Name</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Date Added</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead>Stock Alert</TableHead>
@@ -643,6 +646,7 @@ export default function InventoryPage() {
                     </TableCell>
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.category}</TableCell>
+                    <TableCell className="whitespace-nowrap">{item.createdAt ? format(new Date(item.createdAt), 'MMM dd, yyyy') : 'Not recorded'}</TableCell>
                     <TableCell className="text-right">
                       {item.qtyOnHand.toLocaleString()} {item.unit}
                     </TableCell>
@@ -714,6 +718,7 @@ export default function InventoryPage() {
                   <p className="text-muted-foreground">Category</p>
                   <p className="font-medium">{selectedItem.category}</p>
                 </div>
+                <div><p className="text-muted-foreground">Date Added</p><p className="font-medium">{selectedItem.createdAt ? format(new Date(selectedItem.createdAt), 'MMM dd, yyyy') : 'Not recorded'}</p></div>
                 <div>
                   <p className="text-muted-foreground">Quantity</p>
                   <p className="font-medium">

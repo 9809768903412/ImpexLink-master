@@ -47,6 +47,10 @@ test('two years of full-flow estimates reconcile annual supply, stock, money and
   const now = new Date('2026-10-02T00:00:00Z');
   const plan = buildHistoryPlan(now);
   const summary = validateHistoryPlan(plan);
+  const monthly = Array.from({ length: 24 }, (_, month) => plan.orders.filter((order) => order.month === month).reduce((sum, order) => sum + order.items.reduce((total, item) => total + item.quantity, 0), 0));
+  assert.ok(new Set(monthly).size > 12, 'Training months should not repeat a flat total');
+  assert.ok(monthly.some((value, index) => index > 0 && value < monthly[index - 1]), 'Include quieter months');
+  assert.ok(monthly.some((value, index) => index > 0 && value > monthly[index - 1]), 'Include busier months');
   assert.deepEqual(summary, { months: 24, orders: 96, supplierOrders: 2, stockIssues: 288, from: '2024-10-01', to: '2026-09-30' });
   for (let index = 0; index < plan.orders.length; index += 1) {
     const order = plan.orders[index];
