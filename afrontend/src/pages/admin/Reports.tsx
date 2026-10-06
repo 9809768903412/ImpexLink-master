@@ -29,6 +29,7 @@ import { downloadCsv } from '@/utils/csv';
 import PaginationNav from '@/components/PaginationNav';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import TableExportMenu from '@/components/TableExportMenu';
+import type { ExportFilter } from '@/utils/tableExport';
 
 const REPORT_PAGE_SIZE = 10;
 
@@ -322,6 +323,19 @@ export default function ReportsPage() {
   const vatLabel = Math.round(VAT_RATE * 100);
   const exportDateLabel = `${format(dateRange.from, 'MMM dd, yyyy')} - ${format(dateRange.to, 'MMM dd, yyyy')}`;
   const exportDateSlug = `${format(dateRange.from, 'yyyy-MM-dd')}_to_${format(dateRange.to, 'yyyy-MM-dd')}`;
+  const selectedProjectLabel = projectFilter === 'all'
+    ? ''
+    : projects.find((project) => String(project.id) === projectFilter)?.name || projectFilter;
+  const projectExportFilters: ExportFilter[] = [
+    { label: 'Project', value: selectedProjectLabel },
+    { label: 'Project status', value: projectStatusFilter === 'all' ? '' : projectStatusFilter },
+  ];
+  const deliveryExportFilters: ExportFilter[] = [
+    { label: 'Delivery status', value: deliveryStatusFilter === 'all' ? '' : deliveryStatusFilter },
+  ];
+  const paymentExportFilters: ExportFilter[] = [
+    { label: 'Payment status', value: paymentStatusFilter === 'all' ? '' : paymentStatusFilter },
+  ];
 
   const handleExport = (type: string) => {
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -510,7 +524,8 @@ export default function ReportsPage() {
     fileBase: string,
     title: string,
     headers: string[],
-    rows: Array<Array<string | number>>
+    rows: Array<Array<string | number>>,
+    extraFilters: ExportFilter[] = []
   ) => {
     const pageByTable: Record<string, number> = {
       'low-stock-action-list': lowStockPage,
@@ -537,7 +552,7 @@ export default function ReportsPage() {
         pageSize={REPORT_PAGE_SIZE}
         totalPages={tableTotalPages}
         totalItems={rows.length}
-        filters={[{ label: 'Export period', value: exportDateLabel }]}
+        filters={[{ label: 'Export period', value: exportDateLabel }, ...extraFilters]}
         className="h-8 px-2 text-xs"
       />
     );
@@ -906,7 +921,7 @@ export default function ReportsPage() {
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-3">
               <CardTitle>Project Details</CardTitle>
-              {tableExportButtons('project-details', 'Project Details', ['Project', 'Client', 'Status', 'Orders', 'Total Value', 'Last Order'], projectDetailRows)}
+              {tableExportButtons('project-details', 'Project Details', ['Project', 'Client', 'Status', 'Orders', 'Total Value', 'Last Order'], projectDetailRows, projectExportFilters)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -951,7 +966,7 @@ export default function ReportsPage() {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <CardTitle>Projects With No Orders</CardTitle>
-          {tableExportButtons('projects-with-no-orders', 'Projects With No Orders', ['Project', 'Client', 'Status'], projectsNoOrdersRows)}
+          {tableExportButtons('projects-with-no-orders', 'Projects With No Orders', ['Project', 'Client', 'Status'], projectsNoOrdersRows, projectExportFilters)}
         </CardHeader>
         <CardContent>
           <Table>
@@ -1127,7 +1142,7 @@ export default function ReportsPage() {
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-3">
               <CardTitle>Recent Deliveries</CardTitle>
-              {tableExportButtons('recent-deliveries', 'Recent Deliveries', ['DR #', 'Client', 'Project', 'Status', 'ETA', 'Delivered'], recentDeliveryRows)}
+              {tableExportButtons('recent-deliveries', 'Recent Deliveries', ['DR #', 'Client', 'Project', 'Status', 'ETA', 'Delivered'], recentDeliveryRows, deliveryExportFilters)}
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row justify-between gap-3 mb-4">
@@ -1248,7 +1263,7 @@ export default function ReportsPage() {
                 <CardTitle>Open Balances</CardTitle>
                 <CardDescription>Pending and verified payments</CardDescription>
               </div>
-              {tableExportButtons('open-balances', 'Open Balances', ['Order #', 'Client', 'Total', 'Status'], openBalanceRows)}
+              {tableExportButtons('open-balances', 'Open Balances', ['Order #', 'Client', 'Total', 'Status'], openBalanceRows, paymentExportFilters)}
             </CardHeader>
             <CardContent>
               <Table>
@@ -1292,7 +1307,7 @@ export default function ReportsPage() {
                 <CardTitle>VAT Summary</CardTitle>
                 <CardDescription>Philippine {vatLabel}% VAT breakdown</CardDescription>
               </div>
-              {tableExportButtons('vat-summary', 'VAT Summary', ['Order #', 'Client', 'VATable Sales', `VAT (${vatLabel}%)`, 'Total', 'Status'], vatRows)}
+              {tableExportButtons('vat-summary', 'VAT Summary', ['Order #', 'Client', 'VATable Sales', `VAT (${vatLabel}%)`, 'Total', 'Status'], vatRows, paymentExportFilters)}
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row justify-between gap-3 mb-4">
