@@ -30,6 +30,8 @@ import PaginationNav from '@/components/PaginationNav';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import TableExportMenu from '@/components/TableExportMenu';
 import type { ExportFilter } from '@/utils/tableExport';
+import ReportColumnFilters from '@/components/ReportColumnFilters';
+import { matchesReportRow, type ReportCriterion } from '@/utils/reportFilters';
 
 const REPORT_PAGE_SIZE = 10;
 
@@ -57,6 +59,9 @@ const parseDateInput = (value: string, boundary: 'start' | 'end') => {
 
 // TODO: Replace with real data from Lovable Cloud database
 export default function ReportsPage() {
+  const [columnFilters, setColumnFilters] = useState<Record<string, ReportCriterion[]>>({});
+  const tableMatches = (id: string, row: Array<string | number>) => matchesReportRow(row, columnFilters[id] || []);
+  const tableData = <T,>(id: string, data: T[], rows: Array<Array<string | number>>) => data.filter((_, index) => tableMatches(id, rows[index]));
   const defaultFrom = startOfDay(new Date(2025, 0, 1));
   const defaultTo = endOfDay(new Date());
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
@@ -539,22 +544,29 @@ export default function ReportsPage() {
       'open-balances': openBalancePage,
       'vat-summary': vatPage,
     };
-    const tablePage = pageByTable[fileBase] || 1;
-    const tableTotalPages = pageCount(rows);
+    const filteredRows = rows.filter((row) => row[0] !== 'TOTAL' && tableMatches(fileBase, row));
+    const tableTotalPages = pageCount(filteredRows);
+    const tablePage = Math.min(pageByTable[fileBase] || 1, tableTotalPages);
     return (
+      <div className="flex w-full flex-col items-end gap-2">
+      <ReportColumnFilters headers={headers} criteria={columnFilters[fileBase] || []} onChange={(criteria) => {
+        setColumnFilters((current) => ({ ...current, [fileBase]: criteria }));
+        setLowStockPage(1); setTopValuePage(1); setCategoryPage(1); setProjectPage(1); setProjectNoOrderPage(1); setOverduePage(1); setUpcomingPage(1); setDeliveryPage(1); setOpenBalancePage(1); setVatPage(1);
+      }} />
       <TableExportMenu<Array<string | number>>
         title={title}
         filename={fileBase}
         columns={headers.map((header, index) => ({ header, value: (row) => row[index] ?? '' }))}
-        currentRows={paginate(rows, tablePage)}
-        allRows={rows}
+        currentRows={paginate(filteredRows, tablePage)}
+        allRows={filteredRows}
         page={tablePage}
         pageSize={REPORT_PAGE_SIZE}
         totalPages={tableTotalPages}
-        totalItems={rows.length}
-        filters={[{ label: 'Export period', value: exportDateLabel }, ...extraFilters]}
+        totalItems={filteredRows.length}
+        filters={[{ label: 'Export period', value: exportDateLabel }, ...extraFilters, ...(columnFilters[fileBase] || []).filter((criterion) => criterion.value.trim()).map((criterion) => ({ label: `${headers[criterion.column]} (${criterion.operator})`, value: criterion.value }))]}
         className="h-8 px-2 text-xs"
       />
+      </div>
     );
   };
 
@@ -640,6 +652,18 @@ export default function ReportsPage() {
       '',
     ],
   ];
+
+  const tableLowStock = tableData('low-stock-action-list', lowStockItems, lowStockRows);
+  const tableTopValue = tableData('top-inventory-value', topValueItems, topValueRows);
+  const tableCategories = tableData('inventory-value-by-category', filteredInventoryByCategory, inventoryCategoryRows);
+  const tableProjects = tableData('project-details', filteredProjects, projectDetailRows);
+  const tableNoOrders = tableData('projects-with-no-orders', projectsNoOrders, projectsNoOrdersRows);
+  const tableOverdue = tableData('overdue-deliveries', overdueDeliveries, overdueDeliveryRows);
+  const tableUpcoming = tableData('eta-today-tomorrow', upcomingDeliveries, upcomingDeliveryRows);
+  const tableDeliveries = tableData('recent-deliveries', filteredDeliveries, recentDeliveryRows);
+  const tableRevenue = tableData('revenue-trend', monthlyTrend, revenueTrendRows);
+  const tableBalances = tableData('open-balances', openBalances, openBalanceRows);
+  const tableVat = tableData('vat-summary', filteredOrdersForVat, vatRows);
 
   return (
     <div className="space-y-6">
@@ -755,7 +779,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginate(lowStockItems, lowStockPage).map((item) => (
+                  {paginate(tableLowStock, lowStockPage).map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell className="text-center">{item.qtyOnHand}</TableCell>
@@ -764,7 +788,7 @@ export default function ReportsPage() {
                       <TableCell className="text-center">{suggestedPoQty(item)}</TableCell>
                     </TableRow>
                   ))}
-                  {lowStockItems.length === 0 && (
+                  {tableLowStock.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center text-muted-foreground">
                         No low-stock items in this period.
@@ -775,7 +799,7 @@ export default function ReportsPage() {
               </Table>
               <PaginationNav
                 page={lowStockPage}
-                totalPages={pageCount(lowStockItems)}
+                totalPages={pageCount(tableLowStock)}
                 onPageChange={setLowStockPage}
               />
             </CardContent>
@@ -800,7 +824,7 @@ export default function ReportsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginate(topValueItems, topValuePage).map((item) => (
+                    {paginate(tableTopValue, topValuePage).map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell className="text-center">{item.qtyOnHand}</TableCell>
@@ -811,7 +835,7 @@ export default function ReportsPage() {
                 </Table>
                 <PaginationNav
                   page={topValuePage}
-                  totalPages={pageCount(topValueItems)}
+                  totalPages={pageCount(tableTopValue)}
                   onPageChange={setTopValuePage}
                 />
               </CardContent>
@@ -832,7 +856,7 @@ export default function ReportsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginate(filteredInventoryByCategory, categoryPage).map((cat) => (
+                    {paginate(tableCategories, categoryPage).map((cat) => (
                       <TableRow key={cat.name}>
                         <TableCell className="font-medium">{cat.name}</TableCell>
                         <TableCell className="text-center">{cat.count}</TableCell>
@@ -842,17 +866,17 @@ export default function ReportsPage() {
                     <TableRow className="bg-muted/50">
                       <TableCell className="font-bold">Total</TableCell>
                       <TableCell className="text-center font-bold">
-                        {filteredInventoryByCategory.reduce((sum, c) => sum + c.count, 0)}
+                        {tableCategories.reduce((sum, c) => sum + c.count, 0)}
                       </TableCell>
                       <TableCell className="text-right font-bold">
-                        ₱{filteredInventoryByCategory.reduce((sum, c) => sum + c.value, 0).toLocaleString()}
+                        ₱{tableCategories.reduce((sum, c) => sum + c.value, 0).toLocaleString()}
                       </TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
                 <PaginationNav
                   page={categoryPage}
-                  totalPages={pageCount(filteredInventoryByCategory)}
+                  totalPages={pageCount(tableCategories)}
                   onPageChange={setCategoryPage}
                 />
               </CardContent>
@@ -936,7 +960,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginate(filteredProjects, projectPage).map((proj) => {
+                  {paginate(tableProjects, projectPage).map((proj) => {
                       const projectOrders = ordersInRange.filter((o) => o.projectId === proj.id);
                       const value = projectOrders.reduce((sum, o) => sum + o.total, 0);
                       const lastOrder = projectLastOrderMap[String(proj.id)];
@@ -957,7 +981,7 @@ export default function ReportsPage() {
           </Table>
           <PaginationNav
             page={projectPage}
-            totalPages={pageCount(filteredProjects)}
+            totalPages={pageCount(tableProjects)}
             onPageChange={setProjectPage}
           />
         </CardContent>
@@ -978,14 +1002,14 @@ export default function ReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginate(projectsNoOrders, projectNoOrderPage).map((proj) => (
+              {paginate(tableNoOrders, projectNoOrderPage).map((proj) => (
                 <TableRow key={proj.id}>
                   <TableCell className="font-medium">{proj.name}</TableCell>
                   <TableCell>{proj.clientName}</TableCell>
                   <TableCell className="capitalize">{proj.status}</TableCell>
                 </TableRow>
               ))}
-              {projectsNoOrders.length === 0 && (
+              {tableNoOrders.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center text-muted-foreground">
                     All projects have orders in this range.
@@ -996,7 +1020,7 @@ export default function ReportsPage() {
           </Table>
           <PaginationNav
             page={projectNoOrderPage}
-            totalPages={pageCount(projectsNoOrders)}
+            totalPages={pageCount(tableNoOrders)}
             onPageChange={setProjectNoOrderPage}
           />
         </CardContent>
@@ -1071,7 +1095,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginate(overdueDeliveries, overduePage).map((d) => (
+                  {paginate(tableOverdue, overduePage).map((d) => (
                     <TableRow key={d.id}>
                       <TableCell className="font-medium">{d.drNumber}</TableCell>
                       <TableCell>{d.clientName}</TableCell>
@@ -1081,7 +1105,7 @@ export default function ReportsPage() {
                       <TableCell className="text-right">{format(d.etaDate, 'MMM dd')}</TableCell>
                     </TableRow>
                   ))}
-                  {overdueDeliveries.length === 0 && (
+                  {tableOverdue.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center text-muted-foreground">
                         No overdue deliveries.
@@ -1092,7 +1116,7 @@ export default function ReportsPage() {
               </Table>
               <PaginationNav
                 page={overduePage}
-                totalPages={pageCount(overdueDeliveries)}
+                totalPages={pageCount(tableOverdue)}
                 onPageChange={setOverduePage}
               />
             </CardContent>
@@ -1114,7 +1138,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginate(upcomingDeliveries, upcomingPage).map((d) => (
+                  {paginate(tableUpcoming, upcomingPage).map((d) => (
                     <TableRow key={d.id}>
                       <TableCell className="font-medium">{d.drNumber}</TableCell>
                       <TableCell>{d.clientName}</TableCell>
@@ -1122,7 +1146,7 @@ export default function ReportsPage() {
                       <TableCell className="text-right">{format(new Date(d.eta), 'MMM dd')}</TableCell>
                     </TableRow>
                   ))}
-                  {upcomingDeliveries.length === 0 && (
+                  {tableUpcoming.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center text-muted-foreground">
                         No upcoming deliveries.
@@ -1133,7 +1157,7 @@ export default function ReportsPage() {
               </Table>
               <PaginationNav
                 page={upcomingPage}
-                totalPages={pageCount(upcomingDeliveries)}
+                totalPages={pageCount(tableUpcoming)}
                 onPageChange={setUpcomingPage}
               />
             </CardContent>
@@ -1169,7 +1193,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginate(filteredDeliveries, deliveryPage).map((del) => (
+                  {paginate(tableDeliveries, deliveryPage).map((del) => (
                     <TableRow key={del.id}>
                       <TableCell className="font-medium">{del.drNumber}</TableCell>
                       <TableCell>{del.clientName}</TableCell>
@@ -1185,7 +1209,7 @@ export default function ReportsPage() {
               </Table>
               <PaginationNav
                 page={deliveryPage}
-                totalPages={pageCount(filteredDeliveries)}
+                totalPages={pageCount(tableDeliveries)}
                 onPageChange={setDeliveryPage}
               />
             </CardContent>
@@ -1248,7 +1272,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {monthlyTrend.map((row) => (
+                  {tableRevenue.map((row) => (
                     <TableRow key={row.month}>
                       <TableCell className="font-medium">{row.month}</TableCell>
                       <TableCell className="text-right">{row.orders}</TableCell>
@@ -1279,7 +1303,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginate(openBalances, openBalancePage).map((order) => (
+                  {paginate(tableBalances, openBalancePage).map((order) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">{order.orderNumber}</TableCell>
                       <TableCell>{order.clientName}</TableCell>
@@ -1287,7 +1311,7 @@ export default function ReportsPage() {
                       <TableCell className="capitalize">{order.paymentStatus}</TableCell>
                     </TableRow>
                   ))}
-                  {openBalances.length === 0 && (
+                  {tableBalances.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center text-muted-foreground">
                         No open balances in this range.
@@ -1298,7 +1322,7 @@ export default function ReportsPage() {
               </Table>
               <PaginationNav
                 page={openBalancePage}
-                totalPages={pageCount(openBalances)}
+                totalPages={pageCount(tableBalances)}
                 onPageChange={setOpenBalancePage}
               />
             </CardContent>
@@ -1342,7 +1366,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginate(filteredOrdersForVat, vatPage).map((order) => (
+                  {paginate(tableVat, vatPage).map((order) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-medium">{order.orderNumber}</TableCell>
                       <TableCell>{order.clientName}</TableCell>
@@ -1355,13 +1379,13 @@ export default function ReportsPage() {
                   <TableRow className="bg-muted/50 font-bold">
                     <TableCell colSpan={2}>TOTAL</TableCell>
                     <TableCell className="text-right">
-                      ₱{filteredOrdersForVat.reduce((s, o) => s + getOrderTotals(o).net, 0).toLocaleString()}
+                      ₱{tableVat.reduce((s, o) => s + getOrderTotals(o).net, 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      ₱{filteredOrdersForVat.reduce((s, o) => s + getOrderTotals(o).vat, 0).toLocaleString()}
+                      ₱{tableVat.reduce((s, o) => s + getOrderTotals(o).vat, 0).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      ₱{filteredOrdersForVat.reduce((s, o) => s + getOrderTotals(o).total, 0).toLocaleString()}
+                      ₱{tableVat.reduce((s, o) => s + getOrderTotals(o).total, 0).toLocaleString()}
                     </TableCell>
                     <TableCell></TableCell>
                   </TableRow>
@@ -1369,7 +1393,7 @@ export default function ReportsPage() {
               </Table>
               <PaginationNav
                 page={vatPage}
-                totalPages={pageCount(filteredOrdersForVat)}
+                totalPages={pageCount(tableVat)}
                 onPageChange={setVatPage}
               />
             </CardContent>
