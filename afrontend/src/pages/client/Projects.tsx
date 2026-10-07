@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
+import TableExportMenu from '@/components/TableExportMenu';
+import { projectExportColumns } from '@/utils/projectExport';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +54,7 @@ const formatPeso = (value: number) =>
   `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function ClientProjectsPage() {
+  const projectDates = useTableDateRange();
   const { user } = useAuth();
   const { data: projects, reload: reloadProjects } = useResource<Project[]>('/projects', []);
   const { data: clients } = useResource<Client[]>('/clients', []);
@@ -78,9 +82,9 @@ export default function ClientProjectsPage() {
         project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         project.clientName.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'all' || project.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && projectDates.matches(project.startDate);
     });
-  }, [projects, searchTerm, statusFilter]);
+  }, [projects, searchTerm, statusFilter, projectDates.dateFrom, projectDates.dateTo]);
 
   const totalPages = Math.max(1, Math.ceil(clientProjects.length / pageSize));
   const pagedProjects = clientProjects.slice((page - 1) * pageSize, page * pageSize);
@@ -240,6 +244,10 @@ export default function ClientProjectsPage() {
 
       <Card>
         <CardContent className="p-4">
+          <div className="mb-3 flex flex-wrap items-end gap-3">
+            <TableDateRangeFilter label="Project start date" range={projectDates.range} onChange={(range) => { projectDates.setRange(range); setPage(1); }} />
+            <TableExportMenu title="Projects" filename="client-projects" columns={projectExportColumns} currentRows={clientProjects.slice((page - 1) * pageSize, page * pageSize)} allRows={clientProjects} page={page} pageSize={pageSize} totalPages={totalPages} totalItems={clientProjects.length} filters={[...projectDates.filters, { label: 'Search', value: searchTerm }, { label: 'Status', value: statusFilter === 'all' ? '' : statusFilter }]} />
+          </div>
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />

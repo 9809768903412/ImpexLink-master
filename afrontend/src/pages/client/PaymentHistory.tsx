@@ -40,6 +40,9 @@ export default function ClientPaymentHistoryPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [search, setSearch] = useState('');
+  const [orderStatus, setOrderStatus] = useState('all');
+  const [recordStatus, setRecordStatus] = useState('all');
+  const [paymentMethod, setPaymentMethod] = useState('all');
   const [ordersPage, setOrdersPage] = useState(1);
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [pageSize] = useState(10);
@@ -59,8 +62,11 @@ export default function ClientPaymentHistoryPage() {
       .catch(() => setPayments([]));
   }, [user?.id]);
 
-  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt));
-  const filtered = orders.filter((order) => paymentDates.matches(order.createdAt)).filter((o) =>
+  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt)
+    && (recordStatus === 'all' || payment.status === recordStatus)
+    && (paymentMethod === 'all' || payment.method === paymentMethod)
+    && [payment.referenceNumber, payment.clientOrderNumber, payment.method, payment.status].some((value) => String(value || '').toLowerCase().includes(search.trim().toLowerCase())));
+  const filtered = orders.filter((order) => paymentDates.matches(order.createdAt) && (orderStatus === 'all' || order.paymentStatus === orderStatus)).filter((o) =>
     [o.orderNumber, o.clientName, o.projectName].some((v) =>
       String(v || '').toLowerCase().includes(search.toLowerCase())
     )
@@ -85,7 +91,8 @@ export default function ClientPaymentHistoryPage() {
 
   useEffect(() => {
     setOrdersPage(1);
-  }, [search]);
+    setPaymentsPage(1);
+  }, [search, orderStatus, recordStatus, paymentMethod]);
 
   useEffect(() => {
     if (ordersPage > orderTotalPages) setOrdersPage(orderTotalPages);
@@ -130,6 +137,10 @@ export default function ClientPaymentHistoryPage() {
               <CardDescription>Statuses are updated in real time</CardDescription>
             </div>
             <TableDateRangeFilter label="Order / payment date" range={paymentDates.range} onChange={(range) => { paymentDates.setRange(range); setOrdersPage(1); setPaymentsPage(1); }} />
+            <select aria-label="Order payment status" className="h-10 rounded-md border bg-background px-3 text-sm" value={orderStatus} onChange={(event) => setOrderStatus(event.target.value)}>
+              <option value="all">All payment statuses</option>
+              {[...new Set(orders.map((order) => order.paymentStatus))].sort().map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
             <TableExportMenu
               title="Order Payment Status"
               filename="order-payment-status"
@@ -147,7 +158,7 @@ export default function ClientPaymentHistoryPage() {
               pageSize={pageSize}
               totalPages={orderTotalPages}
               totalItems={filtered.length}
-              filters={[...paymentDates.filters, { label: 'Search', value: search }]}
+              filters={[...paymentDates.filters, { label: 'Search', value: search }, { label: 'Payment status', value: orderStatus === 'all' ? '' : orderStatus }]}
             />
           </div>
         </CardHeader>
@@ -201,6 +212,14 @@ export default function ClientPaymentHistoryPage() {
               <CardTitle>Submitted Payment Records</CardTitle>
               <CardDescription>Office verifies cheque and auto-deposit payments here.</CardDescription>
             </div>
+            <select aria-label="Submitted payment status" className="h-10 rounded-md border bg-background px-3 text-sm" value={recordStatus} onChange={(event) => setRecordStatus(event.target.value)}>
+              <option value="all">All statuses</option>
+              {[...new Set(payments.map((payment) => payment.status))].sort().map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+            <select aria-label="Payment method" className="h-10 rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+              <option value="all">All methods</option>
+              {[...new Set(payments.map((payment) => payment.method))].sort().map((method) => <option key={method} value={method}>{method.replace(/-/g, ' ')}</option>)}
+            </select>
             <TableExportMenu
               title="Submitted Payment Records"
               filename="submitted-payments"
@@ -218,7 +237,7 @@ export default function ClientPaymentHistoryPage() {
               pageSize={pageSize}
               totalPages={paymentTotalPages}
               totalItems={datedPayments.length}
-              filters={paymentDates.filters}
+              filters={[...paymentDates.filters, { label: 'Search', value: search }, { label: 'Status', value: recordStatus === 'all' ? '' : recordStatus }, { label: 'Method', value: paymentMethod === 'all' ? '' : paymentMethod }]}
             />
           </div>
         </CardHeader>
@@ -235,7 +254,7 @@ export default function ClientPaymentHistoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {payments.length === 0 ? (
+              {datedPayments.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No submitted payment records yet.</TableCell></TableRow>
               ) : pagedPayments.map((payment) => (
                 <TableRow key={payment.id}>
