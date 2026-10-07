@@ -31,6 +31,7 @@ import {
 import type { Delivery, DeliveryGpsLocation, DeliveryStatus } from "@/types";
 import { toPublicFileUrl } from "@/lib/files";
 import { apiClient } from "@/api/client";
+import RouteEtaCard from "@/components/RouteEtaCard";
 
 const STATUS_STYLES: Record<DeliveryStatus, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -298,13 +299,13 @@ export default function LiveTrackingDialog({
                       >
                         {isCompletedDelivery && (
                           <Tooltip permanent direction="top" offset={[0, -10]}>
-                            Delivery completed here
+                            Last recorded truck location
                           </Tooltip>
                         )}
                         <Popup>
                           <strong>
                             {isCompletedDelivery
-                              ? "Delivery completed here"
+                              ? "Last recorded truck location"
                               : delivery.drNumber}
                           </strong>
                           <br />
@@ -330,7 +331,7 @@ export default function LiveTrackingDialog({
                             </>
                           ) : null}
                           <br />
-                          Final GPS update: {formatAge(activeLocation?.recordedAt)}
+                          GPS recorded: {activeLocation?.recordedAt ? new Date(activeLocation.recordedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) : "Unavailable"}
                         </Popup>
                       </CircleMarker>
                     </MapContainer>
@@ -425,12 +426,16 @@ export default function LiveTrackingDialog({
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-muted-foreground">ETA</span>
+                      <span className="text-muted-foreground">Scheduled ETA</span>
                       <span className="font-medium">
                         {delivery.eta
-                          ? new Date(delivery.eta).toLocaleString("en-PH")
+                          ? new Date(delivery.eta).toLocaleString("en-PH", { timeZone: "Asia/Manila" })
                           : "To be scheduled"}
                       </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">Delivery confirmed</span>
+                      <span className="text-right font-medium">{delivery.receivedAt ? new Date(delivery.receivedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) : "Not confirmed yet"}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-muted-foreground">Order</span>
@@ -447,6 +452,7 @@ export default function LiveTrackingDialog({
                   </CardContent>
                 </Card>
 
+                <RouteEtaCard key={`${delivery.id}-${open}`} location={activeLocation} active={isActiveDelivery} />
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Cargo & Driver</CardTitle>

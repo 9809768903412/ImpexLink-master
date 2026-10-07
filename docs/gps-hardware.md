@@ -68,3 +68,22 @@ device token.
 An Arduino Uno without networking cannot call this endpoint by itself. Boards
 using SIM800/SIM7600 or another cellular modem need a modem-specific transport
 version of the same HTTPS request.
+
+## Arrival information in the tracking view
+
+The existing device payload remains unchanged. The tracking view separates:
+
+- Scheduled ETA: the time entered for the delivery.
+- GPS Route ETA: a driving estimate from the latest hardware position to the
+  destination coordinates entered in this view. Click Calculate route ETA to
+  start; it refreshes every minute while the truck delivery is active. Readings
+  older than two minutes are not used. Destination coordinates and estimates
+  are temporary and are not saved to the delivery record.
+- Delivery confirmed: the stored `receivedAt` timestamp from confirmation.
+  A GPS reading or a route estimate never confirms delivery automatically.
+
+Routing uses `VITE_ROUTING_URL` when set, otherwise the public OSRM demonstration
+server. Use a suitable hosted or self-hosted routing service for production.
+This estimate excludes live traffic, vehicle restrictions, unloading and stops
+for other orders. The last recorded truck position is labelled separately from
+the confirmed delivery time because it may precede the handover.

@@ -10,6 +10,9 @@ vi.mock('@/components/TableExportMenu', () => ({ default: ({ filters }: { filter
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   BarChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  LineChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  AreaChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Line: () => null, Area: () => null,
   Bar: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Cell: () => null, LabelList: () => null,
   CartesianGrid: () => null, XAxis: () => null, YAxis: () => null, Tooltip: () => null,

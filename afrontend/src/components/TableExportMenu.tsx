@@ -10,6 +10,7 @@ import { downloadCsv } from '@/utils/csv';
 import { printTableReport } from '@/utils/print';
 import {
   buildTableExportRows,
+  filterExportRows,
   ExportColumn,
   ExportFilter,
   ExportScope,
@@ -58,6 +59,10 @@ export default function TableExportMenu<T>({
   const [fromPage, setFromPage] = useState(1);
   const [toPage, setToPage] = useState(totalPages);
   const [exporting, setExporting] = useState(false);
+  const [excludedColumns, setExcludedColumns] = useState<string[]>([]);
+  const [criteria, setCriteria] = useState<Array<{ column: string; value: string }>>([]);
+  const selectedColumns = columns.filter(({ header }) => !excludedColumns.includes(header));
+  const activeFilters = filters.filter(({ value }) => value !== null && value !== undefined && String(value).trim() !== '');
   const canLoadBeyondCurrent = Boolean(allRows || loadRows);
 
   useEffect(() => {
@@ -83,26 +88,29 @@ export default function TableExportMenu<T>({
   };
 
   const handleExport = async () => {
-    if (validationError) return;
+    if (validationError || selectedColumns.length === 0) return;
     setExporting(true);
     try {
-      const rows = await getRows();
+      const sourceRows = await getRows();
+      const appliedCriteria = criteria.filter((criterion) => criterion.column && criterion.value.trim());
+      const rows = filterExportRows(sourceRows, columns, appliedCriteria);
+      const exportFilters = [...filters, ...appliedCriteria.map(({ column, value }) => ({ label: `${column} (equals)`, value }))];
       const sourcePages = getSourcePageLabel({ scope, page, totalPages, fromPage, toPage });
       if (format === 'csv') {
         downloadCsv(
           `${filename}-${new Date().toISOString().slice(0, 10)}.csv`,
-          buildTableExportRows({ title, sourcePages, totalRecords: rows.length, filters, columns, rows }),
+          buildTableExportRows({ title, sourcePages, totalRecords: rows.length, filters: exportFilters, columns: selectedColumns, rows }),
         );
       } else {
         printTableReport({
           title,
           sourcePages,
-          filters,
+          filters: exportFilters,
           rowsPerPage: pageSize,
           sourceStartPage: scope === 'current' ? page : scope === 'range' ? fromPage : 1,
           sourceTotalPages: totalPages,
-          headers: columns.map(({ header }) => header),
-          rows: rows.map((row) => columns.map(({ value }) => stringifyExportValue(value(row)))),
+          headers: selectedColumns.map(({ header }) => header),
+          rows: rows.map((row) => selectedColumns.map(({ value }) => stringifyExportValue(value(row)))),
         });
       }
       setOpen(false);
@@ -126,7 +134,7 @@ export default function TableExportMenu<T>({
           Export / Print
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Export {title}</DialogTitle>
           <DialogDescription>
@@ -135,6 +143,15 @@ export default function TableExportMenu<T>({
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
+          <div className="rounded-md border p-3 text-sm" aria-label="Export filters">
+            <p className="font-medium">Data to export</p>
+            {activeFilters.length ? (
+              <ul className="mt-2 space-y-1">
+                {activeFilters.map(({ label, value }, index) => <li key={`${label}-${index}`}>{label}: {String(value)}</li>)}
+              </ul>
+            ) : <p className="mt-1 text-muted-foreground">All records matching the table view.</p>}
+            <p className="mt-2 text-xs text-muted-foreground">Change the table filters before exporting to choose which records to include.</p>
+          </div>
           <div className="grid gap-2">
             <Label>Format</Label>
             <Select value={format} onValueChange={(value) => setFormat(value as ExportFormat)}>
@@ -145,6 +162,28 @@ export default function TableExportMenu<T>({
               </SelectContent>
             </Select>
           </div>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Narrow exported records</legend>
+            <p className="text-xs text-muted-foreground">Optional exact matches, combined with the table filters. Choose all matching records to include every page.</p>
+            {criteria.map((criterion, index) => (
+              <div key={index} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                <select aria-label={`Filter field ${index + 1}`} className="h-10 min-w-0 rounded-md border bg-background px-2 text-sm" value={criterion.column} onChange={(event) => setCriteria((current) => current.map((entry, entryIndex) => entryIndex === index ? { column: event.target.value, value: '' } : entry))}>
+                  <option value="">Choose field</option>
+                  {columns.map(({ header }) => <option key={header} value={header}>{header}</option>)}
+                </select>
+                <Input aria-label={`Filter value ${index + 1}`} list={`${filename}-filter-values-${index}`} placeholder="Equals…" value={criterion.value} onChange={(event) => setCriteria((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, value: event.target.value } : entry))} />
+                <datalist id={`${filename}-filter-values-${index}`}>
+                  {[...new Set((allRows || currentRows).map((row) => {
+                    const column = columns.find(({ header }) => header === criterion.column);
+                    return column ? stringifyExportValue(column.value(row)) : '';
+                  }))].filter(Boolean).sort().map((value) => <option key={value} value={value} />)}
+                </datalist>
+                <Button variant="ghost" size="sm" aria-label={`Remove filter ${index + 1}`} onClick={() => setCriteria((current) => current.filter((_, entryIndex) => entryIndex !== index))}>×</Button>
+              </div>
+            ))}
+            <Button variant="outline" size="sm" onClick={() => setCriteria((current) => [...current, { column: '', value: '' }])}>Add filter</Button>
+          </fieldset>
 
           <div className="grid gap-2">
             <Label>Records</Label>
@@ -171,6 +210,22 @@ export default function TableExportMenu<T>({
             </div>
           )}
           {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Columns to include</legend>
+            <div className="flex gap-3">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setExcludedColumns([])}>Select all</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setExcludedColumns(columns.map(({ header }) => header))}>Clear selection</Button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {columns.map(({ header }) => (
+                <label key={header} className="flex min-w-0 items-center gap-2 text-sm">
+                  <input type="checkbox" className="h-4 w-4 shrink-0 accent-primary" checked={!excludedColumns.includes(header)} onChange={(event) => setExcludedColumns((current) => event.target.checked ? current.filter((value) => value !== header) : [...current, header])} />
+                  {header}
+                </label>
+              ))}
+            </div>
+            {selectedColumns.length === 0 && <p role="alert" className="text-sm text-destructive">Select at least one column.</p>}
+          </fieldset>
           <p className="text-xs text-muted-foreground">
             Active search and filters are preserved. Each table page starts on a separate printed sheet with its source page number.
           </p>
@@ -178,7 +233,7 @@ export default function TableExportMenu<T>({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={exporting}>Cancel</Button>
-          <Button onClick={handleExport} disabled={exporting || Boolean(validationError)}>
+          <Button onClick={handleExport} disabled={exporting || Boolean(validationError) || selectedColumns.length === 0}>
             {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : format === 'print' ? <Printer className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
             {format === 'print' ? 'Open print view' : 'Export CSV'}
           </Button>

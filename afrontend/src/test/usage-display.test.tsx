@@ -6,13 +6,22 @@ vi.mock('recharts', async () => {
   return { ...actual, ResponsiveContainer: () => null };
 });
 it('switches display without inventing or smoothing recorded quantities', () => {
-  const products = [{ key: 'a', name: 'Thortex A', color: '#c98543' }];
+  const products = [{ key: 'a', name: 'Thortex A', color: '#c98543' }, { key: 'b', name: 'Thortex B', color: '#123456' }];
   const months = [{ month: 'Jan 26', totalUsage: 2, 'Thortex A': 2 }, { month: 'Feb 26', totalUsage: 17, 'Thortex A': 17 }];
   render(<InventoryUsageCharts products={products} months={months} />);
+  expect(screen.getByText('19')).toBeInTheDocument();
+  expect(screen.getByLabelText('Show Thortex A')).toBeChecked();
+  expect(screen.getByLabelText('Show Thortex B')).toBeChecked();
+  fireEvent.click(screen.getByLabelText('Show Thortex A'));
+  expect(screen.getByText('0')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
   expect(screen.getByText('19')).toBeInTheDocument();
   const control = screen.getByLabelText('Usage chart display');
   for (const view of ['line', 'area', 'heatmap']) fireEvent.change(control, { target: { value: view } });
   expect(screen.getByTitle('Thortex A · Jan 26: 2 packages')).toHaveTextContent('2');
   expect(screen.getByTitle('Thortex A · Feb 26: 17 packages')).toHaveTextContent('17');
   expect(months[0].totalUsage).toBe(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+  expect(screen.queryByTitle('Thortex A · Jan 26: 2 packages')).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Select at least one item');
 });

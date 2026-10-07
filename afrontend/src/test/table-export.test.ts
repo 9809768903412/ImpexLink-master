@@ -1,11 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildTableExportRows,
+  filterExportRows,
   getSourcePageLabel,
   selectLocalExportRows,
 } from '@/utils/tableExport';
 
 describe('table export helpers', () => {
+  it('combines exact content criteria without including similar statuses or excluded projects', () => {
+    const data = [
+      { status: 'delivered', project: 'A' },
+      { status: 'delivered', project: 'B' },
+      { status: 'not delivered', project: 'A' },
+    ];
+    const columns = [
+      { header: 'Status', value: (row: typeof data[number]) => row.status },
+      { header: 'Project', value: (row: typeof data[number]) => row.project },
+    ];
+    expect(filterExportRows(data, columns, [{ column: 'Status', value: ' Delivered ' }])).toEqual(data.slice(0, 2));
+    expect(filterExportRows(data, columns, [{ column: 'Status', value: 'delivered' }, { column: 'Project', value: 'A' }])).toEqual([data[0]]);
+    expect(filterExportRows(data, columns, [{ column: '', value: '' }])).toEqual(data);
+    expect(filterExportRows(data, columns, [{ column: 'Status', value: 'pending' }])).toEqual([]);
+  });
   const rows = Array.from({ length: 25 }, (_, index) => ({ id: index + 1, name: `Row ${index + 1}` }));
 
   it('selects the current page without changing its rows', () => {
@@ -67,4 +83,3 @@ describe('table export helpers', () => {
     expect(exported).toContainEqual(['1', 'Row 1']);
   });
 });
-

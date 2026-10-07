@@ -64,6 +64,7 @@ const UNIT_OPTIONS = ['Pieces', 'Gallons', 'Kilograms', 'Liters', 'Bundles', 'Ki
 
 export default function InventoryPage() {
   const historyDates = useTableDateRange();
+  const [historyType, setHistoryType] = useState('all');
   const itemDates = useTableDateRange();
   const { user } = useAuth();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
@@ -266,7 +267,7 @@ export default function InventoryPage() {
     ? transactions.filter((t) => t.itemId === selectedItem.id)
     : [];
   const selectedItemDisplayId = selectedItem ? getDisplayId(selectedItem) : '';
-  const itemTransactionsByDate = [...itemTransactions].filter((transaction) => historyDates.matches(transaction.date)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  const itemTransactionsByDate = [...itemTransactions].filter((transaction) => historyDates.matches(transaction.date) && (historyType === 'all' || transaction.type === historyType)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
   const lastUpdatedTxn = itemTransactionsByDate[0];
   const lastRestockTxn = itemTransactionsByDate.find((t) => t.type === 'purchase');
   const monthlyUsage = itemTransactions
@@ -283,6 +284,7 @@ export default function InventoryPage() {
 
   const handleItemClick = (item: InventoryItem) => {
     historyDates.setRange(undefined);
+    setHistoryType('all');
     setSelectedItem(item);
     setIsDetailOpen(true);
     reloadTransactions();
@@ -770,7 +772,11 @@ export default function InventoryPage() {
               {selectedItem?.name}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-end justify-end gap-2">
+            <select aria-label="Stock movement type" className="h-9 rounded-md border bg-background px-3 text-sm" value={historyType} onChange={(event) => setHistoryType(event.target.value)}>
+              <option value="all">All movement types</option>
+              {[...new Set(itemTransactions.map((transaction) => transaction.type))].sort().map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
             <TableDateRangeFilter label="Stock movement date" range={historyDates.range} onChange={historyDates.setRange} />
             <TableExportMenu title={`Stock History — ${selectedItem?.name || ''}`} filename="inventory-stock-history"
               columns={[
@@ -783,7 +789,7 @@ export default function InventoryPage() {
               ]}
               currentRows={itemTransactionsByDate} allRows={itemTransactionsByDate}
               pageSize={Math.max(itemTransactionsByDate.length, 1)} totalItems={itemTransactionsByDate.length}
-              filters={historyDates.filters}
+              filters={[...historyDates.filters, { label: 'Movement type', value: historyType === 'all' ? '' : historyType }]}
             />
           </div>
           <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">

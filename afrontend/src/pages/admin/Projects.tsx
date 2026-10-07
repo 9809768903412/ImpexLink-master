@@ -20,6 +20,9 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Eye, Plus, Search, FolderKanban, MapPin, CalendarDays, Building2, FileText, Download, PackageSearch, Trash2 } from 'lucide-react';
+import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
+import TableExportMenu from '@/components/TableExportMenu';
+import { projectExportColumns } from '@/utils/projectExport';
 import type { Project, Client, Order, Delivery, User as UserType, ProjectForm, MaterialRequest } from '@/types';
 import { toast } from '@/hooks/use-toast';
 import { useResource } from '@/hooks/use-resource';
@@ -116,6 +119,7 @@ const mapProject = (project: any): Project => ({
 
 // TODO: Replace with real data
 export default function ProjectsPage() {
+  const projectDates = useTableDateRange();
   const { user } = useAuth();
   const location = useLocation();
   const roleInput = user?.roles?.length ? user.roles : user?.role;
@@ -210,7 +214,7 @@ export default function ProjectsPage() {
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.clientName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || project.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && projectDates.matches(project.startDate);
   });
   const pendingProjects = filteredProjects.filter((project) => project.status === 'pending');
   const visibleProjects = activeTab === 'pending' ? pendingProjects : filteredProjects;
@@ -945,6 +949,10 @@ export default function ProjectsPage() {
 
         <Card>
           <CardContent className="p-4">
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <TableDateRangeFilter label="Project start date" range={projectDates.range} onChange={projectDates.setRange} />
+              <TableExportMenu title="Projects" filename="projects" columns={projectExportColumns} currentRows={visibleProjects} allRows={visibleProjects} totalItems={visibleProjects.length} filters={[...projectDates.filters, { label: 'Search', value: searchTerm }, { label: 'Status', value: statusFilter === 'all' ? '' : statusFilter }, { label: 'View', value: activeTab }]} />
+            </div>
             <div className="flex flex-col lg:flex-row lg:items-center gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

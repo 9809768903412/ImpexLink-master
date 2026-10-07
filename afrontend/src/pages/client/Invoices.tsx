@@ -26,6 +26,7 @@ export default function ClientInvoicesPage() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState('all');
 
   useEffect(() => {
     if (!user?.id) return;
@@ -38,7 +39,7 @@ export default function ClientInvoicesPage() {
       .catch(() => setOrders([]));
   }, [user?.id]);
 
-  const filtered = orders.filter((o) => invoiceDates.matches(o.createdAt)).filter((o) =>
+  const filtered = orders.filter((o) => invoiceDates.matches(o.createdAt) && (paymentStatus === 'all' || o.paymentStatus === paymentStatus)).filter((o) =>
     [o.orderNumber, o.clientName, o.projectName].some((v) =>
       String(v || '').toLowerCase().includes(search.toLowerCase())
     )
@@ -96,12 +97,16 @@ export default function ClientInvoicesPage() {
           currentRows={filtered}
           allRows={filtered}
           totalItems={filtered.length}
-          filters={[...invoiceDates.filters, { label: 'Search', value: search }]}
+          filters={[...invoiceDates.filters, { label: 'Search', value: search }, { label: 'Payment status', value: paymentStatus === 'all' ? '' : paymentStatus }]}
         />
       </div>
 
       <Card>
         <CardContent className="pt-6">
+          <select aria-label="Invoice payment status" className="mb-3 h-10 rounded-md border bg-background px-3 text-sm" value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value)}>
+            <option value="all">All payment statuses</option>
+            {[...new Set(orders.map((order) => order.paymentStatus))].sort().map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input

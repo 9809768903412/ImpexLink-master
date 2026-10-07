@@ -1150,7 +1150,10 @@ export default function ReportsPage() {
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="in-transit">In Transit</SelectItem>
+                  <SelectItem value="delayed">Delayed</SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="return-pending">Return Pending</SelectItem>
+                  <SelectItem value="return-rejected">Return Rejected</SelectItem>
                   <SelectItem value="returned">Returned</SelectItem>
                 </StatusFilterSelect>
               </div>
@@ -1263,7 +1266,7 @@ export default function ReportsPage() {
                 <CardTitle>Open Balances</CardTitle>
                 <CardDescription>Pending and verified payments</CardDescription>
               </div>
-              {tableExportButtons('open-balances', 'Open Balances', ['Order #', 'Client', 'Total', 'Status'], openBalanceRows, paymentExportFilters)}
+              {tableExportButtons('open-balances', 'Open Balances', ['Order #', 'Client', 'Total', 'Status'], openBalanceRows, [{ label: 'Payment status', value: 'pending or verified' }])}
             </CardHeader>
             <CardContent>
               <Table>
@@ -1323,6 +1326,7 @@ export default function ReportsPage() {
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="verified">Verified</SelectItem>
                     <SelectItem value="paid">Paid</SelectItem>
+                    {[...new Set(orders.map((order) => order.paymentStatus))].filter((status) => !['pending', 'verified', 'paid'].includes(status)).sort().map((status) => <SelectItem key={status} value={status}>{status.replace(/-/g, ' ')}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

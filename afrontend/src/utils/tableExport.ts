@@ -10,6 +10,14 @@ export type ExportColumn<T> = {
   value: (row: T) => unknown;
 };
 
+export type ExportCriterion = { column: string; value: string };
+
+export const filterExportRows = <T,>(rows: T[], columns: ExportColumn<T>[], criteria: ExportCriterion[]) =>
+  rows.filter((row) => criteria.filter(({ column, value }) => column && value.trim()).every((criterion) => {
+    const column = columns.find(({ header }) => header === criterion.column);
+    return column && stringifyExportValue(column.value(row)).trim().toLowerCase() === criterion.value.trim().toLowerCase();
+  }));
+
 export const stringifyExportValue = (value: unknown) => {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) return value.toLocaleString();
@@ -98,4 +106,3 @@ export const escapePrintHtml = (value: unknown) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
-
