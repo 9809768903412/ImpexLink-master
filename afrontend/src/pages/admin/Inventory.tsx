@@ -1,3 +1,4 @@
+import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Search, Filter, Plus } from 'lucide-react';
@@ -559,7 +560,7 @@ export default function InventoryPage() {
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
+<TableFilterToolbar>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
               <Input
@@ -605,7 +606,7 @@ export default function InventoryPage() {
               <SelectItem value="low-stock">Low Stock</SelectItem>
               <SelectItem value="out-of-stock">Out of Stock</SelectItem>
             </StatusFilterSelect>
-          </div>
+          </TableFilterToolbar>
         </CardContent>
       </Card>
 

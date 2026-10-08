@@ -1,3 +1,4 @@
+import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -442,7 +443,7 @@ export default function ClientOrdersPage() {
         <TabsContent value="orders" className="space-y-4">
           <Card>
             <CardContent className="p-4">
-              <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+<TableFilterToolbar>
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -542,7 +543,7 @@ export default function ClientOrdersPage() {
                 </DropdownMenuCheckboxItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
+          </TableFilterToolbar>
         </CardContent>
       </Card>
 

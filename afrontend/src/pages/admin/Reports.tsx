@@ -525,6 +525,15 @@ export default function ReportsPage() {
     }
   };
 
+  const columnHeading = (table: string, column: number, header: string, rows: Array<Array<string | number>>) => (
+    <ReportColumnFilters header={header} column={column} criteria={columnFilters[table] || []}
+      values={[...new Set(rows.filter((row) => row[0] !== 'TOTAL').map((row) => String(row[column] ?? '')).filter(Boolean))]}
+      onChange={(criteria) => {
+        setColumnFilters((current) => ({ ...current, [table]: criteria }));
+        setLowStockPage(1); setTopValuePage(1); setCategoryPage(1); setProjectPage(1); setProjectNoOrderPage(1); setOverduePage(1); setUpcomingPage(1); setDeliveryPage(1); setOpenBalancePage(1); setVatPage(1);
+      }} />
+  );
+
   const tableExportButtons = (
     fileBase: string,
     title: string,
@@ -549,10 +558,6 @@ export default function ReportsPage() {
     const tablePage = Math.min(pageByTable[fileBase] || 1, tableTotalPages);
     return (
       <div className="flex w-full flex-col items-end gap-2">
-      <ReportColumnFilters headers={headers} criteria={columnFilters[fileBase] || []} onChange={(criteria) => {
-        setColumnFilters((current) => ({ ...current, [fileBase]: criteria }));
-        setLowStockPage(1); setTopValuePage(1); setCategoryPage(1); setProjectPage(1); setProjectNoOrderPage(1); setOverduePage(1); setUpcomingPage(1); setDeliveryPage(1); setOpenBalancePage(1); setVatPage(1);
-      }} />
       <TableExportMenu<Array<string | number>>
         title={title}
         filename={fileBase}
@@ -769,13 +774,13 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-center">Qty</TableHead>
-                    <TableHead className="text-center">Min</TableHead>
-                    <TableHead className="text-right">Value</TableHead>
-                    <TableHead className="text-center">Suggested PO</TableHead>
+                    <TableHead>{columnHeading('low-stock-action-list', 0, "Item", lowStockRows)}</TableHead>
+                    <TableHead className="text-center">{columnHeading('low-stock-action-list', 1, "Qty", lowStockRows)}</TableHead>
+                    <TableHead className="text-center">{columnHeading('low-stock-action-list', 2, "Min", lowStockRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('low-stock-action-list', 3, "Value", lowStockRows)}</TableHead>
+                    <TableHead className="text-center">{columnHeading('low-stock-action-list', 4, "Suggested PO", lowStockRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -816,11 +821,11 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <Table>
-                  <TableHeader>
+<TableHeader>
                     <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-center">Qty</TableHead>
-                      <TableHead className="text-right">Total Value</TableHead>
+                      <TableHead>{columnHeading('top-inventory-value', 0, "Item", topValueRows)}</TableHead>
+                      <TableHead className="text-center">{columnHeading('top-inventory-value', 1, "Qty", topValueRows)}</TableHead>
+                      <TableHead className="text-right">{columnHeading('top-inventory-value', 2, "Total Value", topValueRows)}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -848,11 +853,11 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <Table>
-                  <TableHeader>
+<TableHeader>
                     <TableRow>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-center">Items</TableHead>
-                      <TableHead className="text-right">Total Value</TableHead>
+                      <TableHead>{columnHeading('inventory-value-by-category', 0, "Category", inventoryCategoryRows)}</TableHead>
+                      <TableHead className="text-center">{columnHeading('inventory-value-by-category', 1, "Items", inventoryCategoryRows)}</TableHead>
+                      <TableHead className="text-right">{columnHeading('inventory-value-by-category', 2, "Total Value", inventoryCategoryRows)}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -949,14 +954,14 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-center">Orders</TableHead>
-                    <TableHead className="text-right">Total Value</TableHead>
-                    <TableHead className="text-right">Last Order</TableHead>
+                    <TableHead>{columnHeading('project-details', 0, "Project", projectDetailRows)}</TableHead>
+                    <TableHead>{columnHeading('project-details', 1, "Client", projectDetailRows)}</TableHead>
+                    <TableHead>{columnHeading('project-details', 2, "Status", projectDetailRows)}</TableHead>
+                    <TableHead className="text-center">{columnHeading('project-details', 3, "Orders", projectDetailRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('project-details', 4, "Total Value", projectDetailRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('project-details', 5, "Last Order", projectDetailRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -994,11 +999,11 @@ export default function ReportsPage() {
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader>
+<TableHeader>
               <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{columnHeading('projects-with-no-orders', 0, "Project", projectsNoOrdersRows)}</TableHead>
+                <TableHead>{columnHeading('projects-with-no-orders', 1, "Client", projectsNoOrdersRows)}</TableHead>
+                <TableHead>{columnHeading('projects-with-no-orders', 2, "Status", projectsNoOrdersRows)}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1086,12 +1091,12 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>DR #</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead className="text-right">Days Late</TableHead>
-                    <TableHead className="text-right">ETA</TableHead>
+                    <TableHead>{columnHeading('overdue-deliveries', 0, "DR #", overdueDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('overdue-deliveries', 1, "Client", overdueDeliveryRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('overdue-deliveries', 2, "Days Late", overdueDeliveryRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('overdue-deliveries', 3, "ETA", overdueDeliveryRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1129,12 +1134,12 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>DR #</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead className="text-right">ETA</TableHead>
+                    <TableHead>{columnHeading('eta-today-tomorrow', 0, "DR #", upcomingDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('eta-today-tomorrow', 1, "Client", upcomingDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('eta-today-tomorrow', 2, "Project", upcomingDeliveryRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('eta-today-tomorrow', 3, "ETA", upcomingDeliveryRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1182,14 +1187,14 @@ export default function ReportsPage() {
                 </StatusFilterSelect>
               </div>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>DR #</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>ETA</TableHead>
-                    <TableHead>Delivered</TableHead>
+                    <TableHead>{columnHeading('recent-deliveries', 0, "DR #", recentDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('recent-deliveries', 1, "Client", recentDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('recent-deliveries', 2, "Project", recentDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('recent-deliveries', 3, "Status", recentDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('recent-deliveries', 4, "ETA", recentDeliveryRows)}</TableHead>
+                    <TableHead>{columnHeading('recent-deliveries', 5, "Delivered", recentDeliveryRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1264,11 +1269,11 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>Month</TableHead>
-                    <TableHead className="text-right">Orders</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead>{columnHeading('revenue-trend', 0, "Month", revenueTrendRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('revenue-trend', 1, "Orders", revenueTrendRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('revenue-trend', 2, "Revenue", revenueTrendRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1294,12 +1299,12 @@ export default function ReportsPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>Order #</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{columnHeading('open-balances', 0, "Order #", openBalanceRows)}</TableHead>
+                    <TableHead>{columnHeading('open-balances', 1, "Client", openBalanceRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('open-balances', 2, "Total", openBalanceRows)}</TableHead>
+                    <TableHead>{columnHeading('open-balances', 3, "Status", openBalanceRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1355,14 +1360,14 @@ export default function ReportsPage() {
                 </Select>
               </div>
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>Order #</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead className="text-right">VATable Sales</TableHead>
-                    <TableHead className="text-right">VAT ({vatLabel}%)</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{columnHeading('vat-summary', 0, "Order #", vatRows)}</TableHead>
+                    <TableHead>{columnHeading('vat-summary', 1, "Client", vatRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('vat-summary', 2, "VATable Sales", vatRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('vat-summary', 3, `VAT (${vatLabel}%)`, vatRows)}</TableHead>
+                    <TableHead className="text-right">{columnHeading('vat-summary', 4, "Total", vatRows)}</TableHead>
+                    <TableHead>{columnHeading('vat-summary', 5, "Status", vatRows)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

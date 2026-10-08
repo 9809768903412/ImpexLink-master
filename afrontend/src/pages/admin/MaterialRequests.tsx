@@ -1,3 +1,4 @@
+import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useState } from 'react';
 import { Plus, ClipboardList, CheckCircle, XCircle, Clock, AlertTriangle, FileText, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -561,7 +562,7 @@ export default function MaterialRequestsPage() {
 
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+<TableFilterToolbar>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
               <Input
@@ -598,7 +599,7 @@ export default function MaterialRequestsPage() {
                 <SelectItem value="asc">Asc</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </TableFilterToolbar>
         </CardContent>
       </Card>
 
