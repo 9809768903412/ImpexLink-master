@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
@@ -101,6 +102,13 @@ export default function ClientOrdersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const detailColumns = useTableColumnFilters<Order['items'][number]>([
+    { label: 'Item', kind: 'text', value: item => item.itemName },
+    { label: 'Qty', kind: 'number', value: item => item.quantity },
+    { label: 'Unit Price', kind: 'number', value: item => item.unitPrice },
+    { label: 'Amount', kind: 'number', value: item => calcLineAmounts(item.quantity, item.unitPrice).total },
+  ]);
+  useEffect(() => { detailColumns.clear(); }, [selectedOrder?.id]);
   const [selectedQuote, setSelectedQuote] = useState<QuoteRequest | null>(null);
   const [quoteResponse, setQuoteResponse] = useState('');
   const [quotedAmount, setQuotedAmount] = useState('');
@@ -194,7 +202,16 @@ export default function ClientOrdersPage() {
     };
   }, [fetchOrders]);
 
-  const filteredOrders = orders.filter((order) => orderDates.matches(order.createdAt));
+  const tableColumns = useTableColumnFilters<typeof orders[number]>([
+    { label: "Order #", kind: 'text', value: row => row.orderNumber },
+    { label: "Client", kind: 'text', value: row => row.clientName },
+    { label: "Project", kind: 'text', value: row => row.projectName || '' },
+    { label: "Total", kind: 'number', value: row => row.total },
+    { label: "Status", kind: 'select', value: row => row.status },
+    { label: "Payment", kind: 'select', value: row => row.paymentStatus },
+    { label: "Date", kind: 'date', value: row => row.createdAt },
+  ], () => setOrdersPage(1));
+  const filteredOrders = orders.filter((order) => orderDates.matches(order.createdAt) && tableColumns.matches(order));
   const ordersPageStart = (ordersPage - 1) * ordersPageSize;
   const ordersPageEnd = ordersPageStart + ordersPageSize;
   const pagedOrders = filteredOrders.slice(ordersPageStart, ordersPageEnd);
@@ -511,7 +528,7 @@ export default function ClientOrdersPage() {
                   totalPages={Math.max(Math.ceil(totalFilteredOrders / ordersPageSize), 1)}
                   totalItems={totalFilteredOrders}
                   filters={[
-                    ...orderDates.filters,
+                    ...orderDates.filters, ...tableColumns.filters,
                     { label: 'Search', value: searchTerm },
                     { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
                     { label: 'Sort', value: `${sortKey} ${sortDir}` },
@@ -574,22 +591,22 @@ export default function ClientOrdersPage() {
           {/* Orders Table */}
           <Card>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
+                <Table>
+<TableHeader>
+                    <TableRow>
                     <TableHead className="w-[40px]">
                       <Checkbox
                         checked={filteredOrders.length > 0 && filteredOrders.every((o) => selectedOrderIds.includes(o.id))}
                         onCheckedChange={() => toggleSelectAllOrders(filteredOrders)}
                       />
                     </TableHead>
-                    <TableHead>Order #</TableHead>
-                    <TableHead>Client</TableHead>
-                    {visibleCols.project && <TableHead>Project</TableHead>}
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Status</TableHead>
-                    {visibleCols.payment && <TableHead>Payment</TableHead>}
-                    {visibleCols.date && <TableHead>Date</TableHead>}
+                    <TableHead>{tableColumns.heading("Order #", orders)}</TableHead>
+                    <TableHead>{tableColumns.heading("Client", orders)}</TableHead>
+                    {visibleCols.project && <TableHead>{tableColumns.heading("Project", orders)}</TableHead>}
+                    <TableHead className="text-right">{tableColumns.heading("Total", orders)}</TableHead>
+                    <TableHead>{tableColumns.heading("Status", orders)}</TableHead>
+                    {visibleCols.payment && <TableHead>{tableColumns.heading("Payment", orders)}</TableHead>}
+                    {visibleCols.date && <TableHead>{tableColumns.heading("Date", orders)}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -754,17 +771,29 @@ export default function ClientOrdersPage() {
           {selectedOrder && (
             <div className="space-y-4">
               <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
+<div className="flex flex-wrap items-center justify-between gap-2 p-3">
+                  <p className="text-xs text-muted-foreground">Filters affect this item list only; document totals include all items.</p>
+                  <TableExportMenu title={`Items · ${selectedOrder.orderNumber}`} filename={`items-${selectedOrder.id}`}
+                    columns={[
+                      { header: 'Item', value: item => item.itemName },
+                      { header: 'Quantity', value: item => item.quantity },
+                      { header: 'Unit Price', value: item => item.unitPrice },
+                      { header: 'Amount', value: item => calcLineAmounts(item.quantity, item.unitPrice).total },
+                    ]}
+                    currentRows={selectedOrder.items.filter(detailColumns.matches)} allRows={selectedOrder.items.filter(detailColumns.matches)} totalItems={selectedOrder.items.filter(detailColumns.matches).length}
+                    filters={[{ label: 'Reference', value: selectedOrder.orderNumber }, ...detailColumns.filters]} />
+                </div>
+<Table>
+<TableHeader>
                     <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-center">Qty</TableHead>
-                      <TableHead className="text-right">Unit Price</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>{detailColumns.heading('Item', selectedOrder?.items || [])}</TableHead>
+                      <TableHead className="text-center">{detailColumns.heading('Qty', selectedOrder?.items || [])}</TableHead>
+                      <TableHead className="text-right">{detailColumns.heading('Unit Price', selectedOrder?.items || [])}</TableHead>
+                      <TableHead className="text-right">{detailColumns.heading('Amount', selectedOrder?.items || [])}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedOrder.items.map((item) => {
+                    {selectedOrder.items.filter(detailColumns.matches).map((item) => {
                       const line = calcLineAmounts(item.quantity, item.unitPrice);
                       return (
                         <TableRow key={item.itemId}>

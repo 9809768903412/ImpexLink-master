@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 ﻿import { useMemo } from 'react';
 import {
   ArrowRight,
@@ -173,8 +174,15 @@ export default function StaffDashboard() {
       : effectiveRole === 'admin' || effectiveRole === 'warehouse_staff'
         ? ['approved']
         : ['pending'];
+  const requestColumns = useTableColumnFilters<typeof requests[number]>([
+    { label: "Request ID", kind: 'text', value: row => row.requestNumber },
+    { label: "Project", kind: 'text', value: row => row.projectName },
+    { label: "Requested By", kind: 'select', value: row => row.requestedBy },
+    { label: "Date", kind: 'date', value: row => row.date },
+    { label: "Status", kind: 'select', value: row => getRequestStatusLabel(row.status) },
+  ]);
   const pendingRequests = requests
-    .filter((request) => requestDates.matches(request.date))
+    .filter((request) => requestDates.matches(request.date) && requestColumns.matches(request))
     .filter((request) => reviewStatuses.includes(request.status))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -312,19 +320,19 @@ export default function StaffDashboard() {
                 currentRows={pendingRequests}
                 allRows={pendingRequests}
                 totalItems={pendingRequests.length}
-                filters={requestDates.filters}
+                filters={[...requestDates.filters, ...requestColumns.filters]}
               />
             </div>
           </CardHeader>
           <CardContent>
             <Table>
-              <TableHeader>
+<TableHeader>
                 <TableRow>
-                  <TableHead>Request ID</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Requested By</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>{requestColumns.heading("Request ID", requests)}</TableHead>
+                  <TableHead>{requestColumns.heading("Project", requests)}</TableHead>
+                  <TableHead>{requestColumns.heading("Requested By", requests)}</TableHead>
+                  <TableHead>{requestColumns.heading("Date", requests)}</TableHead>
+                  <TableHead>{requestColumns.heading("Status", requests)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -822,5 +830,3 @@ export default function StaffDashboard() {
     </div>
   );
 }
-
-

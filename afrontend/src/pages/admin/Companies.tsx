@@ -1,3 +1,5 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
+import { loadTableRows } from '@/utils/loadTableRows';
 import { useEffect, useMemo, useState } from 'react';
 import { Building2, Plus, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,7 +62,15 @@ export default function CompaniesPage() {
   const [form, setForm] = useState<CompanyForm>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const tableColumns = useTableColumnFilters<typeof companies[number]>([
+    { label: "Company", kind: 'text', value: row => `${row.name} ${row.address || ''}` },
+    { label: "Contact", kind: 'text', value: row => `${row.contactPerson || ''} ${row.phone || ''}` },
+    { label: "Email", kind: 'text', value: row => row.email },
+    { label: "Visibility", kind: 'select', value: row => row.visibilityScope || 'company' },
+  ], () => setPage(1));
+  const filteredCompanies = companies.filter(tableColumns.matches);
+  const pageCompanies = filteredCompanies.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredCompanies.length / pageSize));
   const companyStats = useMemo(() => {
     return {
       total,
@@ -72,18 +82,16 @@ export default function CompaniesPage() {
   const loadCompanies = async () => {
     setIsLoading(true);
     try {
-      const response = await apiClient.get('/clients', {
-        params: {
+      const response = { data: await loadTableRows<Client>('/clients', {
           q: search || undefined,
           page,
           pageSize,
           sortBy: 'clientName',
           sortDir: 'asc',
-        },
-      });
+        }) };
       const payload = response.data;
-      setCompanies(Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []);
-      setTotal(Number(payload?.total ?? (Array.isArray(payload) ? payload.length : 0)));
+      setCompanies(payload.data);
+      setTotal(payload.total);
     } catch (error: any) {
       toast({
         title: 'Companies not loaded',
@@ -97,7 +105,7 @@ export default function CompaniesPage() {
 
   useEffect(() => {
     loadCompanies();
-  }, [page, pageSize, search]);
+  }, [search]);
 
   useEffect(() => {
     setPage(1);
@@ -209,13 +217,13 @@ export default function CompaniesPage() {
               { header: 'TIN', value: (company) => company.tin || '' },
               { header: 'Visibility', value: (company) => company.visibilityScope || 'company' },
             ]}
-            currentRows={companies}
-            loadRows={loadExportCompanies}
+            currentRows={pageCompanies}
+            allRows={filteredCompanies}
             page={page}
             pageSize={pageSize}
             totalPages={totalPages}
-            totalItems={total}
-            filters={[{ label: 'Search', value: search }]}
+            totalItems={filteredCompanies.length}
+            filters={[...tableColumns.filters, { label: 'Search', value: search }]}
             disabled={isLoading}
           />
           <Button onClick={openCreate} className="gap-2">
@@ -266,24 +274,24 @@ export default function CompaniesPage() {
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader>
+<TableHeader>
               <TableRow>
-                <TableHead>Company</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Visibility</TableHead>
+                <TableHead>{tableColumns.heading("Company", companies)}</TableHead>
+                <TableHead>{tableColumns.heading("Contact", companies)}</TableHead>
+                <TableHead>{tableColumns.heading("Email", companies)}</TableHead>
+                <TableHead>{tableColumns.heading("Visibility", companies)}</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {companies.length === 0 ? (
+              {filteredCompanies.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                     {isLoading ? 'Loading companies...' : 'No companies found.'}
                   </TableCell>
                 </TableRow>
               ) : (
-                companies.map((company) => (
+                pageCompanies.map((company) => (
                   <TableRow key={company.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">

@@ -1,3 +1,5 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
+import { loadTableRows } from '@/utils/loadTableRows';
 import { useEffect, useMemo, useState } from 'react';
 import { Edit, Plus, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -102,22 +104,30 @@ export default function SuppliersPage() {
   const [form, setForm] = useState<SupplierForm>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const tableColumns = useTableColumnFilters<typeof suppliers[number]>([
+    { label: "Supplier", kind: 'text', value: row => row.name },
+    { label: "Country", kind: 'select', value: row => row.country || 'Philippines' },
+    { label: "TIN", kind: 'text', value: row => row.tin },
+    { label: "Contact Person", kind: 'text', value: row => row.contactPerson },
+    { label: "Contact Number", kind: 'text', value: row => row.phone },
+    { label: "Address", kind: 'text', value: row => row.address },
+  ], () => setPage(1));
+  const filteredSuppliers = suppliers.filter(tableColumns.matches);
+  const pageSuppliers = filteredSuppliers.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredSuppliers.length / pageSize));
 
   const reloadSuppliers = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.get('/suppliers', {
-        params: {
+      const response = { data: await loadTableRows<Supplier>('/suppliers', {
           q: searchQuery || undefined,
           page,
           pageSize,
           sortBy: 'supplierName',
           sortDir: 'asc',
-        },
-      });
+        }) };
       const payload = response.data;
-      const rows = payload?.data || payload || [];
+      const rows = payload.data;
       setSuppliers(rows);
       setTotalItems(payload?.total || rows.length);
     } catch {
@@ -130,7 +140,7 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     reloadSuppliers();
-  }, [page, pageSize, searchQuery]);
+  }, [searchQuery]);
 
   useEffect(() => {
     setPage(1);
@@ -232,13 +242,13 @@ export default function SuppliersPage() {
               { header: 'Contact Number', value: (supplier) => supplier.phone || '' },
               { header: 'Address', value: (supplier) => supplier.address || '' },
             ]}
-            currentRows={suppliers}
-            loadRows={loadExportSuppliers}
+            currentRows={pageSuppliers}
+            allRows={filteredSuppliers}
             page={page}
             pageSize={pageSize}
             totalPages={totalPages}
-            totalItems={totalItems}
-            filters={[{ label: 'Search', value: searchQuery }]}
+            totalItems={filteredSuppliers.length}
+            filters={[...tableColumns.filters, { label: 'Search', value: searchQuery }]}
             disabled={loading}
           />
           {canManage && (
@@ -270,19 +280,19 @@ export default function SuppliersPage() {
 
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader>
+<TableHeader>
                 <TableRow>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Country</TableHead>
-                  <TableHead>TIN</TableHead>
-                  <TableHead>Contact Person</TableHead>
-                  <TableHead>Contact Number</TableHead>
-                  <TableHead>Address</TableHead>
+                  <TableHead>{tableColumns.heading("Supplier", suppliers)}</TableHead>
+                  <TableHead>{tableColumns.heading("Country", suppliers)}</TableHead>
+                  <TableHead>{tableColumns.heading("TIN", suppliers)}</TableHead>
+                  <TableHead>{tableColumns.heading("Contact Person", suppliers)}</TableHead>
+                  <TableHead>{tableColumns.heading("Contact Number", suppliers)}</TableHead>
+                  <TableHead>{tableColumns.heading("Address", suppliers)}</TableHead>
                   {canManage && <TableHead className="w-[120px] text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {suppliers.map((supplier) => (
+                {pageSuppliers.map((supplier) => (
                   <TableRow key={supplier.id}>
                     <TableCell>
                       <p className="font-medium">{supplier.name}</p>
@@ -306,7 +316,7 @@ export default function SuppliersPage() {
                     )}
                   </TableRow>
                 ))}
-                {!loading && suppliers.length === 0 && (
+                {!loading && filteredSuppliers.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={canManage ? 7 : 6} className="py-8 text-center text-muted-foreground">
                       No suppliers found.

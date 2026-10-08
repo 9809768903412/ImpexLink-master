@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
@@ -111,7 +112,16 @@ export default function PurchaseOrdersPage() {
   const vatLabel = Math.round(VAT_RATE * 100);
   const poPageStart = (poPage - 1) * poPageSize;
   const poPageEnd = poPageStart + poPageSize;
-  const datedPurchaseOrders = purchaseOrders.filter((order) => purchaseDates.matches(order.date));
+  const tableColumns = useTableColumnFilters<typeof purchaseOrders[number]>([
+    { label: "PO #", kind: 'text', value: row => row.poNumber },
+    { label: "Supplier", kind: 'text', value: row => row.supplierName },
+    { label: "Date", kind: 'date', value: row => row.date },
+    { label: "Terms", kind: 'select', value: row => row.terms },
+    { label: "Total", kind: 'number', value: row => row.total },
+    { label: "Status", kind: 'select', value: row => row.status },
+    { label: "Approved By", kind: 'select', value: row => row.approvedBy || 'Unassigned' },
+  ], () => setPoPage(1));
+  const datedPurchaseOrders = purchaseOrders.filter((order) => purchaseDates.matches(order.date) && tableColumns.matches(order));
   const pagedPurchaseOrders = datedPurchaseOrders.slice(poPageStart, poPageEnd);
   const totalFilteredPOs = datedPurchaseOrders.length;
   const impactedOrders = selectedPO?.projectId
@@ -571,7 +581,7 @@ export default function PurchaseOrdersPage() {
                   totalPages={Math.max(Math.ceil(totalFilteredPOs / poPageSize), 1)}
                   totalItems={totalFilteredPOs}
                   filters={[
-                    ...purchaseDates.filters,
+                    ...purchaseDates.filters, ...tableColumns.filters,
                     { label: 'Search', value: searchTerm },
                     { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
                     { label: 'Sort', value: `${sortKey} ${sortDir}` },
@@ -586,15 +596,15 @@ export default function PurchaseOrdersPage() {
           <Card>
             <CardContent className="p-0">
               <Table>
-                <TableHeader>
+<TableHeader>
                   <TableRow>
-                    <TableHead>PO #</TableHead>
-                    <TableHead>Supplier</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Terms</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Approved By</TableHead>
+                    <TableHead>{tableColumns.heading("PO #", purchaseOrders)}</TableHead>
+                    <TableHead>{tableColumns.heading("Supplier", purchaseOrders)}</TableHead>
+                    <TableHead>{tableColumns.heading("Date", purchaseOrders)}</TableHead>
+                    <TableHead>{tableColumns.heading("Terms", purchaseOrders)}</TableHead>
+                    <TableHead className="text-right">{tableColumns.heading("Total", purchaseOrders)}</TableHead>
+                    <TableHead>{tableColumns.heading("Status", purchaseOrders)}</TableHead>
+                    <TableHead>{tableColumns.heading("Approved By", purchaseOrders)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
