@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
@@ -122,7 +123,14 @@ export default function PaymentsPage() {
 
   useEffect(() => setPage(1), [search, status]);
 
-  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt));
+  const tableColumns = useTableColumnFilters<typeof payments[number]>([
+    { label: "Flow", kind: 'select', value: row => row.direction === 'client-to-office' ? 'Client to Office' : 'Office to Supplier' },
+    { label: "Reference", kind: 'text', value: row => row.referenceNumber || row.clientOrderNumber || row.supplierPoNumber || '-' },
+    { label: "Due", kind: 'date', value: row => row.dueDate },
+    { label: "Status", kind: 'select', value: row => row.status },
+    { label: "Amount", kind: 'number', value: row => row.amount },
+  ], () => setPage(1));
+  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt) && tableColumns.matches(payment));
   const paged = datedPayments.slice((page - 1) * pageSize, page * pageSize);
   const orderPickerTotalPages = Math.max(Math.ceil(orders.length / selectorPageSize), 1);
   const poPickerTotalPages = Math.max(Math.ceil(purchaseOrders.length / selectorPageSize), 1);
@@ -238,7 +246,7 @@ export default function PaymentsPage() {
             totalPages={Math.max(Math.ceil(datedPayments.length / pageSize), 1)}
             totalItems={datedPayments.length}
             filters={[
-              ...paymentDates.filters,
+              ...paymentDates.filters, ...tableColumns.filters,
               { label: 'Search', value: search },
               { label: 'Status', value: status !== 'all' ? status : '' },
             ]}
@@ -283,13 +291,13 @@ export default function PaymentsPage() {
       <Card>
         <CardContent className="p-0">
           <Table>
-            <TableHeader>
+<TableHeader>
               <TableRow>
-                <TableHead>Flow</TableHead>
-                <TableHead>Reference</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>{tableColumns.heading("Flow", payments)}</TableHead>
+                <TableHead>{tableColumns.heading("Reference", payments)}</TableHead>
+                <TableHead>{tableColumns.heading("Due", payments)}</TableHead>
+                <TableHead>{tableColumns.heading("Status", payments)}</TableHead>
+                <TableHead className="text-right">{tableColumns.heading("Amount", payments)}</TableHead>
                 {canRecordPayments ? <TableHead className="text-right">Quick Update</TableHead> : null}
               </TableRow>
             </TableHeader>

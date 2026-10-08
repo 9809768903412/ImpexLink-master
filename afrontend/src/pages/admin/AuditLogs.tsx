@@ -1,3 +1,5 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
+import { loadTableRows } from '@/utils/loadTableRows';
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,11 +66,11 @@ export default function AuditLogsPage() {
   const { range: dateFilter, setRange: setDateFilter, dateFrom, dateTo, filters: dateExportFilters } = useTableDateRange();
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchLogs = async () => {
       setLogsLoading(true);
       try {
-        const response = await apiClient.get('/audit-logs', {
-          params: {
+        const response = { data: await loadTableRows<AuditLog>('/audit-logs', {
             q: searchTerm || undefined,
             action: actionFilter !== 'all' ? actionFilter : undefined,
             userId: userFilter !== 'all' ? userFilter : undefined,
@@ -76,31 +78,35 @@ export default function AuditLogsPage() {
             pageSize: logsPageSize,
             dateFrom,
             dateTo,
-          },
-        });
+          }, controller.signal) };
         const payload = response.data;
-        if (payload?.data) {
-          setLogs(payload.data);
-          setLogsTotal(payload.total || payload.data.length);
-          setCache('audit-logs', payload.data);
-        } else {
-          setLogs(payload);
-          setLogsTotal(payload.length || 0);
-          setCache('audit-logs', payload);
-        }
+        if (controller.signal.aborted) return;
+        setLogs(payload.data);
+        setLogsTotal(payload.total);
+        setCache('audit-logs', payload.data);
       } catch (err) {
+        if (controller.signal.aborted) return;
         setLogs([]);
         setLogsTotal(0);
       } finally {
-        setLogsLoading(false);
+        if (!controller.signal.aborted) setLogsLoading(false);
       }
     };
     fetchLogs();
-  }, [actionFilter, dateFrom, dateTo, logsPage, logsPageSize, searchTerm, userFilter]);
+    return () => controller.abort();
+  }, [actionFilter, dateFrom, dateTo, searchTerm, userFilter]);
 
-  const filteredLogs = logs;
+  const tableColumns = useTableColumnFilters<typeof logs[number]>([
+    { label: "Timestamp", kind: 'date', value: row => row.timestamp },
+    { label: "User", kind: 'select', value: row => row.userName },
+    { label: "Action", kind: 'select', value: row => getActionLabel(row) },
+    { label: "Target", kind: 'text', value: row => row.target },
+    { label: "Details", kind: 'text', value: row => row.details },
+  ], () => setLogsPage(1));
+  const matchingLogs = logs.filter(tableColumns.matches);
+  const filteredLogs = matchingLogs.slice((logsPage - 1) * logsPageSize, logsPage * logsPageSize);
 
-  const totalPages = Math.max(Math.ceil((logsTotal || logs.length) / logsPageSize), 1);
+  const totalPages = Math.max(Math.ceil(matchingLogs.length / logsPageSize), 1);
   const exportColumns = [
     { header: 'Timestamp', value: (log: AuditLog) => format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss') },
     { header: 'User', value: (log: AuditLog) => log.userName },
@@ -143,16 +149,16 @@ export default function AuditLogsPage() {
           filename="audit-logs"
           columns={exportColumns}
           currentRows={filteredLogs}
-          loadRows={loadExportLogs}
+          allRows={matchingLogs}
           page={logsPage}
           pageSize={logsPageSize}
           totalPages={totalPages}
-          totalItems={logsTotal}
+          totalItems={matchingLogs.length}
           filters={[
             { label: 'Search', value: searchTerm },
             { label: 'Action', value: actionFilter !== 'all' ? actionFilter : '' },
             { label: 'User', value: userFilter !== 'all' ? users.find((user) => user.id === userFilter)?.name || userFilter : '' },
-            ...dateExportFilters,
+            ...dateExportFilters, ...tableColumns.filters,
           ]}
           disabled={logsLoading}
         />
@@ -213,13 +219,14 @@ export default function AuditLogsPage() {
               </SelectContent>
             </Select>
             <TableDateRangeFilter label="Audit date" range={dateFilter} onChange={(range) => { setDateFilter(range); setLogsPage(1); }} />
-            {(actionFilter !== 'all' || userFilter !== 'all' || dateFilter) && (
+            {(actionFilter !== 'all' || userFilter !== 'all' || dateFilter || tableColumns.filters.length > 0) && (
               <Button
                 variant="ghost"
                 onClick={() => {
                   setActionFilter('all');
                   setUserFilter('all');
                   setDateFilter(undefined);
+                  tableColumns.clear();
                   setLogsPage(1);
                 }}
               >
@@ -240,13 +247,13 @@ export default function AuditLogsPage() {
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader>
+<TableHeader>
               <TableRow>
-                <TableHead className="w-[180px]">Timestamp</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Details</TableHead>
+                <TableHead className="w-[180px]">{tableColumns.heading("Timestamp", logs)}</TableHead>
+                <TableHead>{tableColumns.heading("User", logs)}</TableHead>
+                <TableHead>{tableColumns.heading("Action", logs)}</TableHead>
+                <TableHead>{tableColumns.heading("Target", logs)}</TableHead>
+                <TableHead>{tableColumns.heading("Details", logs)}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

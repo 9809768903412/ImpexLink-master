@@ -1,3 +1,5 @@
+import { loadTableRows } from '@/utils/loadTableRows';
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,11 +81,11 @@ export default function ProofCenterPage() {
   const [statusTab, setStatusTab] = useState('all');
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchProofs = async () => {
       setIsLoading(true);
       try {
-        const response = await apiClient.get<PaginatedProofResponse>('/proofs', {
-          params: {
+const response = { data: await loadTableRows<ProofRecord>('/proofs', {
             q: searchTerm || undefined,
             type: typeFilter !== 'all' ? typeFilter : undefined,
             status: statusFilter !== 'all' ? statusFilter : undefined,
@@ -91,22 +93,36 @@ export default function ProofCenterPage() {
             to: toDate || undefined,
             page,
             pageSize,
-          },
-        });
+          }, controller.signal) };
         const payload = response.data;
+        if (controller.signal.aborted) return;
         setProofs(payload.data || []);
         setTotal(payload.total || 0);
-        setTotalPages(payload.totalPages || 0);
+        setTotalPages(Math.ceil(payload.total / pageSize));
       } catch (_err) {
+        if (controller.signal.aborted) return;
         setProofs([]);
         setTotal(0);
         setTotalPages(0);
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) setIsLoading(false);
       }
     };
     fetchProofs();
-  }, [fromDate, page, pageSize, searchTerm, statusFilter, toDate, typeFilter]);
+    return () => controller.abort();
+  }, [fromDate, searchTerm, statusFilter, toDate, typeFilter]);
+
+  const tableColumns = useTableColumnFilters<ProofRecord>([
+    { label: 'Uploaded', kind: 'date', value: row => row.uploadedAt },
+    { label: 'Type', kind: 'select', value: row => row.type },
+    { label: 'Status', kind: 'select', value: row => row.status },
+    { label: 'Owner', value: row => `${row.ownerName} ${row.ownerEmail || ''}` },
+    { label: 'Reference', value: row => row.reference },
+    { label: 'File', value: row => row.fileName },
+  ], () => setPage(1));
+  const matchingProofs = proofs.filter(tableColumns.matches);
+  const visibleProofs = matchingProofs.slice((page - 1) * pageSize, page * pageSize);
+  const filteredTotalPages = Math.max(1, Math.ceil(matchingProofs.length / pageSize));
 
   const loadExportProofs = async (fromPage: number, toPage: number) => {
     const responses = await Promise.all(
@@ -283,13 +299,14 @@ export default function ProofCenterPage() {
                 { header: 'Project', value: (row) => row.projectName || '' },
                 { header: 'File URL', value: (row) => toPublicFileUrl(row.fileUrl) },
               ]}
-              currentRows={proofs}
-              loadRows={loadExportProofs}
+              currentRows={visibleProofs}
+              allRows={matchingProofs}
               page={page}
               pageSize={pageSize}
-              totalPages={Math.max(totalPages, 1)}
-              totalItems={total}
+              totalPages={filteredTotalPages}
+              totalItems={matchingProofs.length}
               filters={[
+                ...tableColumns.filters,
                 { label: 'Search', value: searchTerm },
                 { label: 'Type', value: typeFilter !== 'all' ? typeFilter : '' },
                 { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
@@ -305,12 +322,12 @@ export default function ProofCenterPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Uploaded</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Owner</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>File</TableHead>
+                  <TableHead>{tableColumns.heading('Uploaded', proofs)}</TableHead>
+                  <TableHead>{tableColumns.heading('Type', proofs)}</TableHead>
+                  <TableHead>{tableColumns.heading('Status', proofs)}</TableHead>
+                  <TableHead>{tableColumns.heading('Owner', proofs)}</TableHead>
+                  <TableHead>{tableColumns.heading('Reference', proofs)}</TableHead>
+                  <TableHead>{tableColumns.heading('File', proofs)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -322,14 +339,14 @@ export default function ProofCenterPage() {
                       </TableCell>
                     </TableRow>
                   ))
-                ) : proofs.length === 0 ? (
+                ) : matchingProofs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                       No proofs matched your filters.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  proofs.map((row) => (
+                  visibleProofs.map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>{format(new Date(row.uploadedAt), 'yyyy-MM-dd HH:mm')}</TableCell>
                       <TableCell>
@@ -367,7 +384,7 @@ export default function ProofCenterPage() {
 
           <PaginationNav
             page={page}
-            totalPages={totalPages}
+            totalPages={filteredTotalPages}
             onPageChange={setPage}
             disabled={isLoading}
           />

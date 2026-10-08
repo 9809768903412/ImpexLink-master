@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -135,6 +136,12 @@ export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingClients = users.filter((u) => u.role === 'client' && String(u.status).toLowerCase() !== 'active');
   const normalizedUserSearch = userSearch.trim().toLowerCase();
+  const tableColumns = useTableColumnFilters<typeof users[number]>([
+    { label: "User", kind: 'text', value: row => row.name },
+    { label: "Email", kind: 'text', value: row => row.email },
+    { label: "Role", kind: 'select', value: row => row.role },
+    { label: "Status", kind: 'select', value: row => row.status },
+  ]);
   const filteredUsers = users.filter((u) => {
     const matchesSearch =
       !normalizedUserSearch ||
@@ -143,7 +150,7 @@ export default function SettingsPage() {
     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
     const statusValue = String(u.status || 'ACTIVE').toLowerCase();
     const matchesStatus = userStatusFilter === 'all' || statusValue === userStatusFilter;
-    return matchesSearch && matchesRole && matchesStatus && accountDates.matches(u.createdAt);
+    return matchesSearch && matchesRole && matchesStatus && accountDates.matches(u.createdAt) && tableColumns.matches(u);
   });
   const [newUser, setNewUser] = useState({
     name: '',
@@ -954,7 +961,7 @@ export default function SettingsPage() {
                       allRows={filteredUsers}
                       totalItems={filteredUsers.length}
                       filters={[
-                        ...accountDates.filters,
+                        ...accountDates.filters, ...tableColumns.filters,
                         { label: 'Search', value: userSearch },
                         { label: 'Role', value: userRoleFilter !== 'all' ? userRoleFilter : '' },
                         { label: 'Status', value: userStatusFilter !== 'all' ? userStatusFilter : '' },
@@ -1050,12 +1057,12 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <Table>
-                  <TableHeader>
+<TableHeader>
                     <TableRow>
-                      <TableHead>User</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>{tableColumns.heading("User", users)}</TableHead>
+                      <TableHead>{tableColumns.heading("Email", users)}</TableHead>
+                      <TableHead>{tableColumns.heading("Role", users)}</TableHead>
+                      <TableHead>{tableColumns.heading("Status", users)}</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>

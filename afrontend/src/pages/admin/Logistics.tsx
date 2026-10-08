@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
@@ -119,6 +120,12 @@ export default function LogisticsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
+  const detailColumns = useTableColumnFilters<Delivery['items'][number]>([
+    { label: 'Item', kind: 'text', value: item => item.itemName },
+    { label: 'Qty', kind: 'number', value: item => item.quantity },
+    { label: 'Unit', kind: 'select', value: item => item.unit },
+  ]);
+  useEffect(() => { detailColumns.clear(); }, [selectedDelivery?.id]);
   const [trackingDelivery, setTrackingDelivery] = useState<Delivery | null>(null);
   const [showTruckLoad, setShowTruckLoad] = useState(false);
   const [isStartingTruckTrip, setIsStartingTruckTrip] = useState(false);
@@ -153,6 +160,13 @@ export default function LogisticsPage() {
     email: 'sales@impex.ph',
     website: 'www.impex.ph',
   });
+  const tableColumns = useTableColumnFilters<typeof deliveries[number]>([
+    { label: "Delivery", kind: 'text', value: row => `${row.drNumber} ${row.orderNumber}` },
+    { label: "Client / Project", kind: 'text', value: row => `${row.clientName} ${row.projectName || ''}` },
+    { label: "Details", kind: 'text', value: row => `${row.deliveryGuyName || ''} ${row.items.map(item => item.itemName).join(' ')}` },
+    { label: "Status", kind: 'select', value: row => row.status },
+    { label: "GPS", kind: 'select', value: row => row.latestLocation ? 'Recorded' : 'No location' },
+  ], () => setDeliveriesPage(1));
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredDeliveries = deliveries.filter((delivery) => {
     const matchesSearch =
@@ -162,7 +176,7 @@ export default function LogisticsPage() {
       delivery.clientName?.toLowerCase().includes(normalizedSearch) ||
       delivery.projectName?.toLowerCase().includes(normalizedSearch);
     const matchesStatus = statusFilter === 'all' || delivery.status === statusFilter;
-    return matchesSearch && matchesStatus && deliveryDates.matches(delivery.issuedAt);
+    return matchesSearch && matchesStatus && deliveryDates.matches(delivery.issuedAt) && tableColumns.matches(delivery);
   });
   const deliveriesPageStart = (deliveriesPage - 1) * deliveriesPageSize;
   const deliveriesPageEnd = deliveriesPageStart + deliveriesPageSize;
@@ -938,7 +952,7 @@ export default function LogisticsPage() {
                   totalPages={Math.max(Math.ceil(totalFilteredDeliveries / deliveriesPageSize), 1)}
                   totalItems={totalFilteredDeliveries}
                   filters={[
-                    ...deliveryDates.filters,
+                    ...deliveryDates.filters, ...tableColumns.filters,
                     { label: 'Search', value: searchTerm },
                     { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
                     { label: 'Sort', value: `${sortKey} ${sortDir}` },
@@ -952,14 +966,14 @@ export default function LogisticsPage() {
           {/* Deliveries Table */}
           <Card>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Delivery</TableHead>
-                    <TableHead>Client / Project</TableHead>
-                    <TableHead>Details</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">GPS</TableHead>
+                <Table>
+<TableHeader>
+                      <TableRow>
+                    <TableHead>{tableColumns.heading("Delivery", deliveries)}</TableHead>
+                    <TableHead>{tableColumns.heading("Client / Project", deliveries)}</TableHead>
+                    <TableHead>{tableColumns.heading("Details", deliveries)}</TableHead>
+                    <TableHead>{tableColumns.heading("Status", deliveries)}</TableHead>
+                    <TableHead className="text-right">{tableColumns.heading("GPS", deliveries)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1110,16 +1124,27 @@ export default function LogisticsPage() {
                       )}
                     </div>
                   </div>
-                  <Table>
-                    <TableHeader>
+<div className="flex flex-wrap items-center justify-between gap-2 p-3">
+                  <p className="text-xs text-muted-foreground">Filters affect this item list only; document totals include all items.</p>
+                  <TableExportMenu title={`Items · ${selectedDelivery.drNumber}`} filename={`items-${selectedDelivery.id}`}
+                    columns={[
+                      { header: 'Item', value: item => item.itemName },
+                      { header: 'Quantity', value: item => item.quantity },
+                      { header: 'Unit', value: item => item.unit },
+                    ]}
+                    currentRows={selectedDelivery.items.filter(detailColumns.matches)} allRows={selectedDelivery.items.filter(detailColumns.matches)} totalItems={selectedDelivery.items.filter(detailColumns.matches).length}
+                    filters={[{ label: 'Reference', value: selectedDelivery.drNumber }, ...detailColumns.filters]} />
+                </div>
+<Table>
+<TableHeader>
                       <TableRow>
-                        <TableHead>Item</TableHead>
-                        <TableHead className="text-center">Qty</TableHead>
-                        <TableHead>Unit</TableHead>
+                        <TableHead>{detailColumns.heading('Item', selectedDelivery?.items || [])}</TableHead>
+                        <TableHead className="text-center">{detailColumns.heading('Qty', selectedDelivery?.items || [])}</TableHead>
+                        <TableHead>{detailColumns.heading('Unit', selectedDelivery?.items || [])}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {selectedDelivery.items.map((item) => (
+                      {selectedDelivery.items.filter(detailColumns.matches).map((item) => (
                         <TableRow key={item.itemId}>
                           <TableCell>{item.itemName}</TableCell>
                           <TableCell className="text-center">{item.quantity}</TableCell>

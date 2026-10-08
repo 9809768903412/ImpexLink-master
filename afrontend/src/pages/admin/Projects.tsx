@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
@@ -267,12 +268,29 @@ export default function ProjectsPage() {
       setSelectedProject(linkedProject);
     }
   }, [location.search, projects]);
-  const selectedProjectItems = selectedProject
+  const materialColumns = useTableColumnFilters<Order['items'][number]>([
+    { label: 'Item', value: row => row.itemName },
+    { label: 'Qty', kind: 'number', value: row => row.quantity },
+    { label: 'Unit Price', kind: 'number', value: row => row.unitPrice },
+    { label: 'Estimated Cost', kind: 'number', value: row => typeof row.amount === 'number' && row.amount > 0 ? row.amount : row.quantity * row.unitPrice },
+  ], () => setProjectItemsPage(1));
+  useEffect(() => { materialColumns.clear(); }, [selectedProject?.id]);
+  const projectMaterials = selectedProject
     ? orders.filter((o) => o.projectId === selectedProject.id).flatMap((o) => o.items)
     : [];
-  const selectedProjectOrders = selectedProject
+  const selectedProjectItems = projectMaterials.filter(materialColumns.matches);
+  const orderColumns = useTableColumnFilters<Order>([
+    { label: 'Order', value: row => row.orderNumber },
+    { label: 'Status', kind: 'select', value: row => row.status },
+    { label: 'Payment', kind: 'select', value: row => row.paymentStatus },
+    { label: 'Created', kind: 'date', value: row => row.createdAt },
+    { label: 'Total', kind: 'number', value: row => row.total },
+  ], () => setLinkedOrdersPage(1));
+  useEffect(() => { orderColumns.clear(); }, [selectedProject?.id]);
+  const projectOrders = selectedProject
     ? orders.filter((order) => order.projectId === selectedProject.id)
     : [];
+  const selectedProjectOrders = projectOrders.filter(orderColumns.matches);
   const sortedSelectedProjectOrders = selectedProjectOrders
     .slice()
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -1236,10 +1254,13 @@ export default function ProjectsPage() {
                     ]}
                     currentRows={paginatedLinkedOrders} allRows={sortedSelectedProjectOrders}
                     page={linkedOrdersPage} pageSize={linkedOrdersPageSize} totalPages={totalLinkedOrdersPages} totalItems={sortedSelectedProjectOrders.length}
-                    filters={[{ label: 'Project', value: selectedProject.name }]} />
+                    filters={[...orderColumns.filters, { label: 'Project', value: selectedProject.name }]} />
                   <CardDescription>Orders created under this project.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-3 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    {['Order', 'Status', 'Payment', 'Created', 'Total'].map(label => <span key={label}>{orderColumns.heading(label, projectOrders)}</span>)}
+                  </div>
                   {selectedProjectOrders.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No orders linked to this project yet.</p>
                   ) : (
@@ -1362,7 +1383,7 @@ export default function ProjectsPage() {
                     ]}
                     currentRows={paginatedProjectItems} allRows={selectedProjectItems}
                     page={projectItemsPage} pageSize={projectItemsPageSize} totalPages={totalProjectItemsPages} totalItems={selectedProjectItems.length}
-                    filters={[{ label: 'Project', value: selectedProject.name }]} />
+                    filters={[...materialColumns.filters, { label: 'Project', value: selectedProject.name }]} />
                   <CardDescription>Items requested or ordered for this project, with estimated cost visibility</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1383,10 +1404,10 @@ export default function ProjectsPage() {
                         </Button>
                       </div>
                       <div className="hidden rounded-md border bg-muted/30 px-4 py-3 text-xs font-medium text-muted-foreground md:grid md:grid-cols-[minmax(0,2fr)_110px_140px_140px]">
-                        <span>Item</span>
-                        <span className="text-right">Qty</span>
-                        <span className="text-right">Unit Price</span>
-                        <span className="text-right">Estimated Cost</span>
+                        <span>{materialColumns.heading('Item', projectMaterials)}</span>
+                        <span className="text-right">{materialColumns.heading('Qty', projectMaterials)}</span>
+                        <span className="text-right">{materialColumns.heading('Unit Price', projectMaterials)}</span>
+                        <span className="text-right">{materialColumns.heading('Estimated Cost', projectMaterials)}</span>
                       </div>
                       <div className="space-y-2">
                         {paginatedProjectItems.map((item, idx) => {

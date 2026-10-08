@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,15 @@ export default function ClientInvoicesPage() {
       .catch(() => setOrders([]));
   }, [user?.id]);
 
-  const filtered = orders.filter((o) => invoiceDates.matches(o.createdAt) && (paymentStatus === 'all' || o.paymentStatus === paymentStatus)).filter((o) =>
+  const tableColumns = useTableColumnFilters<typeof orders[number]>([
+    { label: "Invoice #", kind: 'text', value: row => row.orderNumber },
+    { label: "Project", kind: 'text', value: row => row.projectName || '' },
+    { label: "Status", kind: 'select', value: row => row.paymentStatus },
+    { label: "VATable Sales", kind: 'number', value: row => calcTotalsFromItems(row.items).net },
+    { label: "VAT", kind: 'number', value: row => calcTotalsFromItems(row.items).vat },
+    { label: "Total", kind: 'number', value: row => calcTotalsFromItems(row.items).total },
+  ]);
+  const filtered = orders.filter((o) => invoiceDates.matches(o.createdAt) && tableColumns.matches(o) && (paymentStatus === 'all' || o.paymentStatus === paymentStatus)).filter((o) =>
     [o.orderNumber, o.clientName, o.projectName].some((v) =>
       String(v || '').toLowerCase().includes(search.toLowerCase())
     )
@@ -97,7 +106,7 @@ export default function ClientInvoicesPage() {
           currentRows={filtered}
           allRows={filtered}
           totalItems={filtered.length}
-          filters={[...invoiceDates.filters, { label: 'Search', value: search }, { label: 'Payment status', value: paymentStatus === 'all' ? '' : paymentStatus }]}
+          filters={[...invoiceDates.filters, ...tableColumns.filters, { label: 'Search', value: search }, { label: 'Payment status', value: paymentStatus === 'all' ? '' : paymentStatus }]}
         />
       </div>
 
@@ -126,14 +135,14 @@ export default function ClientInvoicesPage() {
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader>
+<TableHeader>
               <TableRow>
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>VATable Sales</TableHead>
-                <TableHead>VAT ({vatLabel}%)</TableHead>
-                <TableHead>Total</TableHead>
+                <TableHead>{tableColumns.heading("Invoice #", orders)}</TableHead>
+                <TableHead>{tableColumns.heading("Project", orders)}</TableHead>
+                <TableHead>{tableColumns.heading("Status", orders)}</TableHead>
+                <TableHead>{tableColumns.heading("VATable Sales", orders)}</TableHead>
+                <TableHead>{tableColumns.heading("VAT", orders)}</TableHead>
+                <TableHead>{tableColumns.heading("Total", orders)}</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>

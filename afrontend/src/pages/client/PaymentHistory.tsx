@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,11 +63,27 @@ export default function ClientPaymentHistoryPage() {
       .catch(() => setPayments([]));
   }, [user?.id]);
 
-  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt)
+  const orderColumns = useTableColumnFilters<typeof orders[number]>([
+    { label: "Order #", kind: 'text', value: row => row.orderNumber },
+    { label: "Project", kind: 'text', value: row => row.projectName },
+    { label: "Status", kind: 'select', value: row => row.paymentStatus },
+    { label: "VATable Sales", kind: 'number', value: row => calcTotalsFromItems(row.items).net },
+    { label: "VAT", kind: 'number', value: row => calcTotalsFromItems(row.items).vat },
+    { label: "Total", kind: 'number', value: row => calcTotalsFromItems(row.items).total },
+  ], () => setOrdersPage(1));
+  const paymentColumns = useTableColumnFilters<typeof payments[number]>([
+    { label: "Reference", kind: 'text', value: row => row.referenceNumber || row.clientOrderNumber || '-' },
+    { label: "Method", kind: 'select', value: row => row.method },
+    { label: "Status", kind: 'select', value: row => row.status },
+    { label: "Proof", kind: 'select', value: row => row.proofUrl ? 'Uploaded' : 'Not uploaded' },
+    { label: "Due", kind: 'date', value: row => row.dueDate },
+    { label: "Amount", kind: 'number', value: row => row.amount },
+  ], () => setPaymentsPage(1));
+  const datedPayments = payments.filter((payment) => paymentDates.matches(payment.createdAt) && paymentColumns.matches(payment)
     && (recordStatus === 'all' || payment.status === recordStatus)
     && (paymentMethod === 'all' || payment.method === paymentMethod)
     && [payment.referenceNumber, payment.clientOrderNumber, payment.method, payment.status].some((value) => String(value || '').toLowerCase().includes(search.trim().toLowerCase())));
-  const filtered = orders.filter((order) => paymentDates.matches(order.createdAt) && (orderStatus === 'all' || order.paymentStatus === orderStatus)).filter((o) =>
+  const filtered = orders.filter((order) => paymentDates.matches(order.createdAt) && orderColumns.matches(order) && (orderStatus === 'all' || order.paymentStatus === orderStatus)).filter((o) =>
     [o.orderNumber, o.clientName, o.projectName].some((v) =>
       String(v || '').toLowerCase().includes(search.toLowerCase())
     )
@@ -158,20 +175,20 @@ export default function ClientPaymentHistoryPage() {
               pageSize={pageSize}
               totalPages={orderTotalPages}
               totalItems={filtered.length}
-              filters={[...paymentDates.filters, { label: 'Search', value: search }, { label: 'Payment status', value: orderStatus === 'all' ? '' : orderStatus }]}
+              filters={[...paymentDates.filters, ...orderColumns.filters, { label: 'Search', value: search }, { label: 'Payment status', value: orderStatus === 'all' ? '' : orderStatus }]}
             />
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader>
+<TableHeader>
               <TableRow>
-                <TableHead>Order #</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>VATable Sales</TableHead>
-                <TableHead>VAT ({vatLabel}%)</TableHead>
-                <TableHead>Total</TableHead>
+                <TableHead>{orderColumns.heading("Order #", orders)}</TableHead>
+                <TableHead>{orderColumns.heading("Project", orders)}</TableHead>
+                <TableHead>{orderColumns.heading("Status", orders)}</TableHead>
+                <TableHead>{orderColumns.heading("VATable Sales", orders)}</TableHead>
+                <TableHead>{orderColumns.heading("VAT", orders)}</TableHead>
+                <TableHead>{orderColumns.heading("Total", orders)}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -237,20 +254,20 @@ export default function ClientPaymentHistoryPage() {
               pageSize={pageSize}
               totalPages={paymentTotalPages}
               totalItems={datedPayments.length}
-              filters={[...paymentDates.filters, { label: 'Search', value: search }, { label: 'Status', value: recordStatus === 'all' ? '' : recordStatus }, { label: 'Method', value: paymentMethod === 'all' ? '' : paymentMethod }]}
+              filters={[...paymentDates.filters, ...paymentColumns.filters, { label: 'Search', value: search }, { label: 'Status', value: recordStatus === 'all' ? '' : recordStatus }, { label: 'Method', value: paymentMethod === 'all' ? '' : paymentMethod }]}
             />
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader>
+<TableHeader>
               <TableRow>
-                <TableHead>Reference</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Proof</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>{paymentColumns.heading("Reference", payments)}</TableHead>
+                <TableHead>{paymentColumns.heading("Method", payments)}</TableHead>
+                <TableHead>{paymentColumns.heading("Status", payments)}</TableHead>
+                <TableHead>{paymentColumns.heading("Proof", payments)}</TableHead>
+                <TableHead>{paymentColumns.heading("Due", payments)}</TableHead>
+                <TableHead className="text-right">{paymentColumns.heading("Amount", payments)}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

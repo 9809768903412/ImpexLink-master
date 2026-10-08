@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -123,8 +124,14 @@ export default function AIInsightsPage() {
     };
   }, [patternTrends, patternItems]);
 
-  const patternTotalPages = Math.max(1, Math.ceil(patternTrends.length / patternPageSize));
-  const patternRows = patternTrends.slice((patternPage - 1) * patternPageSize, patternPage * patternPageSize);
+  const usageColumns = useTableColumnFilters<typeof patternTrends[number]>([
+    { label: 'Month', kind: 'date', value: row => `${row.key}-01` },
+    ...patternItems.map(item => ({ label: item.name, kind: 'number' as const, value: (row: typeof patternTrends[number]) => row[item.name] || 0 })),
+    { label: 'Total', kind: 'number', value: row => row.totalUsage || 0 },
+  ], () => setPatternPage(1));
+  const matchingPatternTrends = patternTrends.filter(usageColumns.matches);
+  const patternTotalPages = Math.max(1, Math.ceil(matchingPatternTrends.length / patternPageSize));
+  const patternRows = matchingPatternTrends.slice((patternPage - 1) * patternPageSize, patternPage * patternPageSize);
   const summary = useMemo(() => {
     const criticalCount = warehouseRisks.filter((risk) => risk.riskLevel === 'critical').length;
     const highCount = warehouseRisks.filter((risk) => risk.riskLevel === 'high').length;
@@ -138,6 +145,20 @@ export default function AIInsightsPage() {
     };
   }, [warehouseRisks, reorderSuggestions]);
 
+  const riskColumns = useTableColumnFilters<typeof warehouseRisks[number]>([
+    { label: 'Item', value: row => `${row.itemName} ${row.reason}` },
+    { label: 'Risk', kind: 'select', value: row => row.riskLevel },
+    { label: 'Since Receipt / Shelf Life', value: row => `${row.daysInStock ?? 'Unknown'} / ${row.shelfLifeDays ?? 'Unknown'} days` },
+    { label: 'Batch Expiry', kind: 'number', value: row => row.daysToExpiry },
+    { label: 'Action', value: row => row.recommendedAction },
+  ], () => setRiskPage(1));
+  const reorderColumns = useTableColumnFilters<typeof reorderSuggestions[number]>([
+    { label: 'Item', value: row => row.itemName },
+    { label: 'Current', kind: 'number', value: row => row.currentQty },
+    { label: 'Suggested', kind: 'number', value: row => row.suggestedQty },
+    { label: 'Est. Cost', kind: 'number', value: row => row.estimatedCost },
+  ], () => setReorderPage(1));
+  const matchingReorders = reorderSuggestions.filter(reorderColumns.matches);
   const filteredRisks = useMemo(() => {
     const isRisky = (risk: WarehouseRisk) => {
       const daysLeft = typeof risk.daysToExpiry === 'number' ? risk.daysToExpiry : null;
@@ -162,7 +183,7 @@ export default function AIInsightsPage() {
       base = warehouseRisks.filter(isRisky);
     }
 
-    return base.sort((a, b) => {
+    return base.filter(riskColumns.matches).sort((a, b) => {
       const riskOrder = { critical: 0, high: 1, medium: 2, low: 3 };
       const riskDelta = riskOrder[a.riskLevel] - riskOrder[b.riskLevel];
       if (riskDelta !== 0) return riskDelta;
@@ -170,7 +191,7 @@ export default function AIInsightsPage() {
       const leftB = typeof b.daysToExpiry === 'number' ? b.daysToExpiry : Number.POSITIVE_INFINITY;
       return leftA - leftB;
     });
-  }, [warehouseRisks, riskFilter]);
+  }, [warehouseRisks, riskFilter, riskColumns.matches]);
 
   useEffect(() => {
     setRiskPage(1);
@@ -178,8 +199,8 @@ export default function AIInsightsPage() {
 
   const riskTotalPages = Math.max(1, Math.ceil(filteredRisks.length / riskPageSize));
   const riskPageItems = filteredRisks.slice((riskPage - 1) * riskPageSize, riskPage * riskPageSize);
-  const reorderTotalPages = Math.max(1, Math.ceil(reorderSuggestions.length / reorderPageSize));
-  const reorderPageItems = reorderSuggestions.slice((reorderPage - 1) * reorderPageSize, reorderPage * reorderPageSize);
+  const reorderTotalPages = Math.max(1, Math.ceil(matchingReorders.length / reorderPageSize));
+  const reorderPageItems = matchingReorders.slice((reorderPage - 1) * reorderPageSize, reorderPage * reorderPageSize);
   const dispatchTotalPages = Math.max(1, Math.ceil(logisticsSnapshot.dispatches.length / dispatchPageSize));
   const dispatchPageItems = logisticsSnapshot.dispatches.slice(
     (dispatchPage - 1) * dispatchPageSize,
@@ -316,12 +337,12 @@ export default function AIInsightsPage() {
                   { header: 'Total', value: (month) => month.totalUsage || 0 },
                 ]}
                 currentRows={patternRows}
-                allRows={patternTrends}
+                allRows={matchingPatternTrends}
                 page={patternPage}
                 pageSize={patternPageSize}
                 totalPages={patternTotalPages}
-                totalItems={patternTrends.length}
-                filters={exportFilters}
+                totalItems={matchingPatternTrends.length}
+                filters={[...exportFilters, ...usageColumns.filters]}
               />
             </div>
             <CardDescription>Recorded stock issues for the selected dates and products. Quantities count packages, not kilograms or litres.</CardDescription>
@@ -354,11 +375,11 @@ export default function AIInsightsPage() {
                   <Table className="min-w-[920px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Month</TableHead>
+                        <TableHead>{usageColumns.heading('Month', patternTrends)}</TableHead>
                         {patternItems.map((item) => (
-                          <TableHead key={item.name} className="text-right">{item.name}</TableHead>
+                          <TableHead key={item.name} className="text-right">{usageColumns.heading(item.name, patternTrends)}</TableHead>
                         ))}
-                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">{usageColumns.heading('Total', patternTrends)}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -420,7 +441,7 @@ export default function AIInsightsPage() {
                 pageSize={riskPageSize}
                 totalPages={riskTotalPages}
                 totalItems={filteredRisks.length}
-                filters={[...exportFilters, { label: 'Risk view', value: riskFilter }]}
+                filters={[...exportFilters, ...riskColumns.filters, { label: 'Risk view', value: riskFilter }]}
               />
             </div>
             <CardDescription>Decision-support ranking for items requiring immediate attention</CardDescription>
@@ -448,11 +469,11 @@ export default function AIInsightsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Risk</TableHead>
-                  <TableHead>Since Receipt / Shelf Life</TableHead>
-                  <TableHead>Batch Expiry</TableHead>
-                  <TableHead>Action</TableHead>
+                  <TableHead>{riskColumns.heading('Item', warehouseRisks)}</TableHead>
+                  <TableHead>{riskColumns.heading('Risk', warehouseRisks)}</TableHead>
+                  <TableHead>{riskColumns.heading('Since Receipt / Shelf Life', warehouseRisks)}</TableHead>
+                  <TableHead>{riskColumns.heading('Batch Expiry', warehouseRisks)}</TableHead>
+                  <TableHead>{riskColumns.heading('Action', warehouseRisks)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -513,12 +534,12 @@ export default function AIInsightsPage() {
                   { header: 'Estimated Cost', value: (item) => `PHP ${item.estimatedCost.toLocaleString()}` },
                 ]}
                 currentRows={reorderPageItems}
-                allRows={reorderSuggestions}
+                allRows={matchingReorders}
                 page={reorderPage}
                 pageSize={reorderPageSize}
                 totalPages={reorderTotalPages}
-                totalItems={reorderSuggestions.length}
-                filters={exportFilters}
+                totalItems={matchingReorders.length}
+                filters={[...exportFilters, ...reorderColumns.filters]}
               />
             </div>
             <CardDescription>Suggested restocking quantities for admin review</CardDescription>
@@ -527,10 +548,10 @@ export default function AIInsightsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-center">Current</TableHead>
-                  <TableHead className="text-center">Suggested</TableHead>
-                  <TableHead className="text-right">Est. Cost</TableHead>
+                  <TableHead>{reorderColumns.heading('Item', reorderSuggestions)}</TableHead>
+                  <TableHead className="text-center">{reorderColumns.heading('Current', reorderSuggestions)}</TableHead>
+                  <TableHead className="text-center">{reorderColumns.heading('Suggested', reorderSuggestions)}</TableHead>
+                  <TableHead className="text-right">{reorderColumns.heading('Est. Cost', reorderSuggestions)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

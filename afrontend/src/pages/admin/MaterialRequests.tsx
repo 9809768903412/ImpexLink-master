@@ -1,3 +1,4 @@
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useState } from 'react';
 import { Plus, ClipboardList, CheckCircle, XCircle, Clock, AlertTriangle, FileText, Search } from 'lucide-react';
@@ -111,7 +112,14 @@ export default function MaterialRequestsPage() {
     urgency: String(req.urgency || 'normal').toLowerCase() as UrgencyLevel,
   }));
   const scopedInventory = inventory;
-  const scopedRequests = normalizedRequests.filter((request) => requestDates.matches(request.date));
+  const tableColumns = useTableColumnFilters<typeof requests[number]>([
+    { label: "Request ID", kind: 'text', value: row => row.requestNumber },
+    { label: "Project", kind: 'text', value: row => row.projectName },
+    { label: "Requested By", kind: 'select', value: row => row.requestedBy },
+    { label: "Date", kind: 'date', value: row => row.date },
+    { label: "Status", kind: 'select', value: row => row.status },
+  ]);
+  const scopedRequests = normalizedRequests.filter((request) => requestDates.matches(request.date) && tableColumns.matches(request));
   const filteredByStatus =
     statusFilter === 'all' ? scopedRequests : scopedRequests.filter((r) => r.status === statusFilter);
   const pendingRequests = filteredByStatus.filter((r) => r.status === 'pending');
@@ -453,13 +461,13 @@ export default function MaterialRequestsPage() {
 
   const RequestTable = ({ data }: { data: MaterialRequest[] }) => (
     <Table>
-      <TableHeader>
+<TableHeader>
         <TableRow>
-          <TableHead>Request ID</TableHead>
-          <TableHead>Project</TableHead>
-          <TableHead>Requested By</TableHead>
-          <TableHead>Date</TableHead>
-          <TableHead>Status</TableHead>
+          <TableHead>{tableColumns.heading("Request ID", requests)}</TableHead>
+          <TableHead>{tableColumns.heading("Project", requests)}</TableHead>
+          <TableHead>{tableColumns.heading("Requested By", requests)}</TableHead>
+          <TableHead>{tableColumns.heading("Date", requests)}</TableHead>
+          <TableHead>{tableColumns.heading("Status", requests)}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -549,7 +557,7 @@ export default function MaterialRequestsPage() {
             totalPages={1}
             totalItems={activeExportRequests.length}
             filters={[
-              ...requestDates.filters,
+              ...requestDates.filters, ...tableColumns.filters,
               { label: 'Search', value: searchTerm },
               { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
               { label: 'View', value: activeTab },

@@ -42,6 +42,7 @@ import PaginationNav from '@/components/PaginationNav';
 import StatusFilterSelect from '@/components/StatusFilterSelect';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import TableExportMenu from '@/components/TableExportMenu';
+import { useTableColumnFilters } from '@/components/TableColumnFilters';
 import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 
 const INVENTORY_REASON_OPTIONS = [
@@ -102,6 +103,16 @@ export default function InventoryPage() {
   const [sortKey] = useState<'name' | 'qty' | 'price'>('name');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
+  const columnFilters = useTableColumnFilters<InventoryItem>([
+    { label: 'Item ID', value: getDisplayId },
+    { label: 'Item Name', value: item => item.name },
+    { label: 'Category', kind: 'select', value: item => item.category },
+    { label: 'Date Added', kind: 'date', value: item => item.createdAt },
+    { label: 'Quantity', kind: 'number', value: item => item.qtyOnHand },
+    { label: 'Unit Price', kind: 'number', value: item => item.unitPrice },
+    { label: 'Stock Alert', kind: 'select', value: item => getStockAlert(item).label },
+    { label: 'Status', kind: 'select', value: item => item.status },
+  ], () => setPage(1));
   const [totalItems, setTotalItems] = useState(0);
   const [inventory, setInventory] = useState<InventoryItem[]>(
     () => getCache<InventoryItem[]>('inventory') || []
@@ -256,7 +267,7 @@ export default function InventoryPage() {
     statusFilter === 'all'
       ? scopedInventory
       : scopedInventory.filter((item) => item.status === statusFilter);
-  const sortedInventory = filteredInventory.filter((item) => itemDates.matches(item.createdAt));
+  const sortedInventory = filteredInventory.filter((item) => itemDates.matches(item.createdAt) && columnFilters.matches(item));
   const pageStart = (page - 1) * pageSize;
   const pageEnd = pageStart + pageSize;
   const pagedInventory = sortedInventory.slice(pageStart, pageEnd);
@@ -268,13 +279,21 @@ export default function InventoryPage() {
     ? transactions.filter((t) => t.itemId === selectedItem.id)
     : [];
   const selectedItemDisplayId = selectedItem ? getDisplayId(selectedItem) : '';
-  const itemTransactionsByDate = [...itemTransactions].filter((transaction) => historyDates.matches(transaction.date) && (historyType === 'all' || transaction.type === historyType)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  const historyColumns = useTableColumnFilters<typeof transactions[number]>([
+    { label: "Date", kind: 'date', value: row => row.date },
+    { label: "Type", kind: 'select', value: row => row.type },
+    { label: "Supplier / Reference", kind: 'text', value: row => `${row.supplierName || ''} ${row.projectName || ''} ${row.notes || ''}` },
+    { label: "Performed By", kind: 'select', value: row => row.userName },
+    { label: "Qty Change", kind: 'number', value: row => row.qtyChange },
+    { label: "Balance", kind: 'number', value: row => row.newBalance },
+  ]);
+  const itemTransactionsByDate = [...itemTransactions].filter((transaction) => historyDates.matches(transaction.date) && historyColumns.matches(transaction) && (historyType === 'all' || transaction.type === historyType)).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
   const lastUpdatedTxn = itemTransactionsByDate[0];
   const lastRestockTxn = itemTransactionsByDate.find((t) => t.type === 'purchase');
   const monthlyUsage = itemTransactions
     .filter((t) => t.type === 'issue' && Date.now() - Date.parse(t.date) <= 1000 * 60 * 60 * 24 * 30)
     .reduce((sum, t) => sum + Math.abs(t.qtyChange), 0);
-  const getStockAlert = (item: InventoryItem) => {
+  function getStockAlert(item: InventoryItem) {
     if (item.qtyOnHand <= 0) return { label: 'Out of stock', detail: `Reorder ${Math.max(item.minStock * 2, 1)}` };
     if (item.qtyOnHand <= item.minStock) {
       const reorderQty = Math.max(item.minStock * 2 - item.qtyOnHand, item.minStock);
@@ -519,35 +538,6 @@ export default function InventoryPage() {
           </p>
         )}
         <div className="flex flex-wrap gap-2">
-          <TableDateRangeFilter label="Item added date" range={itemDates.range} onChange={(range) => { itemDates.setRange(range); setPage(1); }} />
-          <TableExportMenu
-            title="Inventory"
-            filename="inventory"
-            columns={[
-              { header: 'Item ID', value: (item) => getDisplayId(item) },
-              { header: 'Item Name', value: (item) => item.name },
-              { header: 'Date Added', value: (item) => item.createdAt ? format(new Date(item.createdAt), 'MMM dd, yyyy') : 'Not recorded' },
-              { header: 'Category', value: (item) => item.category },
-              { header: 'Unit', value: (item) => item.unit },
-              { header: 'Qty On Hand', value: (item) => item.qtyOnHand },
-              { header: 'Minimum Stock', value: (item) => item.minStock },
-              { header: 'Unit Price', value: (item) => `PHP ${item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
-              { header: 'Status', value: (item) => item.status },
-            ]}
-            currentRows={pagedInventory}
-            allRows={sortedInventory}
-            page={page}
-            pageSize={pageSize}
-            totalPages={Math.max(Math.ceil(totalFilteredItems / pageSize), 1)}
-            totalItems={totalFilteredItems}
-            filters={[
-              ...itemDates.filters,
-              { label: 'Search', value: searchQuery },
-              { label: 'Category', value: categoryFilter !== 'all' ? categoryFilter : '' },
-              { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
-            ]}
-            disabled={loadingInventory}
-          />
           {canEditItemInfo && (
             <Button onClick={handleAddItem} className="gap-2">
               <Plus size={18} />
@@ -606,6 +596,37 @@ export default function InventoryPage() {
               <SelectItem value="low-stock">Low Stock</SelectItem>
               <SelectItem value="out-of-stock">Out of Stock</SelectItem>
             </StatusFilterSelect>
+          <TableDateRangeFilter label="Item added date" range={itemDates.range} onChange={(range) => { itemDates.setRange(range); setPage(1); }} />
+          <TableExportMenu
+            title="Inventory"
+            filename="inventory"
+            columns={[
+              { header: 'Item ID', value: (item) => getDisplayId(item) },
+              { header: 'Item Name', value: (item) => item.name },
+              { header: 'Date Added', value: (item) => item.createdAt ? format(new Date(item.createdAt), 'MMM dd, yyyy') : 'Not recorded' },
+              { header: 'Category', value: (item) => item.category },
+              { header: 'Unit', value: (item) => item.unit },
+              { header: 'Qty On Hand', value: (item) => item.qtyOnHand },
+              { header: 'Minimum Stock', value: (item) => item.minStock },
+              { header: 'Unit Price', value: (item) => `PHP ${item.unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
+              { header: 'Status', value: (item) => item.status },
+              { header: 'Stock Alert', value: (item) => getStockAlert(item).label },
+            ]}
+            currentRows={pagedInventory}
+            allRows={sortedInventory}
+            page={page}
+            pageSize={pageSize}
+            totalPages={Math.max(Math.ceil(totalFilteredItems / pageSize), 1)}
+            totalItems={totalFilteredItems}
+            filters={[
+              ...itemDates.filters,
+              ...columnFilters.filters,
+              { label: 'Search', value: searchQuery },
+              { label: 'Category', value: categoryFilter !== 'all' ? categoryFilter : '' },
+              { label: 'Status', value: statusFilter !== 'all' ? statusFilter : '' },
+            ]}
+            disabled={loadingInventory}
+          />
           </TableFilterToolbar>
         </CardContent>
       </Card>
@@ -616,14 +637,14 @@ export default function InventoryPage() {
           <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Item ID</TableHead>
-                  <TableHead>Item Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Date Added</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Unit Price</TableHead>
-                  <TableHead>Stock Alert</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>{columnFilters.heading('Item ID', inventory)}</TableHead>
+                  <TableHead>{columnFilters.heading('Item Name', inventory)}</TableHead>
+                  <TableHead>{columnFilters.heading('Category', inventory)}</TableHead>
+                  <TableHead>{columnFilters.heading('Date Added', inventory)}</TableHead>
+                  <TableHead className="text-right">{columnFilters.heading('Quantity', inventory)}</TableHead>
+                  <TableHead className="text-right">{columnFilters.heading('Unit Price', inventory)}</TableHead>
+                  <TableHead>{columnFilters.heading('Stock Alert', inventory)}</TableHead>
+                  <TableHead>{columnFilters.heading('Status', inventory)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -790,7 +811,7 @@ export default function InventoryPage() {
               ]}
               currentRows={itemTransactionsByDate} allRows={itemTransactionsByDate}
               pageSize={Math.max(itemTransactionsByDate.length, 1)} totalItems={itemTransactionsByDate.length}
-              filters={[...historyDates.filters, { label: 'Movement type', value: historyType === 'all' ? '' : historyType }]}
+              filters={[...historyDates.filters, ...historyColumns.filters, { label: 'Movement type', value: historyType === 'all' ? '' : historyType }]}
             />
           </div>
           <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
@@ -816,14 +837,14 @@ export default function InventoryPage() {
           </div>
           <div className="max-h-[60vh] overflow-auto rounded-md border">
             <Table className="min-w-[820px]">
-              <TableHeader>
+<TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Supplier / Reference</TableHead>
-                  <TableHead>Performed By</TableHead>
-                  <TableHead className="text-right">Qty Change</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead>{historyColumns.heading("Date", transactions)}</TableHead>
+                  <TableHead>{historyColumns.heading("Type", transactions)}</TableHead>
+                  <TableHead>{historyColumns.heading("Supplier / Reference", transactions)}</TableHead>
+                  <TableHead>{historyColumns.heading("Performed By", transactions)}</TableHead>
+                  <TableHead className="text-right">{historyColumns.heading("Qty Change", transactions)}</TableHead>
+                  <TableHead className="text-right">{historyColumns.heading("Balance", transactions)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

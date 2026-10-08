@@ -568,7 +568,7 @@ export default function ReportsPage() {
         pageSize={REPORT_PAGE_SIZE}
         totalPages={tableTotalPages}
         totalItems={filteredRows.length}
-        filters={[{ label: 'Export period', value: exportDateLabel }, ...extraFilters, ...(columnFilters[fileBase] || []).filter((criterion) => criterion.value.trim()).map((criterion) => ({ label: `${headers[criterion.column]} (${criterion.operator})`, value: criterion.value }))]}
+        filters={[{ label: 'Export period', value: exportDateLabel }, ...extraFilters, ...(columnFilters[fileBase] || []).filter((criterion) => criterion.value.trim() || criterion.upper?.trim()).map((criterion) => ({ label: `${headers[criterion.column]} (${criterion.operator})`, value: criterion.operator === 'between' ? `${criterion.value || 'Any'} – ${criterion.upper || 'Any'}` : criterion.value }))]}
         className="h-8 px-2 text-xs"
       />
       </div>
