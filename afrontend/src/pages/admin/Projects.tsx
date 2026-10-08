@@ -118,6 +118,45 @@ const mapProject = (project: any): Project => ({
 });
 
 // TODO: Replace with real data
+
+  const AdminAssigneeSelect = ({
+    value,
+    onChange,
+    open,
+    onOpenChange,
+    users,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    users: UserType[];
+  }) => {
+    const assignableUsers = users.filter((u) => {
+      const roleList = u.roles?.length ? u.roles : u.role ? [u.role] : [];
+      return roleList.includes('project_manager') && u.status === 'ACTIVE';
+    });
+    const sortedUsers = [...assignableUsers].sort((a, b) => a.name.localeCompare(b.name));
+    return (
+      <div>
+        <Label>Assigned PM</Label>
+        <Select value={value} onValueChange={onChange} open={open} onOpenChange={onOpenChange}>
+          <SelectTrigger className="mt-1">
+            <SelectValue placeholder="Select PM" />
+          </SelectTrigger>
+          <SelectContent position="popper" className="z-[100]">
+            <SelectItem value="unassigned">Unassigned</SelectItem>
+            {sortedUsers.map((pm) => (
+              <SelectItem key={pm.id} value={pm.id}>
+                {pm.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  };
+
 export default function ProjectsPage() {
   const projectDates = useTableDateRange();
   const { user } = useAuth();
@@ -877,44 +916,6 @@ export default function ProjectsPage() {
     saveProjectFormDraft(projectFormData);
   }, [projectFormData, showProjectFormDialog]);
 
-  const AdminAssigneeSelect = ({
-    value,
-    onChange,
-    open,
-    onOpenChange,
-    users,
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    users: UserType[];
-  }) => {
-    const assignableUsers = users.filter((u) => {
-      const roleList = u.roles?.length ? u.roles : u.role ? [u.role] : [];
-      return roleList.includes('project_manager') && u.status === 'ACTIVE';
-    });
-    const sortedUsers = [...assignableUsers].sort((a, b) => a.name.localeCompare(b.name));
-    return (
-      <div>
-        <Label>Assigned PM</Label>
-        <Select value={value} onValueChange={onChange} open={open} onOpenChange={onOpenChange}>
-          <SelectTrigger className="mt-1">
-            <SelectValue placeholder="Select PM" />
-          </SelectTrigger>
-          <SelectContent position="popper" className="z-[100]">
-            <SelectItem value="unassigned">Unassigned</SelectItem>
-            {sortedUsers.map((pm) => (
-              <SelectItem key={pm.id} value={pm.id}>
-                {pm.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    );
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4">
@@ -1090,6 +1091,15 @@ export default function ProjectsPage() {
             <DialogTitle>{selectedProject?.name}</DialogTitle>
             <DialogDescription>{selectedProject?.clientName}</DialogDescription>
           </DialogHeader>
+          {selectedProject && <TableExportMenu
+            title={`Project: ${selectedProject.name}`}
+            filename={`project-${selectedProject.id}`}
+            columns={projectExportColumns}
+            currentRows={[selectedProject]}
+            allRows={[selectedProject]}
+            totalItems={1}
+            filters={[{ label: 'Project', value: selectedProject.name }]}
+          />}
           {selectedProject && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1217,6 +1227,17 @@ export default function ProjectsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Linked Orders</CardTitle>
+                  <TableExportMenu title={`Orders · ${selectedProject.name}`} filename={`project-${selectedProject.id}-orders`}
+                    columns={[
+                      { header: 'Order', value: (order: typeof selectedProjectOrders[number]) => order.orderNumber },
+                      { header: 'Status', value: (order: typeof selectedProjectOrders[number]) => order.status },
+                      { header: 'Payment status', value: (order: typeof selectedProjectOrders[number]) => order.paymentStatus },
+                      { header: 'Created', value: (order: typeof selectedProjectOrders[number]) => order.createdAt },
+                      { header: 'Total', value: (order: typeof selectedProjectOrders[number]) => order.total },
+                    ]}
+                    currentRows={paginatedLinkedOrders} allRows={sortedSelectedProjectOrders}
+                    page={linkedOrdersPage} pageSize={linkedOrdersPageSize} totalPages={totalLinkedOrdersPages} totalItems={sortedSelectedProjectOrders.length}
+                    filters={[{ label: 'Project', value: selectedProject.name }]} />
                   <CardDescription>Orders created under this project.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1332,6 +1353,17 @@ export default function ProjectsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Items</CardTitle>
+                  <TableExportMenu title={`Materials · ${selectedProject.name}`} filename={`project-${selectedProject.id}-materials`}
+                    columns={[
+                      { header: 'Item', value: (item: typeof selectedProjectItems[number]) => item.itemName },
+                      { header: 'Unit', value: (item: typeof selectedProjectItems[number]) => item.unit },
+                      { header: 'Quantity', value: (item: typeof selectedProjectItems[number]) => item.quantity },
+                      { header: 'Unit price', value: (item: typeof selectedProjectItems[number]) => item.unitPrice },
+                      { header: 'Estimated cost', value: (item: typeof selectedProjectItems[number]) => typeof item.amount === 'number' && item.amount > 0 ? item.amount : item.quantity * item.unitPrice },
+                    ]}
+                    currentRows={paginatedProjectItems} allRows={selectedProjectItems}
+                    page={projectItemsPage} pageSize={projectItemsPageSize} totalPages={totalProjectItemsPages} totalItems={selectedProjectItems.length}
+                    filters={[{ label: 'Project', value: selectedProject.name }]} />
                   <CardDescription>Items requested or ordered for this project, with estimated cost visibility</CardDescription>
                 </CardHeader>
                 <CardContent>

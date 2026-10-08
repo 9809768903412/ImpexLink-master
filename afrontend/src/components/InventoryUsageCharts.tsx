@@ -14,6 +14,7 @@ export function buildProductUsageTotals(months: Month[], products: Product[]) {
 
 export default function InventoryUsageCharts({ months, products }: { months: Month[]; products: Product[] }) {
   const [view, setView] = useState('line');
+  const [compressedScale, setCompressedScale] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[] | null>(null);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const visibleProducts = products.filter((product, index) => selectedKeys === null ? index < 4 : selectedKeys.includes(product.key));
@@ -33,6 +34,14 @@ export default function InventoryUsageCharts({ months, products }: { months: Mon
         <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Most-used product</p><p className="font-semibold">{totals[0]?.total > 0 ? totals[0].label : 'No recorded usage'}</p></div>
       </div>
       <section className="min-w-0 rounded-lg border p-3 sm:p-4" aria-label="Monthly usage chart">
+        {(view === 'line' || view === 'area') && <label className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+          Vertical scale
+          <select aria-label="Usage vertical scale" className="rounded-md border bg-background px-2 py-1" value={compressedScale ? 'sqrt' : 'linear'} onChange={(event) => setCompressedScale(event.target.value === 'sqrt')}>
+            <option value="linear">Linear · actual proportions</option>
+            <option value="sqrt">Compressed · show smaller changes</option>
+          </select>
+          {compressedScale && <span className="text-muted-foreground">Square-root scale; counts unchanged.</span>}
+        </label>}
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{view === 'pie' ? 'Usage Share by Item' : 'Monthly Usage per Item'}</h3><label className="flex items-center gap-2 text-xs">Display<select aria-label="Usage chart display" className="h-9 rounded-md border bg-background px-2 text-sm" value={view} onChange={(event) => setView(event.target.value)}><option value="line">Line</option><option value="pie">Pie</option><option value="area">Area</option><option value="heatmap">Product heatmap</option></select></label></div>
         <details className="mb-4 rounded-lg border bg-muted/20 p-3">
           <summary className="cursor-pointer text-sm font-medium">Items · {visibleProducts.length} of {products.length} selected</summary>
@@ -61,7 +70,7 @@ export default function InventoryUsageCharts({ months, products }: { months: Mon
               <Chart data={months} margin={{ top: 24, right: 28, left: 8, bottom: 18 }} accessibilityLayer>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="month" interval={months.length > 12 ? 2 : 0} height={50} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} label={{ value: 'Month', position: 'insideBottom', offset: 0, fontSize: 11 }} />
-                <YAxis allowDecimals={false} domain={[0, 'auto']} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} label={{ value: 'Packages issued', angle: -90, position: 'insideLeft', fontSize: 11 }} />
+                <YAxis scale={compressedScale ? 'sqrt' : 'auto'} allowDecimals={false} domain={[0, 'auto']} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} label={{ value: 'Packages issued', angle: -90, position: 'insideLeft', fontSize: 11 }} />
                 <Tooltip formatter={(value, name) => [`${Number(value).toLocaleString()} packages`, String(name).replace(/^Thortex\s+/i, '')]} contentStyle={{ borderRadius: 12, padding: 12, boxShadow: '0 8px 24px rgba(0,0,0,.08)' }} cursor={{ stroke: '#94a3b8', strokeDasharray: '3 3', fill: 'rgba(148,163,184,0.08)' }} />
                 {visibleProducts.map((product) => view === 'area' ? <Area key={product.key} type="linear" dataKey={product.name} name={product.name} stroke={product.color} fill={product.color} fillOpacity={0.12 * seriesOpacity(product.key)} strokeOpacity={seriesOpacity(product.key)} strokeWidth={activeFocus === product.key ? 3 : 2} isAnimationActive={false} /> : view === 'line' ? <Line key={product.key} type="linear" dataKey={product.name} name={product.name} stroke={product.color} strokeOpacity={seriesOpacity(product.key)} strokeWidth={activeFocus === product.key ? 3 : 2} dot={false} activeDot={{ r: 5, strokeWidth: 2 }} isAnimationActive={false} /> : <Bar key={product.key} dataKey={product.name} name={product.name} fill={product.color} fillOpacity={seriesOpacity(product.key)} radius={[3, 3, 0, 0]} maxBarSize={24} isAnimationActive={false} />)}
               </Chart>

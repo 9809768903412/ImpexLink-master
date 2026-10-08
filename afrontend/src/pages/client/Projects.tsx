@@ -360,6 +360,15 @@ export default function ClientProjectsPage() {
             <DialogTitle>{selectedProject?.name}</DialogTitle>
             <DialogDescription>{selectedProject?.clientName}</DialogDescription>
           </DialogHeader>
+          {selectedProject && <TableExportMenu
+            title={`Project: ${selectedProject.name}`}
+            filename={`project-${selectedProject.id}`}
+            columns={projectExportColumns}
+            currentRows={[selectedProject]}
+            allRows={[selectedProject]}
+            totalItems={1}
+            filters={[{ label: 'Project', value: selectedProject.name }]}
+          />}
           {selectedProject && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -405,6 +414,17 @@ export default function ClientProjectsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Linked Orders</CardTitle>
+                  <TableExportMenu title={`Orders · ${selectedProject.name}`} filename={`project-${selectedProject.id}-orders`}
+                    columns={[
+                      { header: 'Order', value: (order: typeof selectedProjectOrders[number]) => order.orderNumber },
+                      { header: 'Status', value: (order: typeof selectedProjectOrders[number]) => order.status },
+                      { header: 'Payment status', value: (order: typeof selectedProjectOrders[number]) => order.paymentStatus },
+                      { header: 'Created', value: (order: typeof selectedProjectOrders[number]) => order.createdAt },
+                      { header: 'Total', value: (order: typeof selectedProjectOrders[number]) => order.total },
+                    ]}
+                    currentRows={paginatedLinkedOrders} allRows={sortedSelectedProjectOrders}
+                    page={linkedOrdersPage} pageSize={linkedOrdersPageSize} totalPages={totalLinkedOrdersPages} totalItems={sortedSelectedProjectOrders.length}
+                    filters={[{ label: 'Project', value: selectedProject.name }]} />
                   <CardDescription>Orders placed under this project.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -505,6 +525,17 @@ export default function ClientProjectsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Materials & Prices</CardTitle>
+                  <TableExportMenu title={`Materials · ${selectedProject.name}`} filename={`project-${selectedProject.id}-materials`}
+                    columns={[
+                      { header: 'Item', value: (item: typeof selectedProjectItems[number]) => item.itemName },
+                      { header: 'Unit', value: (item: typeof selectedProjectItems[number]) => item.unit },
+                      { header: 'Quantity', value: (item: typeof selectedProjectItems[number]) => item.quantity },
+                      { header: 'Unit price', value: (item: typeof selectedProjectItems[number]) => item.unitPrice },
+                      { header: 'Estimated cost', value: (item: typeof selectedProjectItems[number]) => typeof item.amount === 'number' && item.amount > 0 ? item.amount : item.quantity * item.unitPrice },
+                    ]}
+                    currentRows={pagedProjectItems} allRows={selectedProjectItems}
+                    page={materialsPage} pageSize={materialsPageSize} totalPages={totalMaterialsPages} totalItems={selectedProjectItems.length}
+                    filters={[{ label: 'Project', value: selectedProject.name }]} />
                   <CardDescription>Reference view of the items, quantities, and estimated cost tied to this project.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
