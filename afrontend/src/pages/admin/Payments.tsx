@@ -1,3 +1,4 @@
+import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Check, ChevronLeft, ChevronRight, CreditCard, Plus, Search, X } from 'lucide-react';
@@ -262,7 +263,7 @@ export default function PaymentsPage() {
 
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col gap-3 lg:flex-row">
+<TableFilterToolbar>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search reference, order, client, supplier..." className="pl-9" />
@@ -275,7 +276,7 @@ export default function PaymentsPage() {
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
             </StatusFilterSelect>
-          </div>
+          </TableFilterToolbar>
         </CardContent>
       </Card>
 

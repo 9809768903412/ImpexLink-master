@@ -34,12 +34,12 @@ export default function TableDateRangeFilter({ range, onChange, label = 'Record 
     if (next.from && next.to && next.from > next.to) return;
     onChange(next.from || next.to ? next : undefined);
   };
-  return <div className="min-w-0 w-full space-y-1 sm:w-auto" role="group" aria-label={`${label} range`}>
+  return <div className="min-w-0 w-full sm:w-auto" role="group" aria-label={`${label} range`}>
     <div className="grid min-w-0 grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,150px)_minmax(0,150px)_auto]">
       <div className="min-w-0"><label className="text-xs text-muted-foreground" htmlFor={`${id}-from`}>From</label><Input id={`${id}-from`} aria-label={`${label} from`} className="h-9 w-full sm:w-[150px]" type="date" value={from} max={to || undefined} onChange={(event) => change('from', event.target.value)} /></div>
       <div className="min-w-0"><label className="text-xs text-muted-foreground" htmlFor={`${id}-to`}>To</label><Input id={`${id}-to`} aria-label={`${label} to`} className="h-9 w-full sm:w-[150px]" type="date" value={to} min={from || undefined} onChange={(event) => change('to', event.target.value)} /></div>
       {range && <Button variant="ghost" size="icon" className="h-9 w-8" aria-label={`Clear ${label.toLowerCase()} range`} onClick={() => onChange(undefined)}><X className="h-4 w-4" /></Button>}
     </div>
-    {range && <p className="text-xs text-muted-foreground">Export period: {range.from ? format(range.from, 'MMM dd, yyyy') : 'Beginning'} – {range.to ? format(range.to, 'MMM dd, yyyy') : 'Latest'}</p>}
+    {range && <p className="sr-only">Export period: {range.from ? format(range.from, 'MMM dd, yyyy') : 'Beginning'} – {range.to ? format(range.to, 'MMM dd, yyyy') : 'Latest'}</p>}
   </div>;
 }

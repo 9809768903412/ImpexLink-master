@@ -1,3 +1,4 @@
+import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useMemo, useState } from 'react';
 import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 import TableExportMenu from '@/components/TableExportMenu';
@@ -244,11 +245,7 @@ export default function ClientProjectsPage() {
 
       <Card>
         <CardContent className="p-4">
-          <div className="mb-3 flex flex-wrap items-end gap-3">
-            <TableDateRangeFilter label="Project start date" range={projectDates.range} onChange={(range) => { projectDates.setRange(range); setPage(1); }} />
-            <TableExportMenu title="Projects" filename="client-projects" columns={projectExportColumns} currentRows={clientProjects.slice((page - 1) * pageSize, page * pageSize)} allRows={clientProjects} page={page} pageSize={pageSize} totalPages={totalPages} totalItems={clientProjects.length} filters={[...projectDates.filters, { label: 'Search', value: searchTerm }, { label: 'Status', value: statusFilter === 'all' ? '' : statusFilter }]} />
-          </div>
-          <div className="flex flex-col sm:flex-row gap-4">
+          <TableFilterToolbar>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
               <Input
@@ -266,7 +263,9 @@ export default function ClientProjectsPage() {
               <SelectItem value="on-hold">On Hold</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
             </StatusFilterSelect>
-          </div>
+            <TableDateRangeFilter label="Project start date" range={projectDates.range} onChange={(range) => { projectDates.setRange(range); setPage(1); }} />
+            <TableExportMenu title="Projects" filename="client-projects" columns={projectExportColumns} currentRows={clientProjects.slice((page - 1) * pageSize, page * pageSize)} allRows={clientProjects} page={page} pageSize={pageSize} totalPages={totalPages} totalItems={clientProjects.length} filters={[...projectDates.filters, { label: 'Search', value: searchTerm }, { label: 'Status', value: statusFilter === 'all' ? '' : statusFilter }]} />
+          </TableFilterToolbar>
         </CardContent>
       </Card>
 

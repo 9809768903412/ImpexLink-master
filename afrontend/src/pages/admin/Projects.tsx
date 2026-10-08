@@ -1,3 +1,4 @@
+import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -950,11 +951,7 @@ export default function ProjectsPage() {
 
         <Card>
           <CardContent className="p-4">
-            <div className="mb-3 flex flex-wrap items-end gap-3">
-              <TableDateRangeFilter label="Project start date" range={projectDates.range} onChange={projectDates.setRange} />
-              <TableExportMenu title="Projects" filename="projects" columns={projectExportColumns} currentRows={visibleProjects} allRows={visibleProjects} totalItems={visibleProjects.length} filters={[...projectDates.filters, { label: 'Search', value: searchTerm }, { label: 'Status', value: statusFilter === 'all' ? '' : statusFilter }, { label: 'View', value: activeTab }]} />
-            </div>
-            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <TableFilterToolbar>
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -991,7 +988,9 @@ export default function ProjectsPage() {
                   <SelectItem value="desc">Desc</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+              <TableDateRangeFilter label="Project start date" range={projectDates.range} onChange={projectDates.setRange} />
+              <TableExportMenu title="Projects" filename="projects" columns={projectExportColumns} currentRows={visibleProjects} allRows={visibleProjects} totalItems={visibleProjects.length} filters={[...projectDates.filters, { label: 'Search', value: searchTerm }, { label: 'Status', value: statusFilter === 'all' ? '' : statusFilter }, { label: 'View', value: activeTab }]} />
+          </TableFilterToolbar>
           </CardContent>
         </Card>
 
