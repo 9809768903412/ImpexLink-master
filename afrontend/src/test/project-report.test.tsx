@@ -43,3 +43,12 @@ it('marks inaccessible sections and escapes nested values', () => {
   expect(html).toContain('Not accessible to your role');
   expect(html).not.toContain('<script>');
 });
+
+it('uses compact field grids and item rows with formatted money', () => {
+  const html = buildProjectReportHtml('Project', [{ title: 'Project details', records: [{ totalOrderValue: 3231681.5999999996, items: [{ itemName: 'Epoxy', quantity: 3, unitPrice: 1200 }, { itemName: 'Paste', quantity: 4, unitPrice: 50 }] }] }]);
+  expect(html).toContain('₱3,231,681.60');
+  expect(html).toContain('class="project-fields"');
+  expect(html).toContain('class="project-lines"');
+  expect(html).not.toContain('<h3>Item 1</h3>');
+  expect(html).not.toContain('3231681.5999999996');
+});
