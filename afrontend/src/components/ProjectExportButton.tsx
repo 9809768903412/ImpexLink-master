@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { loadTableRows } from '@/utils/loadTableRows';
-import { buildProjectReportHtml, type ProjectReportSection } from '@/utils/projectReport';
+import { buildProjectReportHtml, type ProjectReportSection, type ProjectReportOptions } from '@/utils/projectReport';
 import { printHtml } from '@/utils/print';
 import type { Project } from '@/types';
 
@@ -12,6 +13,11 @@ const sameId = (left: unknown, right: unknown) => left != null && right != null 
 
 export default function ProjectExportButton({ project }: { project: Project }) {
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<ProjectReportOptions['mode']>('summary');
+  const tableNames = ['Orders and materials', 'Purchase orders and items', 'Deliveries and GPS', 'Payments', 'Material requests', 'Project forms'];
+  const [tables, setTables] = useState(tableNames);
+  const [pageSize, setPageSize] = useState(10);
   const { toast } = useToast();
   const exportProject = async () => {
     setBusy(true);
@@ -38,13 +44,23 @@ export default function ProjectExportButton({ project }: { project: Project }) {
           : index === 4 ? orderIds.some(id => sameId(row.clientOrderId, id)) || poIds.some(id => sameId(row.supplierOrderId, id))
           : sameId(row.projectId, project.id)),
       }))];
-      printHtml(`Project: ${project.name}`, buildProjectReportHtml(project.name, sections));
+      printHtml(`Project: ${project.name}`, buildProjectReportHtml(project.name, sections, { mode, tables, pageSize }));
+      setOpen(false);
     } catch (error) {
       toast({ variant: 'destructive', title: 'Project export failed', description: 'Could not load the complete project report. Please retry; no incomplete report was printed.' });
     } finally { setBusy(false); }
   };
-  return <Button variant="outline" disabled={busy} onClick={exportProject}>
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline">Export / Print</Button></DialogTrigger>
+    <DialogContent><DialogHeader><DialogTitle>Export project</DialogTitle><DialogDescription>Choose the amount of detail to print. All dates are included.</DialogDescription></DialogHeader>
+    <label className="grid gap-2 text-sm">Report content
+      <select aria-label="Report content" className="h-10 rounded-md border bg-background px-3" value={mode} onChange={e => setMode(e.target.value as ProjectReportOptions['mode'])}>
+        <option value="summary">Project summary only</option><option value="tables">Selected tables — all rows</option><option value="first-page">Selected tables — first page only</option><option value="full">Full report — every detail</option>
+      </select>
+    </label>
+    {(mode === 'tables' || mode === 'first-page') && <fieldset className="grid gap-2 text-sm"><legend className="mb-2 font-medium">Tables to include</legend>{tableNames.map(title => <label key={title} className="flex items-center gap-2"><input type="checkbox" checked={tables.includes(title)} onChange={e => setTables(current => e.target.checked ? [...current, title] : current.filter(value => value !== title))} />{title}</label>)}<p className="text-xs text-muted-foreground">Project and client details are included. Tables contain key columns, not full record details.</p></fieldset>}
+    {mode === 'first-page' && <label className="grid gap-2 text-sm">Rows per table page<select aria-label="Rows per table page" className="h-10 rounded-md border bg-background px-3" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>{[5, 10, 20].map(size => <option key={size} value={size}>{size} rows</option>)}</select><span className="text-xs text-muted-foreground">First data page of each selected table, not a guarantee of one printed sheet. Omitted rows are labeled.</span></label>}
+    <Button disabled={busy || ((mode === 'tables' || mode === 'first-page') && !tables.length)} onClick={exportProject}>
     {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-    {busy ? 'Preparing complete report…' : 'Export / Print'}
-  </Button>;
+    {busy ? 'Preparing report…' : 'Open print view'}
+  </Button></DialogContent></Dialog>;
 }

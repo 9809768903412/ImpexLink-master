@@ -23,6 +23,8 @@ it('prints all linked records and nested items, excluding unrelated projects', a
   mocks.load.mockImplementation(async (url: string) => ({ data: data[url] }));
   render(<ProjectExportButton project={project} />);
   fireEvent.click(screen.getByText('Export / Print'));
+  fireEvent.change(screen.getByLabelText('Report content'), { target: { value: 'full' } });
+  fireEvent.click(screen.getByText('Open print view'));
   await waitFor(() => expect(mocks.print).toHaveBeenCalledOnce());
   const html = mocks.print.mock.calls[0][1];
   for (const value of ['PM', 'ORDER-3', 'Epoxy', 'DR-6', '14.5', 'PAY-3', 'PAY-5', 'Repairs', 'Coating', 'client@example.test']) expect(html).toContain(value);
@@ -34,6 +36,7 @@ it('does not silently print incomplete reports on a failed request', async () =>
   mocks.load.mockRejectedValue(new Error('Offline'));
   render(<ProjectExportButton project={project} />);
   fireEvent.click(screen.getByText('Export / Print'));
+  fireEvent.click(screen.getByText('Open print view'));
   await waitFor(() => expect(mocks.toast).toHaveBeenCalled());
   expect(mocks.print).not.toHaveBeenCalled();
 });
@@ -51,4 +54,17 @@ it('uses compact field grids and item rows with formatted money', () => {
   expect(html).toContain('class="project-lines"');
   expect(html).not.toContain('<h3>Item 1</h3>');
   expect(html).not.toContain('3231681.5999999996');
+});
+
+it('limits each selected table to its first data page and labels omissions', () => {
+  const sections = [{ title: 'Project details', records: [{ name: 'Site' }] }, { title: 'Client', records: [] }, { title: 'Orders and materials', records: Array.from({ length: 12 }, (_, i) => ({ orderNumber: `ORDER-${i}`, total: 100 })) }, { title: 'Payments', records: [{ referenceNumber: 'PAYMENT-HIDDEN' }] }];
+  const html = buildProjectReportHtml('Site', sections, { mode: 'first-page', tables: ['Orders and materials'], pageSize: 5 });
+  expect(html).toContain('Showing 5 of 12');
+  expect(html).toContain('remaining records omitted');
+  expect(html).toContain('ORDER-4');
+  expect(html).not.toContain('ORDER-5');
+  expect(html).not.toContain('PAYMENT-HIDDEN');
+  const summary = buildProjectReportHtml('Site', sections, { mode: 'summary' });
+  expect(summary).not.toContain('ORDER-0');
+  expect(summary).toContain('Project summary only');
 });
