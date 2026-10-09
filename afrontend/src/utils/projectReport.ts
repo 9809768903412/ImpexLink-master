@@ -35,7 +35,31 @@ export function projectValueHtml(value: unknown, key = ''): string {
   return escapePrintHtml(formattedValue(value, key));
 }
 
-export function buildProjectReportHtml(name: string, sections: ProjectReportSection[]) {
+export type ProjectReportOptions = { mode: 'summary' | 'tables' | 'first-page' | 'full'; tables?: string[]; pageSize?: number };
+export function buildProjectReportHtml(name: string, sections: ProjectReportSection[], options: ProjectReportOptions = { mode: 'full' }) {
+  const base = sections.slice(0, 2);
+  const related = sections.slice(2);
+  const chosen = related.filter(section => !options.tables || options.tables.includes(section.title));
+  if (options.mode !== 'full') {
+    const columns: Record<string, string[]> = {
+      'Orders and materials': ['orderNumber', 'createdAt', 'status', 'paymentStatus', 'total'],
+      'Purchase orders and items': ['poNumber', 'supplierName', 'date', 'status', 'total'],
+      'Deliveries and GPS': ['drNumber', 'orderNumber', 'status', 'eta', 'receivedAt', 'deliveryGuyName'],
+      'Payments': ['referenceNumber', 'method', 'status', 'amount', 'dueDate', 'paidAt'],
+      'Material requests': ['requestNumber', 'date', 'requestedBy', 'urgency', 'status', 'estimatedCost'],
+      'Project forms': ['oRefNumber', 'poNumber', 'createdAt', 'requestedBy', 'totalCost'],
+    };
+    const cleanBase = base.map(section => ({ ...section, records: section.records.map(record => Object.fromEntries(Object.entries(record).filter(([key, value]) => !/Id$|^id$|visibilityScope/.test(key) && value != null && value !== ''))) }));
+    const overview = { title: 'Linked record overview', records: [Object.fromEntries(related.map(section => [section.title, section.unavailable ? 'Not accessible' : section.records.length]))] };
+    let html = buildProjectReportHtml(name, [...cleanBase, overview]);
+    html = html.replace('Complete accessible project records', options.mode === 'summary' ? 'Project summary only; detailed records omitted' : 'Selected table summaries; detailed fields and item breakdowns omitted');
+    if (options.mode === 'summary') return html;
+    return html + chosen.map(section => {
+      const keys = columns[section.title] || [];
+      const rows = options.mode === 'first-page' ? section.records.slice(0, options.pageSize || 10) : section.records;
+      return `<section><h2>${escapePrintHtml(section.title)}</h2><p class="meta">${section.unavailable ? 'Not accessible to your role.' : `Showing ${rows.length} of ${section.records.length} records${rows.length < section.records.length ? ' · First table page only; remaining records omitted' : ''}`}</p><table class="project-lines"><thead><tr>${keys.map(key => `<th>${escapePrintHtml(projectFieldLabel(key))}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${keys.map(key => `<td>${projectValueHtml(row[key], key)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`;
+    }).join('');
+  }
   return `<style>
     @page { size: A4; margin: 10mm; }
     body { font-size: 9pt; }
@@ -49,9 +73,9 @@ export function buildProjectReportHtml(name: string, sections: ProjectReportSect
     h2 { font-size: 11pt; margin: 10px 0 4px; border-bottom: 1px solid #aaa; padding-bottom: 3px; break-after: avoid; }
     h3 { font-size: 9pt; margin: 4px 0; break-after: avoid; }
     .meta { font-size: 8pt; margin: 3px 0; }
-    .project-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 12px; }
+    .project-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; }
     .project-field { line-height: 1.3; overflow-wrap: anywhere; break-inside: avoid; }
-    .project-record { margin: 5px 0; padding-bottom: 5px; border-bottom: 1px solid #ddd; }
+    .project-record { margin: 10px 0; padding-bottom: 10px; border-bottom: 1px solid #ddd; }
     .project-record:last-child { border-bottom: 0; }
     .project-lines { font-size: 8pt; margin-top: 3px; table-layout: fixed; }
     .project-lines th, .project-lines td { padding: 3px 4px; overflow-wrap: anywhere; vertical-align: top; }
