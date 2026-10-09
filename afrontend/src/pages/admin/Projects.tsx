@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, Eye, Plus, Search, FolderKanban, MapPin, CalendarDays, Building2, FileText, Download, PackageSearch, Trash2 } from 'lucide-react';
 import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 import TableExportMenu from '@/components/TableExportMenu';
+import ProjectExportButton from '@/components/ProjectExportButton';
 import { projectExportColumns } from '@/utils/projectExport';
 import type { Project, Client, Order, Delivery, User as UserType, ProjectForm, MaterialRequest } from '@/types';
 import { toast } from '@/hooks/use-toast';
@@ -1108,15 +1109,7 @@ export default function ProjectsPage() {
             <DialogTitle>{selectedProject?.name}</DialogTitle>
             <DialogDescription>{selectedProject?.clientName}</DialogDescription>
           </DialogHeader>
-          {selectedProject && <TableExportMenu
-            title={`Project: ${selectedProject.name}`}
-            filename={`project-${selectedProject.id}`}
-            columns={projectExportColumns}
-            currentRows={[selectedProject]}
-            allRows={[selectedProject]}
-            totalItems={1}
-            filters={[{ label: 'Project', value: selectedProject.name }]}
-          />}
+          {selectedProject && <ProjectExportButton project={selectedProject} />}
           {selectedProject && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
