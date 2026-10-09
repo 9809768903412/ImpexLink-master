@@ -3,6 +3,7 @@ import TableFilterToolbar from '@/components/TableFilterToolbar';
 import { useEffect, useMemo, useState } from 'react';
 import TableDateRangeFilter, { useTableDateRange } from '@/components/TableDateRangeFilter';
 import TableExportMenu from '@/components/TableExportMenu';
+import ProjectExportButton from '@/components/ProjectExportButton';
 import { projectExportColumns } from '@/utils/projectExport';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -377,15 +378,7 @@ export default function ClientProjectsPage() {
             <DialogTitle>{selectedProject?.name}</DialogTitle>
             <DialogDescription>{selectedProject?.clientName}</DialogDescription>
           </DialogHeader>
-          {selectedProject && <TableExportMenu
-            title={`Project: ${selectedProject.name}`}
-            filename={`project-${selectedProject.id}`}
-            columns={projectExportColumns}
-            currentRows={[selectedProject]}
-            allRows={[selectedProject]}
-            totalItems={1}
-            filters={[{ label: 'Project', value: selectedProject.name }]}
-          />}
+          {selectedProject && <ProjectExportButton project={selectedProject} />}
           {selectedProject && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
